@@ -19,12 +19,12 @@ chat before it, its newest 40 turns that come to at most 20,000 characters, olde
 around it: this computer's time, zone and language, and the app and window you were in. Both are kept nowhere but that
 message's 7 day trace (see `..\onsay\docs\lingo-function.md`, the context).
 
-His hands are the core, which carries out the single steps the server sends it, like clicking or reading a file, with
-the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`. The app ships only `windows`, and puts it in that folder
-each time it starts the core. Every other lingo is released by its owner and reached through a route. Right click him
-and choose Open lingos folder to add your own: every lingo there runs on this computer, and the core sends a copy of
-each up to Onsay, private to you. What lingos remember is kept here, in the core's store. Their settings, like keys, are
-on your account instead, set on the dashboard.
+His hands are the core, which runs the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`, when Onsay
+relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships only `windows`, and puts it in that
+folder each time it starts the core. Right click him and choose Open lingos folder to add your own, like the `.lingo` files in
+`..\onsay\lingo-library`, each one file: every lingo there runs on this computer, and the core tells Onsay what each one does, never
+its code. What lingos remember is kept here, in the core's store. Their settings, like keys, are on your account
+instead, set on the dashboard.
 
 ## Building
 

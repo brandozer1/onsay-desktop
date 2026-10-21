@@ -94,7 +94,7 @@ sealed class SettingsWindow : Window
         var p = Page("General");
         p.Children.Add(Check("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Startup.IsOn, on => Startup.Set(on)));
         p.Children.Add(Heading("Lingos folder"));
-        p.Children.Add(Paragraph("Every lingo on this computer is a folder in here. Add or change one and it runs on this computer, and a copy goes up to Onsay so he knows it is here."));
+        p.Children.Add(Paragraph("Every lingo on this computer is a folder in here. Add or change one and it runs on this computer, and Onsay is told what it does, never its code."));
         p.Children.Add(Button("Open the lingos folder", () =>
         {
             System.IO.Directory.CreateDirectory(Core.Lingos);

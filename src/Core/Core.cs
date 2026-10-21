@@ -13,7 +13,8 @@ namespace Onsay.Desktop;
 
 static class Core
 {
-    // Any folder in Lingos with a lingo.json is a lingo the core loads, see ../onsay/core/README.md.
+    // Each .lingo file in Lingos is a lingo the core loads, and so is a folder with a lingo.json, a native one like windows,
+    // see ../onsay/core/README.md.
     static readonly string Exe = Path.Combine(AppContext.BaseDirectory, "onsay-core.exe");
     static readonly string Home = Path.Combine(Settings.Folder, "core");
     public static readonly string Lingos = Path.Combine(Home, "lingos");
