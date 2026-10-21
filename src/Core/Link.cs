@@ -42,7 +42,7 @@ static class Link
             var (_, poll) = await Post("/connect/poll", new JsonObject { ["poll"] = $"{start["poll"]}" }, stop);
             if ($"{poll["status"]}" == "waiting") continue;
             if ($"{poll["status"]}" != "done") throw new Exception($"{poll["error"] ?? "that sign in did not finish"}");
-            (s.Token, s.User) = ($"{poll["token"]}", $"{poll["user"]?["email"]}");
+            (s.Token, s.User) = ($"{poll["token"]}", $"{poll["account"]?["email"]}");
             s.Save();
             return s.User;
         }
