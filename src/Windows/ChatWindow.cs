@@ -7,12 +7,15 @@
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
 // 3.  Stop()                              Stop, or Alt+Shift+O from any thread: stops his turn and the core at once
 // 4.  SignIn(), SignOut()                 through the browser, from the sign in page or his menu
-// 5.  Page()                              shows the page that fits: sign in, home or chat
+// 5.  Page()                              shows the page that fits: the walkthrough, sign in, home or chat
+//     Welcome()                           the walkthrough the first time: who he is, what he is for, how to stop him,
+//                                         what is sent to Onsay, agreed with one press, and signing in
 // 6.  Send()                              your message goes to the server with an id, and its reply comes back with it
 //     Heard(m), Replied(...)              what the server says, drawn here as it happens, and his reply
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
 // 8.  Tell(text, bad)                     a line across the top, for what happens outside the chat
-// 9.  Say(text), Message(mine)            his line spoken by the face in the header, and one row of the conversation
+// 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
+//                                         of the conversation
 // 10. Button(text, kind, click)           every button in the card, one shape
 // 11. Steps(), AddStep(list, done)        a message's steps on other computers, folded under his reply, each opening to
 //                                         its IN and OUT
@@ -39,12 +42,12 @@ sealed class ChatWindow : Window
 {
     ////////// LOOK //////////
 
-    // brand.css tokens, light theme.
-    static readonly Brush Card = Hex("#FFFFFF"), Page_ = Hex("#F7F7FA"), Edge_ = Hex("#D8D9E5"), Rule = Hex("#E8E8F0"),
+    // brand.css tokens, light theme. Shared with the windows drawn from the same look, like Markdown.cs and PanelWindow.cs.
+    internal static readonly Brush Card = Hex("#FFFFFF"), Page_ = Hex("#F7F7FA"), Edge_ = Hex("#D8D9E5"), Rule = Hex("#E8E8F0"),
         Ink = Hex("#12131C"), Ink2 = Hex("#4A4D5E"), Ink3 = Hex("#7B7F92"), Ink4 = Hex("#A9ACBC"),
         BlueSoft = Hex("#EEF0FF"), Accent = Hex("#5865F2"), AccentDeep = Hex("#4752C4"), Good = Hex("#1F9D55"),
         Bad = Hex("#C62A2F"), BadSoft = Hex("#FDECEC"), Butter = Hex("#FFF6D6");
-    static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets"), Mono = new("Consolas");
+    internal static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets"), Mono = new("Consolas");
     // Glyphs from Icons, by code point.
     static readonly string NewIcon = Glyph(0xE710), MoreIcon = Glyph(0xE712), SendIcon = Glyph(0xE724),
         ClosedIcon = Glyph(0xE76C), OpenIcon = Glyph(0xE70D);
@@ -63,7 +66,9 @@ sealed class ChatWindow : Window
     readonly Border fresh, more, permits, send;          // the header's new chat and menu, permissions, and send
 
     // The pages. Only one shows at a time, see Page.
-    readonly FrameworkElement signInPage, homePage;
+    readonly FrameworkElement welcomePage, signInPage, homePage;
+    int welcomeStep;
+    readonly StackPanel welcomeBody = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 20) };
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
@@ -95,7 +100,7 @@ sealed class ChatWindow : Window
     bool greeted, following = true;
     DateTime doingSince;                         // when what he is doing now started, for the bar's timer
     StepList? turn;                              // the steps of the message in progress, before his next line
-    (TextBox row, string text)? speaking;
+    (RichTextBox row, string text)? speaking;
     CancellationTokenSource? signing;            // a sign in waiting on the browser
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly StringBuilder transcript = new();   // everything said and done, with every step in full, for Copy chat
@@ -165,6 +170,8 @@ sealed class ChatWindow : Window
                 signInButton, codePanel, signInError,
             },
         };
+
+        welcomePage = welcomeBody;
 
         // The home page.
         homePage = new ScrollViewer
@@ -240,7 +247,7 @@ sealed class ChatWindow : Window
         Labels();
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { signInPage, homePage, chatPage } };
+        var pages = new Grid { Children = { welcomePage, signInPage, homePage, chatPage } };
         var layout = new Grid();
         UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input, footer };
         for (int i = 0; i < rows.Length; i++)
@@ -333,7 +340,7 @@ sealed class ChatWindow : Window
     public void Dismiss()
     {
         face.Hush();
-        if (speaking is { } s) s.row.Text = s.text;
+        if (speaking is { } s) s.row.Document = Markdown.Render(s.text);
         speaking = null;
         if (!Showing) return;
         closing = true;
@@ -389,6 +396,7 @@ sealed class ChatWindow : Window
     public async void SignIn()
     {
         if (signing is not null) return;
+        if (settings.Welcomed != true) { settings.Welcomed = true; settings.Save(); Page(); }   // asked from his menu before the walkthrough ended
         if (!Showing) setOpen(true);
         signing = new CancellationTokenSource(TimeSpan.FromMinutes(10));
         signInError.Visibility = Visibility.Collapsed;
@@ -426,8 +434,10 @@ sealed class ChatWindow : Window
 
     void Page()
     {
-        bool signedIn = settings.Token is not null, talking = signedIn && Talking;
-        signInPage.Visibility = Shown(!signedIn);
+        bool welcomed = settings.Welcomed == true, signedIn = welcomed && settings.Token is not null, talking = signedIn && Talking;
+        welcomePage.Visibility = Shown(!welcomed);
+        if (!welcomed) Welcome();
+        signInPage.Visibility = Shown(welcomed && !signedIn);
         homePage.Visibility = Shown(signedIn && !talking);
         chatPage.Visibility = fresh.Visibility = Shown(talking);
         input.Visibility = footer.Visibility = more.Visibility = Shown(signedIn);
@@ -435,6 +445,48 @@ sealed class ChatWindow : Window
         if (!signedIn) Working(null);
         ReadyInput();
         Readiness();
+    }
+
+    /* 5. One short page a step, Next to go on. The page about what is sent to Onsay has one button, Agree and continue, and
+          a quiet way to the log of everything sent (Privacy.cs); Skip on the pages before it lands there, never past it.
+          The last page signs in, or starts when already signed in. Finished, it never shows again. */
+    static readonly (string Title, string Words)[] Walkthrough =
+    {
+        ("Hi, I'm Onsay", "Tell me what you need in plain words, and I'll do it on this computer for you."),
+        ("How I get it done", "For each thing you ask, I find a small program made for exactly that, a lingo, and run it here. I can open apps, click and type, read what's on screen, and work with your files."),
+        ("You're in charge", "You choose what I may do under Permissions, and you can change it any time. Press Stop, or Alt+Shift+O from any app, and I stop at once."),
+        ("What I send to Onsay", "To help, this computer tells Onsay what it can do, and sends what you ask for so it can be answered. Onsay also learns how things are used from the shape of each call: the keys and kinds of values that went in and came out, never the values. Your files, passwords and screen stay here unless you ask me to send something. Every message sent is kept in a log you can read any time, under Settings, Privacy."),
+        ("Sign in to start", "Signing in gives this computer its own name on Onsay, like laptop.yourname, so I can reach it to help you."),
+    };
+    const int Agree = 3;   // the page about what is sent
+
+    void Welcome()
+    {
+        var (title, words) = Walkthrough[welcomeStep];
+        bool last = welcomeStep == Walkthrough.Length - 1, agree = welcomeStep == Agree;
+        var progress = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 18) };
+        for (int i = 0; i < Walkthrough.Length; i++)
+            progress.Children.Add(new Ellipse { Width = 7, Height = 7, Margin = new Thickness(3, 0, 3, 0), Fill = i == welcomeStep ? Accent : Rule });
+        void Done()
+        {
+            settings.Welcomed = true;
+            settings.Save();
+            Page();
+            if (settings.Token is null) SignIn();
+        }
+        var next = Button(last ? settings.Token is null ? "Sign in" : "Get started" : agree ? "Agree and continue" : "Next", Kind.Primary, () =>
+        {
+            if (agree) { settings.Agreed = DateTime.UtcNow; settings.Save(); }
+            if (last) Done(); else { welcomeStep++; Welcome(); }
+        });
+        var skip = agree ? Button("See what is sent", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Privacy")) : Button("Skip", Kind.Quiet, () => { welcomeStep = Agree; Welcome(); });
+        skip.Margin = new Thickness(0, 0, 8, 0);
+        welcomeBody.Children.Clear();
+        welcomeBody.Children.Add(new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) });
+        welcomeBody.Children.Add(progress);
+        welcomeBody.Children.Add(new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center });
+        welcomeBody.Children.Add(Paragraph(words, 8, 22, agree ? 360 : 320));
+        welcomeBody.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Children = { last ? new Border() : skip, next } });
     }
 
     // Whether he can act on this computer right now, on the home page.
@@ -473,7 +525,7 @@ sealed class ChatWindow : Window
         }
         asking.Add(id);
         turn = null;
-        Message(true).Text = text;
+        Yours(text);
         Record($"You: {text}");
         said.Add(("you", text));
         Page();
@@ -526,7 +578,11 @@ sealed class ChatWindow : Window
         if (!Busy) Working(null);
         face.Mood("calm");
         await Say(text, error: ended == "failed");
-        lines.Children.Add(new TextBlock { Text = $"{(ended == "answered" ? "Done" : ended == "stopped" ? "Stopped" : "Failed")} in {Took(ms)}", FontSize = 11, Foreground = Ink4, Margin = new Thickness(0, -6, 0, 12) });
+        // Under it, how it ended and how long it took, and Copy for the whole reply as he wrote it.
+        var under = new DockPanel { Margin = new Thickness(0, -8, 0, 12) };
+        if (text.Trim().Length > 0) under.Children.Add(Right(Markdown.Copy(text, "Copy")));
+        under.Children.Add(new TextBlock { Text = $"{(ended == "answered" ? "Done" : ended == "stopped" ? "Stopped" : "Failed")} in {Took(ms)}", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center });
+        lines.Children.Add(under);
         face.React(ended == "answered" ? "answered" : ended == "stopped" ? "no" : "stuck");
     }
 
@@ -563,32 +619,48 @@ sealed class ChatWindow : Window
 
     ////////// 9-10. MESSAGES AND BUTTONS //////////
 
-    // 9. The words type out on the same characters his mouth is shaping. An error reads in red.
+    /* 9. The words type out on the same characters his mouth is shaping, drawn as Markdown as they come (Markdown.cs), at
+          most a few frames apart. A long reply types faster, so it never takes more than about four seconds. An error reads
+          in red. */
     async Task Say(string text, bool error = false)
     {
-        var row = Message(false);
+        var row = His();
         if (error) row.Foreground = Bad;
         Record($"Onsay: {text}");
         said.Add(("onsay", text));
         speaking = (row, text);
-        if (Showing) await face.Speak(text, soFar => row.Text = soFar);
-        if (speaking?.row == row) { row.Text = text; speaking = null; }
+        var drawn = DateTime.MinValue;
+        if (Showing) await face.Speak(text, soFar =>
+        {
+            if ((DateTime.Now - drawn).TotalMilliseconds < 50) return;
+            drawn = DateTime.Now;
+            row.Document = Markdown.Render(soFar);
+        }, Math.Max(46, text.Length / 4.0));
+        if (speaking?.row == row) { row.Document = Markdown.Render(text); speaking = null; }
     }
 
-    // Yours sit right on blue, his sit left on the card.
-    TextBox Message(bool mine)
+    // Yours sit right on blue, as you typed it.
+    void Yours(string text)
     {
-        var text = Selectable(14, Ink);
+        var shown = Selectable(14, Ink);
+        shown.Text = text;
         lines.Children.Add(new Border
         {
-            Child = text,
-            Background = mine ? BlueSoft : Brushes.Transparent,
-            CornerRadius = new CornerRadius(12),
-            Padding = mine ? new Thickness(12, 7, 12, 8) : new Thickness(0, 2, 0, 2),
-            Margin = new Thickness(mine ? 48 : 0, 0, mine ? 0 : 24, 12),
-            HorizontalAlignment = mine ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            Child = shown, Background = BlueSoft, CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 7, 12, 8),
+            Margin = new Thickness(48, 0, 0, 12), HorizontalAlignment = HorizontalAlignment.Right,
         });
-        return text;
+    }
+
+    // His sit left on the card, the whole width, read only but selectable, with its links and Copy buttons live.
+    RichTextBox His()
+    {
+        var shown = new RichTextBox
+        {
+            IsReadOnly = true, IsDocumentEnabled = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Padding = new Thickness(0),
+            Foreground = Ink, Margin = new Thickness(0, 2, 0, 12), Document = new System.Windows.Documents.FlowDocument(),
+        };
+        lines.Children.Add(shown);
+        return shown;
     }
 
     /* 10. Darker under the pointer and pressed in while held. An icon button is a glyph from Windows' icon font with no
@@ -657,10 +729,10 @@ sealed class ChatWindow : Window
         Child = new TextBlock { Text = text, FontSize = 10.5, FontFamily = Mono, Foreground = Ink3 },
     };
 
-    static TextBlock Paragraph(string text, double above = 6, double below = 0) => new()
+    static TextBlock Paragraph(string text, double above = 6, double below = 0, double width = 320) => new()
     {
         Text = text, FontSize = 13, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
-        Margin = new Thickness(0, above, 0, below), MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Center,
+        Margin = new Thickness(0, above, 0, below), MaxWidth = width, HorizontalAlignment = HorizontalAlignment.Center,
     };
 
     static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 6, 10, 6) };

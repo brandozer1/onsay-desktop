@@ -78,6 +78,9 @@ sealed class BuddyWindow : Window
             Every(TimeSpan.FromSeconds(1.5), () => StepAside(SomethingFullscreen()));
             him.React("greet");
             tray = new Tray(() => Toggle(!open));
+            // The first time, he opens the chat to introduce himself.
+            if (settings.Welcomed != true) Later(() => Toggle(true));
+            Updates.Start();
         };
         DpiChanged += (_, _) => { if (!dragging) Later(() => Park(dropped: false)); };
         Closed += (_, _) => { tray?.Dispose(); Core.Stop(); Application.Current.Shutdown(); };

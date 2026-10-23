@@ -30,6 +30,10 @@ sealed class Settings
     // What his programs may do on this computer, as Lingo permissions, from Permissions under the chat. Null is the defaults
     // in Core.cs. The core refuses any phrase that needs one not listed.
     public List<string>? Allow { get; set; }
+    // Whether he has introduced himself, in the walkthrough the chat opens with the first time. Null until it is finished.
+    public bool? Welcomed { get; set; }
+    // When the person pressed Agree and continue on the walkthrough's page about what is sent to Onsay. Null until then.
+    public DateTime? Agreed { get; set; }
     // Whether the steps under his replies start open. Null is closed, so the chat reads as messages first.
     public bool? ShowSteps { get; set; }
     // This app's own id for itself, made the first time it signs in, so signing in again is the same instance on the server.

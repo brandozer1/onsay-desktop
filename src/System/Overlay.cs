@@ -5,7 +5,10 @@
 //   {"show":"press","button":"left","times":1}                  it clicks
 //   {"show":"point","x":..,"y":..,"w":..,"h":..,"say":"..","seconds":n}   a ring around that box, him beside it
 //   {"show":"clear"}                                            the ring goes
-// Positions are real pixels on the whole desktop. Both windows are made once, on first use, and kept.
+//   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
+//   {"show":"unpanel"}                                          his panel goes
+//   {"sent":{...}}                                              a message the core sent to Onsay, for the privacy log
+// Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept.
 //
 // 1. Line(text)    one line from the core, on any thread
 // 2. Hand          where his pointer is while it shows, for him to watch instead of the mouse
@@ -20,17 +23,20 @@ static class Overlay
 {
     static HandWindow? hand;
     static RingWindow? ring;
+    static PanelWindow? panel;
 
     // 1.
     public static void Line(string text)
     {
         JsonElement m;
         try { m = JsonDocument.Parse(text).RootElement; } catch (JsonException) { return; }
+        if (m.TryGetProperty("sent", out var sent)) { Privacy.Keep(sent.GetRawText()); return; }
         Application.Current?.Dispatcher.BeginInvoke(() => Handle(m));
     }
 
     static POINT Pair(JsonElement p) => new(p[0].GetInt32(), p[1].GetInt32());
     static int Int(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
+    static string Text(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
     static void Handle(JsonElement m)
     {
@@ -50,6 +56,12 @@ static class Overlay
                 break;
             case "clear":
                 ring?.Clear();
+                break;
+            case "panel":
+                (panel ??= new PanelWindow()).Show(Text(m, "html"), Text(m, "title"), Int(m, "w"), Int(m, "h"));
+                break;
+            case "unpanel":
+                panel?.Hide();
                 break;
         }
     }

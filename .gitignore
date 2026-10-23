@@ -1,3 +1,5 @@
-# .gitignore - the build output, made again by every build.
+# .gitignore - the build output, made again by every build, and the releases release.ps1 makes.
 bin/
 obj/
+publish/
+Releases/

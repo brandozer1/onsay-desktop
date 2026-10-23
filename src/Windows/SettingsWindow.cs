@@ -1,11 +1,12 @@
 // SettingsWindow.cs - Onsay's settings, from his right click menu or the chat's: a list of pages down the left, the page
 // on the right. One window at a time, above his chat, and every change takes effect as it is made.
 //
-// 1. Open(settings, chat)   shows it, or brings the one already open to the front
+// 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on page when one is named
 // 2. General                starting with Windows, debug mode, the lingos folder
 // 3. Permissions            what his programs may do on this computer. A change restarts the core with the new list
 // 4. Account                who is signed in, and signing in or out
-// 5. Page(...), Check(...)  the pieces every page is made of
+// 5. Privacy                everything this computer has sent to Onsay, newest first, each opening to the message itself
+// 6. Page(...), Check(...)  the pieces every page is made of
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -27,10 +28,11 @@ sealed class SettingsWindow : Window
     readonly List<(string Name, Func<UIElement> Build, Border Row)> pages = new();
 
     // 1.
-    public static void Open(Settings settings, ChatWindow chat)
+    public static void Open(Settings settings, ChatWindow chat, string? page = null)
     {
         if (open is null) { open = new SettingsWindow(settings, chat); open.Closed += (_, _) => open = null; open.Show(); }
         if (open.WindowState == WindowState.Minimized) open.WindowState = WindowState.Normal;
+        if (page is not null) open.Go(open.pages.FindIndex((p) => p.Name == page));
         open.Activate();
     }
 
@@ -51,6 +53,7 @@ sealed class SettingsWindow : Window
         Add("General", General);
         Add("Permissions", Permissions);
         Add("Account", Account);
+        Add("Privacy", Privacy);
         var side = new Border { Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 1, 0), Width = 180, Child = nav };
         DockPanel.SetDock(side, System.Windows.Controls.Dock.Left);
         Content = new DockPanel { Children = { side, page } };
@@ -139,7 +142,40 @@ sealed class SettingsWindow : Window
         return p;
     }
 
-    ////////// 5. PIECES //////////
+    ////////// 5. PRIVACY //////////
+
+    // 5. Read afresh each time the page is picked, so Refresh is picking it again.
+    UIElement Privacy()
+    {
+        var p = Page("Privacy");
+        p.Children.Add(Paragraph("Everything this computer sends to Onsay is kept here, newest first, exactly as it went, so you can see for yourself. " +
+            "What you type goes, so it can be answered, and so does what this computer can do. Of the calls a lingo makes, only their shape goes: " +
+            "the keys and kinds of values that went in and came out, never a value. Your files, passwords and screen stay here unless you ask me to send something."));
+        var sent = Desktop.Privacy.Read();
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
+        tools.Children.Add(Button("Refresh", () => Go(pages.FindIndex((x) => x.Name == "Privacy"))));
+        var file = Button("Open the log file", () => { if (System.IO.File.Exists(Desktop.Privacy.File_)) Native.Open(Desktop.Privacy.File_); });
+        file.Margin = new Thickness(8, 0, 0, 0);
+        tools.Children.Add(file);
+        p.Children.Add(tools);
+        if (sent.Count == 0) { p.Children.Add(Paragraph("Nothing has been sent yet.")); return p; }
+        p.Children.Add(Paragraph($"The newest {sent.Count} message{(sent.Count == 1 ? "" : "s")}."));
+        foreach (var (at, kind, json) in sent)
+        {
+            var head = new TextBlock { FontSize = 12.5, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
+            head.Inlines.Add(new System.Windows.Documents.Run($"{at:g}  ") { Foreground = Ink3, FontFamily = new FontFamily("Consolas") });
+            head.Inlines.Add(new System.Windows.Documents.Run(Desktop.Privacy.Kinds.GetValueOrDefault(kind, kind)));
+            var body = new TextBox
+            {
+                Text = json.Length > 20_000 ? json[..20_000] + "\n... (the rest is in the log file)" : json, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Page_,
+                FontFamily = new FontFamily("Consolas"), FontSize = 11.5, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Padding = new Thickness(8), Margin = new Thickness(0, 4, 0, 0),
+            };
+            p.Children.Add(new Expander { Header = head, Content = body, Margin = new Thickness(0, 0, 0, 6), Foreground = Ink });
+        }
+        return p;
+    }
+
+    ////////// 6. PIECES //////////
 
     static StackPanel Page(string title) => new()
     {

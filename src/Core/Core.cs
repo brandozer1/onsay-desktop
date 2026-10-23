@@ -1,6 +1,7 @@
 // Core.cs - runs onsay-core.exe, his hands on this computer, while signed in, and provides the lingos this app ships.
 //
-// 1. Start(settings)    writes core.json and runs the core, restarting it if it ever stops
+// 1. Start(settings)    writes core.json and runs the core, restarting it if it ever stops. It runs with --sent, so every
+//                       message it sends to Onsay comes on its output too, for the privacy log (Privacy.cs)
 // 2. Stop()             ends it, and keeps it ended
 // 3. Restart()          ends whatever it is running at once, then starts it again: the stop key's guarantee
 // 4. Permissions        every Lingo permission, in words, and Allowed(settings), the ones ticked
@@ -59,7 +60,7 @@ static class Core
         Provide();
         var p = new Process
         {
-            StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\"")
+            StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\" --sent")
             {
                 CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
                 StandardOutputEncoding = System.Text.Encoding.UTF8,

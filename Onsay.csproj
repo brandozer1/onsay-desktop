@@ -10,7 +10,16 @@
     <AssemblyName>Onsay</AssemblyName>
     <RootNamespace>Onsay</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The version the installer and updates go by, set by release.ps1 for each release. -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <!-- Velopack installs and updates him, see src/System/Updates.cs and release.ps1. WebView2 draws his panel's pages,
+       see src/Windows/PanelWindow.cs. -->
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.158" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
 
   <!-- The core, his hands on this computer, ships beside the app, and so do the lingos the app provides, like windows,
        which it puts in the core's lingos folder. Both come from the onsay project beside this one: build them first with
