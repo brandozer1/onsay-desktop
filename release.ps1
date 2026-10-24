@@ -21,6 +21,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if (Test-Path publish) { Remove-Item publish -Recurse -Force }
 & $dotnet publish -c Release -r win-x64 --self-contained -p:Version=$Version -o publish
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& $vpk pack --packId Onsay --packVersion $Version --packDir publish --mainExe Onsay.exe --packTitle Onsay --packAuthors Onsay --outputDir Releases
+& $vpk pack --runtime win-x64 --packId Onsay --packVersion $Version --packDir publish --mainExe Onsay.exe --packTitle Onsay --packAuthors Onsay --outputDir Releases
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Made Onsay $Version in Releases\. Upload everything there to the feed."
