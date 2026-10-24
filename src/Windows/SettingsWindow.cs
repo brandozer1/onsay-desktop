@@ -103,6 +103,29 @@ sealed class SettingsWindow : Window
             System.IO.Directory.CreateDirectory(Core.Lingos);
             Native.Open(Core.Lingos);
         }));
+
+        p.Children.Add(Heading("About Onsay"));
+        var version = Updates.Version;
+        p.Children.Add(Paragraph(Updates.Installed ? $"Version {version}. Onsay keeps itself up to date on its own: a newer version is downloaded quietly and goes in the next time you quit."
+            : "This copy was built on this computer, so it does not update itself."));
+        var status = new TextBlock { FontSize = 12.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10), Visibility = Visibility.Collapsed };
+        if (Updates.Installed)
+        {
+            p.Children.Add(Button("Check for updates now", async () =>
+            {
+                status.Text = "Checking...";
+                status.Visibility = Visibility.Visible;
+                status.Text = await Updates.CheckNow();
+            }));
+            p.Children.Add(status);
+            p.Children.Add(Heading("Remove Onsay"));
+            p.Children.Add(Paragraph("Takes Onsay off this computer: the app, its shortcuts and its startup. What it kept stays in your account on Onsay."));
+            p.Children.Add(Button("Uninstall Onsay", () =>
+            {
+                Updates.Uninstall();
+                Application.Current.Shutdown();
+            }));
+        }
         return p;
     }
 

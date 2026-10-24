@@ -50,8 +50,11 @@ instead, set on the dashboard.
 `release.ps1` builds the core and the app, then packs them with Velopack into `Releases\`: `Onsay-win-Setup.exe`, the
 installer people download, and the packages installed copies update from. The installer puts him in
 `%LocalAppData%\Onsay` for that person alone, with no admin rights, adds him to the Start menu and desktop, and opens
-him. He is uninstalled from Windows' Installed apps like any app. Installed, he looks for a newer version a minute after
-starting and every six hours, downloads it quietly, and it goes in when he next quits (`src/System/Updates.cs`).
+him. Installed, he looks for a newer version a minute after starting and every six hours, downloads it quietly, and it
+goes in when he next quits (`src/System/Updates.cs`). Settings, General shows the version, a Check for updates now
+button, and Uninstall Onsay, which removes him, his shortcuts and his startup, the same uninstaller as Windows'
+Installed apps. The updater itself almost never changes: Velopack installs a tiny separate program that applies updates,
+so a new version is a normal update, never a reinstall.
 
 To release: `dotnet tool install -g vpk` once (it needs .NET 8), then `.\release.ps1 0.2.0`, and upload everything in
 `Releases\` to the feed, `Feed` in `src/System/Updates.cs`, keeping the files already there. Pushing a tag like `v0.2.0`
