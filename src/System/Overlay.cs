@@ -7,7 +7,7 @@
 //   {"show":"clear"}                                            the ring goes
 //   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
 //   {"show":"unpanel"}                                          his panel goes
-//   {"sent":{...}}                                              a message the core sent to Onsay, for the privacy log
+//   {"sent":{...}}                                              a message the core sent to Onsay, for the request log
 // Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept.
 //
 // 1. Line(text)    one line from the core, on any thread
@@ -30,7 +30,7 @@ static class Overlay
     {
         JsonElement m;
         try { m = JsonDocument.Parse(text).RootElement; } catch (JsonException) { return; }
-        if (m.TryGetProperty("sent", out var sent)) { Privacy.Keep(sent.GetRawText()); return; }
+        if (m.TryGetProperty("sent", out var sent)) { Requests.Keep(sent.GetRawText()); return; }
         Application.Current?.Dispatcher.BeginInvoke(() => Handle(m));
     }
 

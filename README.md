@@ -5,8 +5,13 @@ for, Windows, that connects to `windows`, the device lingo dedicated to talking 
 on can be controlled and operated through the INS (the Identity Name System, Onsay's names: one top level name per
 person, their handle, with a route for each of their computers, like `laptop.brandon`).
 
-The core and the `windows` lingo live in the onsay project, which this one sits beside: `..\onsay`. This app ships the
-core built there, `..\onsay\core\bin\onsay-core.exe`, and the lingos it builds, `..\onsay\core\bin\lingos`.
+Onsay Desktop is a free, open source AI agent and employee. Customize, change, tweak and edit it however you like: the
+character, the UI, the walkthrough, the lingos it ships, the routes it opens. It is Apache 2.0 licensed and built to be
+built on.
+
+The core is the lingo client (https://github.com/brandozer1/lingo-client), and the `windows` lingo ships with it. This
+app ships the lingo client's build, `onsay-core.exe`, and the lingos it builds. In this repo it is bundled from a
+release of that project (during local development, a sibling checkout at `..\lingo-client\core\bin` also works).
 
 ## What he does
 
@@ -14,10 +19,11 @@ He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O s
 The first time, he opens the chat himself and walks you through who he is, what he is for, how to stop him and what
 this computer sends to Onsay, agreed with one press, then signs you in.
 
-Everything this computer sends to Onsay is kept in a log you can read, under Settings, Privacy: the app's own messages
-and the core's, each exactly as it went, your sign in token the one thing masked. What you type goes, and what this
-computer can do; of the calls a lingo makes only their shape goes, never a value (`src/System/Privacy.cs`,
-`%AppData%\Onsay\sent.log`).
+Every request between this computer and Onsay is kept in a log you can read, under Settings, Requests: the app's own
+messages and the core's, each exactly as it went, your sign in token the one thing masked. The prompts you send, what
+this computer can do, and what each lingo asks for and answers as it runs (`src/System/Requests.cs`,
+`%AppData%\Onsay\requests.log`). Under Settings, Routes are the lingos installed here, each a route Onsay can reach at
+its address under your handle, like `laptop.brandon/lingos/weather.lingo`.
 
 His replies are drawn as Markdown: headings, lists, quotes, tables, links and code, each code block with a Copy button,
 and Copy under every reply for the whole of it. When a page says more than words, a lingo can open his panel, a small
@@ -74,8 +80,8 @@ starting it, like `$env:ONSAY_API = "http://localhost:3000"`.
 | `release.ps1` | a release: the installer and update packages, in `Releases\` |
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and its walkthrough (`ChatWindow`), his replies drawn as Markdown (`Markdown`), settings, his pointer (`HandWindow`), the ring (`RingWindow`), his panel showing a page (`PanelWindow`), and the tray icon |
-| `src/System/` | Windows itself: Win32 calls, docking maths, the stop key, the core's overlay messages, the app's settings, updates (`Updates`), and the log of everything sent to Onsay (`Privacy`) |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and its walkthrough (`ChatWindow`), his replies drawn as Markdown (`Markdown`), settings (General, Routes, Permissions, Account, Requests), his pointer (`HandWindow`), the ring (`RingWindow`), his panel showing a page (`PanelWindow`), and the tray icon |
+| `src/System/` | Windows itself: Win32 calls, docking maths, the stop key, the core's overlay messages, the app's settings, updates (`Updates`), and the request log (`Requests`) |
 | `src/Core/` | `Core.cs` runs the core, `Link.cs` signs in through the website and holds the live connection to the server |
 | `src/Character/` | the character: his face as data, and the view that animates it |
 
@@ -91,4 +97,10 @@ account. What a lingo asks for, like a key, is set on the dashboard and kept wit
 `..\onsay\core\README.md`).
 
 Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` and `core.log` for the core, and
-`core\` for the core's own storage, `panel\` for his panel's browser storage, and `sent.log`, everything sent to Onsay.
+`core\` for the core's own storage, `panel\` for his panel's browser storage, and `requests.log`, every request between
+this computer and Onsay.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Part of Onsay, with the lingo client
+(https://github.com/brandozer1/lingo-client) and Onsay IO (https://github.com/brandozer1/onsay-io).

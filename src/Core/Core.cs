@@ -1,7 +1,8 @@
 // Core.cs - runs onsay-core.exe, his hands on this computer, while signed in, and provides the lingos this app ships.
 //
 // 1. Start(settings)    writes core.json and runs the core, restarting it if it ever stops. It runs with --sent, so every
-//                       message it sends to Onsay comes on its output too, for the privacy log (Privacy.cs)
+//                       message it sends to Onsay comes on its output too, for the request log (Requests.cs)
+// 6. Routes(computer)   the lingos installed on this computer, each a route at its address under the handle
 // 2. Stop()             ends it, and keeps it ended
 // 3. Restart()          ends whatever it is running at once, then starts it again: the stop key's guarantee
 // 4. Permissions        every Lingo permission, in words, and Allowed(settings), the ones ticked
@@ -112,5 +113,50 @@ static class Core
             }
             catch (IOException) { }   // still open somewhere: the one there stays until next time
         }
+    }
+
+    ////////// 6. ROUTES //////////
+
+    public sealed record Route(string Name, string Address, string About, bool Mine);
+
+    // 6. Each .lingo file and each native lingo folder in the lingos folder is a route the core offers. computer is this
+    //    computer's name on Onsay, like laptop.brandon, so the address reads the way a caller reaches it. Mine is a lingo
+    //    the person added themselves, not one the app ships (windows). The core is the one that decides what loads; this
+    //    reads the folder, so a lingo it set aside still shows here.
+    public static List<Route> Routes(string computer)
+    {
+        var shipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var from = Path.Combine(AppContext.BaseDirectory, "lingos");
+        if (Directory.Exists(from))
+            foreach (var d in Directory.EnumerateDirectories(from)) shipped.Add(Path.GetFileName(d));
+        var routes = new List<Route>();
+        if (!Directory.Exists(Lingos)) return routes;
+        foreach (var file in Directory.EnumerateFiles(Lingos, "*.lingo"))
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            routes.Add(new Route(name, $"{computer}/lingos/{name}.lingo", FirstLine(file), true));
+        }
+        foreach (var dir in Directory.EnumerateDirectories(Lingos))
+        {
+            var manifest = Path.Combine(dir, "lingo.json");
+            if (!File.Exists(manifest)) continue;
+            var name = Path.GetFileName(dir);
+            string about = "";
+            try { using var doc = JsonDocument.Parse(File.ReadAllText(manifest)); about = doc.RootElement.TryGetProperty("about", out var a) ? a.GetString() ?? "" : ""; } catch { }
+            routes.Add(new Route(name, $"{computer}/lingos/{name}", about, !shipped.Contains(name)));
+        }
+        return routes.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // A Lingo lingo's first line is "// name - what it is.", so the words after the first " - " are its description.
+    static string FirstLine(string file)
+    {
+        try
+        {
+            var line = File.ReadLines(file).FirstOrDefault() ?? "";
+            var at = line.IndexOf(" - ", StringComparison.Ordinal);
+            return at < 0 ? "" : line[(at + 3)..].Trim();
+        }
+        catch { return ""; }
     }
 }

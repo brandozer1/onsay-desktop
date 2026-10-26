@@ -2,11 +2,12 @@
 // on the right. One window at a time, above his chat, and every change takes effect as it is made.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on page when one is named
-// 2. General                starting with Windows, debug mode, the lingos folder
-// 3. Permissions            what his programs may do on this computer. A change restarts the core with the new list
-// 4. Account                who is signed in, and signing in or out
-// 5. Privacy                everything this computer has sent to Onsay, newest first, each opening to the message itself
-// 6. Page(...), Check(...)  the pieces every page is made of
+// 2. General                starting with Windows, the version, updates and removing Onsay
+// 3. Routes                 the lingos installed on this computer, each at its address under the handle
+// 4. Permissions            what his programs may do on this computer. A change restarts the core with the new list
+// 5. Account                who is signed in, and signing in or out
+// 6. Requests               every request between this computer and Onsay, newest first, each opening to the message itself
+// 7. Page(...), Check(...)  the pieces every page is made of
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -51,9 +52,10 @@ sealed class SettingsWindow : Window
         Background = Card;
 
         Add("General", General);
+        Add("Routes", Routes);
         Add("Permissions", Permissions);
         Add("Account", Account);
-        Add("Privacy", Privacy);
+        Add("Requests", Requests);
         var side = new Border { Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 1, 0), Width = 180, Child = nav };
         DockPanel.SetDock(side, System.Windows.Controls.Dock.Left);
         Content = new DockPanel { Children = { side, page } };
@@ -96,13 +98,6 @@ sealed class SettingsWindow : Window
     {
         var p = Page("General");
         p.Children.Add(Check("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Startup.IsOn, on => Startup.Set(on)));
-        p.Children.Add(Heading("Lingos folder"));
-        p.Children.Add(Paragraph("Every lingo on this computer is a folder in here. Add or change one and it runs on this computer, and Onsay is told what it does, never its code."));
-        p.Children.Add(Button("Open the lingos folder", () =>
-        {
-            System.IO.Directory.CreateDirectory(Core.Lingos);
-            Native.Open(Core.Lingos);
-        }));
 
         p.Children.Add(Heading("About Onsay"));
         var version = Updates.Version;
@@ -129,7 +124,32 @@ sealed class SettingsWindow : Window
         return p;
     }
 
-    ////////// 3. PERMISSIONS //////////
+    ////////// 3. ROUTES //////////
+
+    // 3. Every lingo on this computer is a route a caller can reach at its address. Read afresh each time it's picked.
+    UIElement Routes()
+    {
+        var p = Page("Routes");
+        p.Children.Add(Paragraph("Every lingo on this computer is a route Onsay can reach when it relays a call here. " +
+            "Add a lingo to the folder and it becomes a route; the core tells Onsay what it does, never its code."));
+        var routes = Core.Routes(chat.Route);
+        if (routes.Count == 0) p.Children.Add(Paragraph("No lingos yet. Add one to the folder below and it shows here."));
+        foreach (var r in routes)
+        {
+            var card = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+            var head = new TextBlock { FontSize = 13.5, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
+            head.Inlines.Add(new System.Windows.Documents.Run(r.Name) { FontWeight = FontWeights.SemiBold });
+            if (!r.Mine) head.Inlines.Add(new System.Windows.Documents.Run("   comes with Onsay") { Foreground = Ink3, FontSize = 12 });
+            card.Children.Add(head);
+            card.Children.Add(new TextBlock { Text = r.Address, FontFamily = new FontFamily("Consolas"), FontSize = 11.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) });
+            if (r.About.Length > 0) card.Children.Add(new TextBlock { Text = r.About, FontSize = 12, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
+            p.Children.Add(card);
+        }
+        p.Children.Add(Button("Open the lingos folder", () => { System.IO.Directory.CreateDirectory(Core.Lingos); Native.Open(Core.Lingos); }));
+        return p;
+    }
+
+    ////////// 4. PERMISSIONS //////////
 
     UIElement Permissions()
     {
@@ -149,7 +169,7 @@ sealed class SettingsWindow : Window
         return p;
     }
 
-    ////////// 4. ACCOUNT //////////
+    ////////// 5. ACCOUNT //////////
 
     UIElement Account()
     {
@@ -165,29 +185,29 @@ sealed class SettingsWindow : Window
         return p;
     }
 
-    ////////// 5. PRIVACY //////////
+    ////////// 6. REQUESTS //////////
 
-    // 5. Read afresh each time the page is picked, so Refresh is picking it again.
-    UIElement Privacy()
+    // 6. Read afresh each time the page is picked, so Refresh is picking it again.
+    UIElement Requests()
     {
-        var p = Page("Privacy");
-        p.Children.Add(Paragraph("Everything this computer sends to Onsay is kept here, newest first, exactly as it went, so you can see for yourself. " +
-            "What you type goes, so it can be answered, and so does what this computer can do. Of the calls a lingo makes, only their shape goes: " +
-            "the keys and kinds of values that went in and came out, never a value. Your files, passwords and screen stay here unless you ask me to send something."));
-        var sent = Desktop.Privacy.Read();
+        var p = Page("Requests");
+        p.Children.Add(Paragraph("Every request between this computer and Onsay is kept here, newest first, exactly as it went, so you can see for yourself. " +
+            "The prompts you send, what this computer can do, and what each lingo asks for and answers as it runs. " +
+            "Your files, passwords and screen stay here unless you ask me to send something."));
+        var sent = Desktop.Requests.Read();
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
-        tools.Children.Add(Button("Refresh", () => Go(pages.FindIndex((x) => x.Name == "Privacy"))));
-        var file = Button("Open the log file", () => { if (System.IO.File.Exists(Desktop.Privacy.File_)) Native.Open(Desktop.Privacy.File_); });
+        tools.Children.Add(Button("Refresh", () => Go(pages.FindIndex((x) => x.Name == "Requests"))));
+        var file = Button("Open the log file", () => { if (System.IO.File.Exists(Desktop.Requests.File_)) Native.Open(Desktop.Requests.File_); });
         file.Margin = new Thickness(8, 0, 0, 0);
         tools.Children.Add(file);
         p.Children.Add(tools);
-        if (sent.Count == 0) { p.Children.Add(Paragraph("Nothing has been sent yet.")); return p; }
-        p.Children.Add(Paragraph($"The newest {sent.Count} message{(sent.Count == 1 ? "" : "s")}."));
+        if (sent.Count == 0) { p.Children.Add(Paragraph("No requests yet.")); return p; }
+        p.Children.Add(Paragraph($"The newest {sent.Count} request{(sent.Count == 1 ? "" : "s")}."));
         foreach (var (at, kind, json) in sent)
         {
             var head = new TextBlock { FontSize = 12.5, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
             head.Inlines.Add(new System.Windows.Documents.Run($"{at:g}  ") { Foreground = Ink3, FontFamily = new FontFamily("Consolas") });
-            head.Inlines.Add(new System.Windows.Documents.Run(Desktop.Privacy.Kinds.GetValueOrDefault(kind, kind)));
+            head.Inlines.Add(new System.Windows.Documents.Run(Desktop.Requests.Kinds.GetValueOrDefault(kind, kind)));
             var body = new TextBox
             {
                 Text = json.Length > 20_000 ? json[..20_000] + "\n... (the rest is in the log file)" : json, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Page_,
@@ -198,7 +218,7 @@ sealed class SettingsWindow : Window
         return p;
     }
 
-    ////////// 6. PIECES //////////
+    ////////// 7. PIECES //////////
 
     static StackPanel Page(string title) => new()
     {

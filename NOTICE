@@ -1,0 +1,11 @@
+Onsay Desktop
+Copyright 2026 Onsay
+
+This product includes software developed at Onsay (https://github.com/brandozer1).
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+----------------------------------------------------------------------
+This app ships the Lingo Client (https://github.com/brandozer1/lingo-client),
+also Apache-2.0, with the lingos it provides. See that project's NOTICE for its
+own third-party components (libffi, MIT).

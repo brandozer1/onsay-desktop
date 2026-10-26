@@ -114,6 +114,7 @@ sealed class ChatWindow : Window
     sealed record Done(string Title, string In, string Out, double Ms);
     readonly List<StepList> stepLists = new();
 
+    public string Route => called;                  // this computer's name on Onsay, like laptop.brandon
     public bool Signing => signing is not null;
     public bool Busy => asking.Count > 0;           // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
@@ -448,14 +449,14 @@ sealed class ChatWindow : Window
     }
 
     /* 5. One short page a step, Next to go on. The page about what is sent to Onsay has one button, Agree and continue, and
-          a quiet way to the log of everything sent (Privacy.cs); Skip on the pages before it lands there, never past it.
+          a quiet way to the request log (Requests.cs); Skip on the pages before it lands there, never past it.
           The last page signs in, or starts when already signed in. Finished, it never shows again. */
     static readonly (string Title, string Words)[] Walkthrough =
     {
         ("Hi, I'm Onsay", "Tell me what you need in plain words, and I'll do it on this computer for you."),
         ("How I get it done", "For each thing you ask, I find a small program made for exactly that, a lingo, and run it here. I can open apps, click and type, read what's on screen, and work with your files."),
         ("You're in charge", "You choose what I may do under Permissions, and you can change it any time. Press Stop, or Alt+Shift+O from any app, and I stop at once."),
-        ("What I send to Onsay", "To help, this computer tells Onsay what it can do, and sends what you ask for so it can be answered. Onsay also learns how things are used from the shape of each call: the keys and kinds of values that went in and came out, never the values. Your files, passwords and screen stay here unless you ask me to send something. Every message sent is kept in a log you can read any time, under Settings, Privacy."),
+        ("What I send to Onsay", "To help, this computer tells Onsay what it can do, and sends what you ask for so it can be answered. Your files, passwords and screen stay here unless you ask me to send something. Every request is kept in a log you can read any time, under Settings, Requests."),
         ("Sign in to start", "Signing in gives this computer its own name on Onsay, like laptop.yourname, so I can reach it to help you."),
     };
     const int Agree = 3;   // the page about what is sent
@@ -479,7 +480,7 @@ sealed class ChatWindow : Window
             if (agree) { settings.Agreed = DateTime.UtcNow; settings.Save(); }
             if (last) Done(); else { welcomeStep++; Welcome(); }
         });
-        var skip = agree ? Button("See what is sent", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Privacy")) : Button("Skip", Kind.Quiet, () => { welcomeStep = Agree; Welcome(); });
+        var skip = agree ? Button("See what is sent", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Requests")) : Button("Skip", Kind.Quiet, () => { welcomeStep = Agree; Welcome(); });
         skip.Margin = new Thickness(0, 0, 8, 0);
         welcomeBody.Children.Clear();
         welcomeBody.Children.Add(new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) });

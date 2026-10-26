@@ -133,12 +133,12 @@ static class Link
         return ((int)res.StatusCode, reply ?? new JsonObject());
     }
 
-    // Every message sent is kept in the privacy log, so the person can read what went.
+    // Every message sent is kept in the request log, so the person can read what went.
     static async Task Send(JsonObject message)
     {
         var ws = socket;
         if (ws?.State != WebSocketState.Open) return;
-        Privacy.Keep(message.ToJsonString());
+        Requests.Keep(message.ToJsonString());
         await sending.WaitAsync();
         try { await ws.SendAsync(Encoding.UTF8.GetBytes(message.ToJsonString()), WebSocketMessageType.Text, true, CancellationToken.None); }
         catch (Exception) { }
