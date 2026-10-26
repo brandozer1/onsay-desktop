@@ -30,11 +30,11 @@ and Copy under every reply for the whole of it. When a page says more than words
 rounded window of his own showing a page of HTML, with the `windows` lingo's `panel.show(html, title, width, height)`.
 
 The app is the friendly part: his character, the chat, signing in, and permissions. Each message you type goes to
-Onsay's server, which runs it as `lingo(words, {prompt: words, chat})` and sends the reply straight back. Nothing of the
+Onsay, which answers it and sends the reply straight back. Nothing of the
 chat is kept there: it lives only in the chat window, and the new chat button starts over. Each message goes with the
 chat before it, its newest 40 turns that come to at most 20,000 characters, oldest dropped first, and with what was
 around it: this computer's time, zone and language, and the app and window you were in. Both are kept nowhere but that
-message's 7 day trace (see `..\onsay\docs\lingo-function.md`, the context).
+message's 7 day trace.
 
 His hands are the core, which runs the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`, when Onsay
 relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships `windows` and `agent`, the AI agent (set

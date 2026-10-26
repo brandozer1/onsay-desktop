@@ -1,6 +1,6 @@
-// Link.cs - how this app reaches Onsay's server, where each message runs as lingo(words). See ../onsay/server/lib/live.js for every message.
+// Link.cs - how this app reaches Onsay, which answers each message.
 //
-// 1. Connect(s, onCode, stop)     signs this app in through the website, see ../onsay/server/routes/connect.js
+// 1. Connect(s, onCode, stop)     signs this app in through the website
 // 2. Start(s, heard)              opens the live connection and keeps it open
 //    Heartbeat(ws)                a ping every 20 seconds, and a connection silent for a minute dropped and made again
 //    Close()                      drops it, when the person signs out
@@ -110,8 +110,8 @@ static class Link
 
     ////////// 3-4. SAYING AND STOPPING //////////
 
-    /* 3. Nothing is kept on the server: the chat is only what the chat window shows, and it goes with each message, given
-          to the lingo function as chat (see ../onsay/server/search/search.js chat), beside what was around it (context there). */
+    /* 3. Nothing is kept by Onsay: the chat is only what the chat window shows, and it goes with each message, beside what
+          was around it. */
     public static async Task<bool> Say(string id, string text, JsonArray chat, JsonObject context)
     {
         if (!Connected) return false;
