@@ -121,7 +121,7 @@ static class Core
 
     // 6. Each .lingo file and each native lingo folder in the lingos folder is a route the core offers. computer is this
     //    computer's name on Onsay, like laptop.brandon, so the address reads the way a caller reaches it. Mine is a lingo
-    //    the person added themselves, not one the app ships (windows). The core is the one that decides what loads; this
+    //    the person added themselves, not one the app ships (windows, agent). The core is the one that decides what loads; this
     //    reads the folder, so a lingo it set aside still shows here.
     public static List<Route> Routes(string computer)
     {

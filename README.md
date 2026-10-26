@@ -37,7 +37,8 @@ around it: this computer's time, zone and language, and the app and window you w
 message's 7 day trace (see `..\onsay\docs\lingo-function.md`, the context).
 
 His hands are the core, which runs the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`, when Onsay
-relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships only `windows`, and puts it in that
+relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships `windows` and `agent`, the AI agent (set
+your Claude, ChatGPT or OpenRouter key for `agent` on the dashboard), and puts them in that
 folder each time it starts the core. Right click him and choose Open lingos folder to add your own, like the `.lingo` files in
 the lingo client's `lingo-library`, each one file: every lingo there runs on this computer, and the core tells Onsay what each one does, never
 its code. What lingos remember is kept here, in the core's store. Their settings, like keys, are on your account
