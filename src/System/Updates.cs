@@ -14,16 +14,17 @@
 using System.Diagnostics;
 using Microsoft.Win32;
 using Velopack;
+using Velopack.Sources;
 
 namespace Onsay.Desktop;
 
 static class Updates
 {
-    /* Where the releases live, the folder release.ps1 uploads Releases\ to. One URL, set here and in release.ps1
-       together. A public releases-only repo (Velopack reads GitHub natively) or a static site on Coolify both work. */
-    public const string Feed = "https://onsay.dev/download/windows";
+    /* Where the releases live: this repo's GitHub releases, which .github/workflows/release.yml makes. Velopack reads
+       them natively, so the repo must be public. */
+    public const string Feed = "https://github.com/brandozer1/onsay-desktop";
 
-    static UpdateManager Manager => new(Feed);
+    static UpdateManager Manager => new(new GithubSource(Feed, null, false));
 
     ////////// 1. IN THE BACKGROUND //////////
 

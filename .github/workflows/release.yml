@@ -1,16 +1,24 @@
-# release.yml - a release of Onsay for Windows, made on GitHub when a tag like v0.2.0 is pushed: release.ps1 run with
-# that version, its Releases\ folder kept as the run's download. The lingo client is built from its own public repo,
-# checked out beside this one. Publishing to the feed (src/System/Updates.cs) is the last step to add once where the
-# feed lives is decided.
+# release.yml - a release of Onsay for Windows, made on GitHub two ways: push a tag like v0.2.0, or open Actions, pick
+# "release", press "Run workflow" and type the version. release.ps1 runs with that version and everything in its
+# Releases\ folder goes on the release page: Onsay-win-Setup.exe, the portable zip, and the files installed copies
+# update themselves from (src/System/Updates.cs reads this repo's releases). The lingo client is built from its own
+# public repo, checked out beside this one.
 name: release
 
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, like 0.2.0'
+        required: true
 
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,9 +36,9 @@ jobs:
         with:
           version: 0.13.0
       - run: dotnet tool install -g vpk --version 1.2.158
-      - run: .\onsay-desktop\release.ps1 $env:GITHUB_REF_NAME.TrimStart('v')
+      - run: .\onsay-desktop\release.ps1 ("${{ inputs.version || github.ref_name }}".TrimStart('v'))
         shell: pwsh
-      - uses: actions/upload-artifact@v4
+      - uses: softprops/action-gh-release@v2
         with:
-          name: onsay-windows-${{ github.ref_name }}
-          path: onsay-desktop/Releases
+          tag_name: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+          files: onsay-desktop/Releases/*

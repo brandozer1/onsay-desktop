@@ -1,7 +1,7 @@
 # release.ps1 - makes a release of Onsay for Windows, in Releases\: Onsay-win-Setup.exe, the installer people download,
 # and the packages the installed app updates itself from (src/System/Updates.cs). Run it with: .\release.ps1 0.2.0
-# Then upload everything in Releases\ to the feed, Feed in src/System/Updates.cs, keeping what is there: the app finds
-# its updates by the releases files listed in it. .github/workflows/release.yml does the same on a tag like v0.2.0.
+# A release people get is made on GitHub by .github/workflows/release.yml, which runs this and puts Releases\ on the
+# release page: push a tag like v0.2.0, or run the action from the Actions tab. Installed copies update from there.
 #
 # Needs the .NET SDK, zig for the lingo client (see ..\lingo-client\core\build.ps1), and Velopack's vpk, which needs .NET 8 or newer:
 #   dotnet tool install -g vpk
@@ -23,4 +23,4 @@ if (Test-Path publish) { Remove-Item publish -Recurse -Force }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $vpk pack --runtime win-x64 --packId Onsay --packVersion $Version --packDir publish --mainExe Onsay.exe --packTitle Onsay --packAuthors Onsay --outputDir Releases
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "Made Onsay $Version in Releases\. Upload everything there to the feed."
+Write-Host "Made Onsay $Version in Releases\."
