@@ -55,6 +55,7 @@ sealed class BuddyWindow : Window
     public BuddyWindow()
     {
         Title = "Onsay";
+        OnsayView.Paint(settings.Look ?? new());
         Bare(this);
         ShowActivated = false;
         Width = Height = Box;
@@ -78,8 +79,9 @@ sealed class BuddyWindow : Window
             Every(TimeSpan.FromSeconds(1.5), () => StepAside(SomethingFullscreen()));
             him.React("greet");
             tray = new Tray(() => Toggle(!open));
-            // The first time, he opens the chat to introduce himself.
-            if (settings.Welcomed != true) Later(() => Toggle(true));
+            // The first time, he is set up, then opens the chat to introduce himself.
+            if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, () => { if (settings.Welcomed != true) Toggle(true); }));
+            else if (settings.Welcomed != true) Later(() => Toggle(true));
             Updates.Start();
         };
         DpiChanged += (_, _) => { if (!dragging) Later(() => Park(dropped: false)); };

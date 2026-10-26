@@ -3,6 +3,7 @@
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on page when one is named
 // 2. General                starting with Windows, the version, updates and removing Onsay
+//    Look                   his colour, face and surface, the same picker as setting him up
 // 3. Routes                 the lingos installed on this computer, each at its address under the handle
 // 4. Permissions            what his programs may do on this computer. A change restarts the core with the new list
 // 5. Account                who is signed in, and signing in or out
@@ -52,6 +53,7 @@ sealed class SettingsWindow : Window
         Background = Card;
 
         Add("General", General);
+        Add("Look", Look);
         Add("Routes", Routes);
         Add("Permissions", Permissions);
         Add("Account", Account);
@@ -90,6 +92,18 @@ sealed class SettingsWindow : Window
         }
         page.Content = pages[at].Build();
         page.ScrollToTop();
+    }
+
+    ////////// 2. LOOK //////////
+
+    // 2. The same picker as setting him up, with him beside it. He on the taskbar changes too.
+    UIElement Look()
+    {
+        var p = Page("Look");
+        var preview = new Character.OnsayView { Width = 96, Height = 96, Margin = new Thickness(0, 0, 28, 0), VerticalAlignment = VerticalAlignment.Top };
+        DockPanel.SetDock(preview, System.Windows.Controls.Dock.Left);
+        p.Children.Add(new DockPanel { Children = { preview, SetupWindow.LookPicker(settings, () => preview.React("yes")) } });
+        return p;
     }
 
     ////////// 2. GENERAL //////////

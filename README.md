@@ -75,13 +75,14 @@ starting it, like `$env:ONSAY_API = "http://localhost:3000"`.
 
 | File | Job |
 |------|-----|
-| `Onsay.csproj` | the build, with the core and its lingos copied in from `..\onsay\core\bin` |
+| `Onsay.csproj` | the build, with the lingo client and its lingos copied in from `..\lingo-client` |
 | `app.manifest` | tells Windows the app is per monitor DPI aware |
+| `onsay.ico`, `splash.png` | his face as the app and installer icon, and what the installer shows while it copies |
 | `start.ps1` | builds and starts the app, closing a running one first |
 | `release.ps1` | a release: the installer and update packages, in `Releases\` |
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and its walkthrough (`ChatWindow`), his replies drawn as Markdown (`Markdown`), settings (General, Routes, Permissions, Account, Requests), his pointer (`HandWindow`), the ring (`RingWindow`), his panel showing a page (`PanelWindow`), and the tray icon |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and its walkthrough (`ChatWindow`), his replies drawn as Markdown (`Markdown`), settings (General, Look, Routes, Permissions, Account, Requests), his pointer (`HandWindow`), the ring (`RingWindow`), his panel showing a page (`PanelWindow`), setting him up the first time he opens, his look included (`SetupWindow`), and the tray icon |
 | `src/System/` | Windows itself: Win32 calls, docking maths, the stop key, the core's overlay messages, the app's settings, updates (`Updates`), and the request log (`Requests`) |
 | `src/Core/` | `Core.cs` runs the core, `Link.cs` signs in through the website and holds the live connection to the server |
 | `src/Character/` | the character: his face as data, and the view that animates it |

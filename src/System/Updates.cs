@@ -8,13 +8,16 @@
 //
 // 1. Start()        the background checks, from startup
 // 2. CheckNow()     looks now, on request, and says what it found, in plain words
+//    Shortcut(where, on)  his desktop or Start menu shortcut: whether it is there, and making or removing it
 //    Installed      whether this copy was installed (so it updates and can be removed)
 //    Version        the version running
 // 3. Uninstall()    removes Onsay, its shortcuts and its startup, through the uninstaller Windows registered
 using System.Diagnostics;
 using Microsoft.Win32;
 using Velopack;
+using Velopack.Locators;
 using Velopack.Sources;
+using Velopack.Windows;
 
 namespace Onsay.Desktop;
 
@@ -53,6 +56,26 @@ static class Updates
     ////////// 2. ON REQUEST //////////
 
     public static bool Installed { get { try { return Manager.IsInstalled; } catch { return false; } } }
+
+    // 2. Velopack's own shortcuts, so they point at the copy that updates and go when he is uninstalled. Only for an
+    //    installed copy.
+    public static bool Shortcut(ShortcutLocation where)
+    {
+        try { return Installed && new Shortcuts(VelopackLocator.Current).FindShortcuts(VelopackLocator.Current.ThisExeRelativePath, where).Count > 0; }
+        catch { return false; }
+    }
+
+    public static void Shortcut(ShortcutLocation where, bool on)
+    {
+        if (!Installed) return;
+        try
+        {
+            var links = new Shortcuts(VelopackLocator.Current);
+            if (on) links.CreateShortcutForThisExe(where);
+            else links.RemoveShortcutForThisExe(where);
+        }
+        catch { }
+    }
     public static string Version { get { try { return Manager.CurrentVersion?.ToString() ?? ""; } catch { return ""; } } }
 
     // 2. Downloaded if there is one, to go in when he next quits. Never throws: the message says what happened.

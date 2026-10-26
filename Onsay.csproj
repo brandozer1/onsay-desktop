@@ -10,6 +10,8 @@
     <AssemblyName>Onsay</AssemblyName>
     <RootNamespace>Onsay</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- His face, the Onsay mark, on the app, its windows and its taskbar button. The installer uses it too (release.ps1). -->
+    <ApplicationIcon>onsay.ico</ApplicationIcon>
     <!-- The version the installer and updates go by, set by release.ps1 for each release. -->
     <Version>0.1.0</Version>
   </PropertyGroup>

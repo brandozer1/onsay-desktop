@@ -15,6 +15,7 @@
 // 12. Turn(away)                turns round so the X on his back faces you
 // 13. Speak(text, onText)       mouths text a character at a time, onText gets the text so far
 // 14. Hush()                    stops speaking and rests his mouth
+//     Paint(look)               how every one of him looks: colour, face and surface
 //     Project, SurfaceTransform, MouthArc, Smooth   the sphere and the mouth, see section 2
 using System.Diagnostics;
 using System.Windows;
@@ -28,19 +29,44 @@ public sealed class OnsayView : FrameworkElement
 {
     ////////// LOOK //////////
 
-    // His colours and the soft material. Each surface layer is a gradient whose strength is an opacity.
-    static readonly Brush BodyBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x58, 0x65, 0xF2)));
-    static readonly Brush FaceBrush = Frozen(new SolidColorBrush(Colors.White));
-    static readonly (Brush brush, double opacity)[] Surface =
+    /* How he looks, one look for every one of him on screen: his body colour, his face colour, and his surface, a name in
+       Materials. Paint(look) changes it, and every one of him repaints. The same names as the website's character. */
+    public sealed record Appearance(string Color = "#5865F2", string Face = "#FFFFFF", string Material = "soft");
+
+    // Each surface is how strong the depth toward his edge and the gloss on top are. The highlight follows the gloss.
+    public static readonly Dictionary<string, (double depth, double gloss)> Materials = new()
     {
-        (Radial(0.42, 0.36, 0.72, (0.34, Color.FromArgb(0, 0, 0, 0)), (1, Color.FromArgb(140, 0, 0, 0))), 0.4),               // depth
-        (Radial(0.32, 0.26, 0.5, (0, Color.FromArgb(140, 255, 255, 255)), (1, Color.FromArgb(0, 255, 255, 255))), 0.32),       // gloss
-        (Radial(0.3, 0.23, 0.17, (0, Color.FromArgb(242, 255, 255, 255)), (1, Color.FromArgb(0, 255, 255, 255))), Math.Pow(0.32, 2.2)), // spec
+        ["soft"] = (0.4, 0.32), ["flat"] = (0, 0), ["matte"] = (0.55, 0.12), ["glossy"] = (0.5, 0.7), ["liquid"] = (0.58, 1),
     };
-    static readonly Pen SlitPen = Stroke(Face.MouthT * 0.62, PenLineCap.Flat);
-    static readonly Pen ArcPen = Stroke(Face.MouthT * 0.8, PenLineCap.Flat);
-    static readonly Pen BackPen = Stroke(Face.MouthT * 0.9, PenLineCap.Round);
+
+    static readonly Brush[] Layers =
+    {
+        Radial(0.42, 0.36, 0.72, (0.34, Color.FromArgb(0, 0, 0, 0)), (1, Color.FromArgb(140, 0, 0, 0))),             // depth
+        Radial(0.32, 0.26, 0.5, (0, Color.FromArgb(140, 255, 255, 255)), (1, Color.FromArgb(0, 255, 255, 255))),     // gloss
+        Radial(0.3, 0.23, 0.17, (0, Color.FromArgb(242, 255, 255, 255)), (1, Color.FromArgb(0, 255, 255, 255))),     // highlight
+    };
     static readonly Geometry BallClip = Frozen(new EllipseGeometry(new Point(0, 0), Face.R, Face.R));
+    static Brush BodyBrush = null!, FaceBrush = null!;
+    static Pen SlitPen = null!, ArcPen = null!, BackPen = null!;
+    static double[] Strength = null!;
+    static event Action? Repaint;
+    public static Appearance Current { get; private set; } = new();
+    static OnsayView() => Paint(new Appearance());
+
+    // Every one of him takes the new look at once. A colour that doesn't read keeps the default.
+    public static void Paint(Appearance look)
+    {
+        static Color? Read(string hex) { try { return (Color)ColorConverter.ConvertFromString(hex); } catch { return null; } }
+        var (depth, gloss) = Materials.GetValueOrDefault(look.Material, Materials["soft"]);
+        BodyBrush = Frozen(new SolidColorBrush(Read(look.Color) ?? Color.FromRgb(0x58, 0x65, 0xF2)));
+        FaceBrush = Frozen(new SolidColorBrush(Read(look.Face) ?? Colors.White));
+        SlitPen = Stroke(Face.MouthT * 0.62, PenLineCap.Flat);
+        ArcPen = Stroke(Face.MouthT * 0.8, PenLineCap.Flat);
+        BackPen = Stroke(Face.MouthT * 0.9, PenLineCap.Round);
+        Strength = new[] { depth, gloss, Math.Pow(gloss, 2.2) };
+        Current = look;
+        Repaint?.Invoke();
+    }
 
     ////////// STATE //////////
 
@@ -70,8 +96,8 @@ public sealed class OnsayView : FrameworkElement
         foreach (var (k, v) in expressionTargets) ch[(int)k].Set(v);
         RenderTransform = new TransformGroup { Children = { breathScale, breathMove } };
         RenderTransformOrigin = new Point(0.5, 0.5);
-        Loaded += (_, _) => Mood(mood);
-        Unloaded += (_, _) => { Sleep(); era++; speech++; };
+        Loaded += (_, _) => { Repaint += InvalidateVisual; Mood(mood); };
+        Unloaded += (_, _) => { Repaint -= InvalidateVisual; Sleep(); era++; speech++; };
         SizeChanged += (_, _) => Breathe();
     }
 
@@ -181,10 +207,11 @@ public sealed class OnsayView : FrameworkElement
         dc.DrawEllipse(BodyBrush, null, default, Face.R, Face.R);
         // The light does not lean with him: the surface is turned back by what his body turned by.
         dc.PushTransform(new RotateTransform(-spun));
-        foreach (var (brush, opacity) in Surface)
+        for (int i = 0; i < Layers.Length; i++)
         {
-            dc.PushOpacity(opacity);
-            dc.DrawEllipse(brush, null, default, Face.R, Face.R);
+            if (Strength[i] <= 0) continue;
+            dc.PushOpacity(Strength[i]);
+            dc.DrawEllipse(Layers[i], null, default, Face.R, Face.R);
             dc.Pop();
         }
         dc.Pop();

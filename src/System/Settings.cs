@@ -38,6 +38,10 @@ sealed class Settings
     public bool? ShowSteps { get; set; }
     // This app's own id for itself, made the first time it signs in, so signing in again is the same instance on the server.
     public string? Install { get; set; }
+    // Whether setting him up, the window the first open shows (SetupWindow.cs), was finished or skipped. Null until then.
+    public bool? SetUp { get; set; }
+    // How he looks, picked in that window or Settings, Look. Null is the brand's own look.
+    public Onsay.Character.OnsayView.Appearance? Look { get; set; }
 
     // Onsay's server. Built in, never a setting. A debug build can point at another with ONSAY_API, for development.
 #if DEBUG
