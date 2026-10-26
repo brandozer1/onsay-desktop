@@ -38,11 +38,12 @@ message's 7 day trace.
 
 His hands are the core, which runs the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`, when Onsay
 relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships `windows` and `agent`, the AI agent (set
-your Claude, ChatGPT or OpenRouter key for `agent` on the dashboard), and puts them in that
-folder each time it starts the core. Right click him and choose Open lingos folder to add your own, like the `.lingo` files in
-the lingo client's `lingo-library`, each one file: every lingo there runs on this computer, and the core tells Onsay what each one does, never
-its code. What lingos remember is kept here, in the core's store. Their settings, like keys, are on your account
-instead, set on the dashboard.
+your Claude, ChatGPT or OpenRouter key in Settings, Routes, agent), and puts them in that folder each time it starts the
+core. Right click him and choose Open lingos folder to add your own, like the lingos in the lingo client's
+`lingo-library`: a folder with its `lingo.json` and its program, or one `.lingo` file. Every lingo there runs on this
+computer, and the core tells Onsay what each one does, never its code. What lingos remember is kept here, in the core's
+store, and so are their settings: never on Onsay's servers. Settings, Routes shows each lingo's settings as its
+`lingo.json` declares them, and saves them through the core, wherever the lingo keeps them.
 
 ## Building
 
@@ -94,9 +95,9 @@ suggested, and approve, and the app gets its own token. The home screen shows th
 laptop.brandon". The core signs in with the same token. Permissions under the chat say what his programs may do on this
 computer, and the core refuses anything that needs one not ticked.
 
-Settings, in his right click menu and the chat's menu, has it all on pages: starting with Windows, permissions and your
-account. What a lingo asks for, like a key, is set on the dashboard and kept with your account (see
-`..\onsay\core\README.md`).
+Settings, in his right click menu and the chat's menu, has it all on pages: starting with Windows, his look, each
+lingo's settings under Routes, permissions and your account. What a lingo asks for, like a key, is kept on this
+computer (see the lingo client's `core/README.md`, Lingo settings).
 
 Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` and `core.log` for the core, and
 `core\` for the core's own storage, `panel\` for his panel's browser storage, and `requests.log`, every request between

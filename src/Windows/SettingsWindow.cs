@@ -4,7 +4,8 @@
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on page when one is named
 // 2. General                starting with Windows, the version, updates and removing Onsay
 //    Look                   his colour, face and surface, the same picker as setting him up
-// 3. Routes                 the lingos installed on this computer, each at its address under the handle
+// 3. Routes                 the lingos installed on this computer, each at its address under the handle, with its
+//                           settings, as its manifest declares them (Fields)
 // 4. Permissions            what his programs may do on this computer. A change restarts the core with the new list
 // 5. Account                who is signed in, and signing in or out
 // 6. Requests               every request between this computer and Onsay, newest first, each opening to the message itself
@@ -157,10 +158,47 @@ sealed class SettingsWindow : Window
             card.Children.Add(head);
             card.Children.Add(new TextBlock { Text = r.Address, FontFamily = new FontFamily("Consolas"), FontSize = 11.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) });
             if (r.About.Length > 0) card.Children.Add(new TextBlock { Text = r.About, FontSize = 12, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
+            var form = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 8, 0, 0) };
+            var open = Button("Settings", () =>
+            {
+                if (form.Children.Count == 0) Fields(form, r.Name);
+                form.Visibility = form.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+            });
+            open.Margin = new Thickness(0, 6, 0, 0);
+            card.Children.Add(open);
+            card.Children.Add(form);
             p.Children.Add(card);
         }
         p.Children.Add(Button("Open the lingos folder", () => { System.IO.Directory.CreateDirectory(Core.Lingos); Native.Open(Core.Lingos); }));
         return p;
+    }
+
+    /* 3. A lingo's settings as its manifest declares them, kept on this computer wherever the lingo keeps them. A secret
+          is never shown, only whether it is set, and left empty it stays as it is. Saving writes only what changed. */
+    static void Fields(StackPanel form, string lingo)
+    {
+        var (fields, why) = Core.SettingsOf(lingo);
+        if (fields is null) { form.Children.Add(Paragraph(why ?? "")); return; }
+        if (fields.Count == 0) { form.Children.Add(Paragraph("This lingo has no settings.")); return; }
+        var read = new List<(Core.Field field, Func<string> now)>();
+        foreach (var f in fields)
+        {
+            form.Children.Add(new TextBlock { Text = f.Required ? $"{f.Title} (needed)" : f.Title, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(0, 6, 0, 2) });
+            var under = f.About + (f.Default is { } d ? $" Left empty, it is {d}." : "") + (f.Secret && f.Value is not null ? " One is set: type a new one to replace it." : "");
+            if (under.Trim().Length > 0) form.Children.Add(new TextBlock { Text = under.Trim(), FontSize = 11.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+            var box = new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card };
+            if (f.Secret) { var pw = new PasswordBox { BorderThickness = new Thickness(0), FontSize = 13 }; box.Child = pw; read.Add((f, () => pw.Password)); }
+            else { var tb = new TextBox { Text = f.Value ?? "", BorderThickness = new Thickness(0), FontSize = 13 }; box.Child = tb; read.Add((f, () => tb.Text)); }
+            form.Children.Add(box);
+        }
+        var status = new TextBlock { FontSize = 12, Foreground = Ink3, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        var save = Button("Save", () =>
+        {
+            var changed = read.Where(x => x.field.Secret ? x.now().Length > 0 : x.now() != (x.field.Value ?? "")).ToList();
+            var problem = changed.Select(x => Core.Set(lingo, x.field.Name, x.now())).FirstOrDefault(e => e is not null);
+            status.Text = problem ?? (changed.Count == 0 ? "Nothing changed." : "Saved. The lingo reads them the next time it runs.");
+        });
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), Children = { save, status } });
     }
 
     ////////// 4. PERMISSIONS //////////

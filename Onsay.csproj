@@ -29,7 +29,7 @@
   <ItemGroup>
     <None Include="..\lingo-client\core\bin\onsay-core.exe" Link="onsay-core.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')" />
     <None Include="..\lingo-client\core\bin\lingos\**\*" Link="lingos\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\lingo-client\lingo-library\agent.lingo" Link="lingos\agent.lingo" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\lingo-client\lingo-library\agent\**\*" Link="lingos\agent\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

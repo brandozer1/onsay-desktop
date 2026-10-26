@@ -6,7 +6,9 @@
 // 2. Stop()             ends it, and keeps it ended
 // 3. Restart()          ends whatever it is running at once, then starts it again: the stop key's guarantee
 // 4. Permissions        every Lingo permission, in words, and Allowed(settings), the ones ticked
-// 5. Provide()          the lingos this app ships, like windows, put in the lingos folder
+// 5. Provide()          the lingos this app ships, like windows and agent, put in the lingos folder
+// 7. SettingsOf(lingo), Set(lingo, key, text)   a lingo's settings as its manifest declares them, read and changed
+//                       through the core, wherever the lingo keeps them
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -113,6 +115,54 @@ static class Core
             }
             catch (IOException) { }   // still open somewhere: the one there stays until next time
         }
+        // A lingo this app now ships as a folder replaces the one file of it an older version put there, like agent.lingo.
+        foreach (var dir in Directory.EnumerateDirectories(shipped))
+            try { File.Delete(Path.Combine(Lingos, Path.GetFileName(dir) + ".lingo")); } catch (IOException) { }
+    }
+
+    ////////// 7. A LINGO'S SETTINGS //////////
+
+    /* One setting of a lingo, as its manifest declares it, with its value now: Value and Default are JSON, or null when
+       there is none. Kept wherever the lingo keeps them, on this computer, never on Onsay's servers. */
+    public sealed record Field(string Name, string Title, string About, string? Default, bool Required, bool Secret, string? Value);
+
+    // 7. Through the core, so the values are read and written wherever the lingo keeps them. Null with why, in words, when
+    //    the core can't say: it needs this computer to be signed in.
+    public static (List<Field>? fields, string? why) SettingsOf(string lingo)
+    {
+        var (ok, said) = Ask("--settings", lingo);
+        if (!ok) return (null, said);
+        try
+        {
+            using var doc = JsonDocument.Parse(said);
+            static string? Json(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind != JsonValueKind.Null ? v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText() : null;
+            return (doc.RootElement.EnumerateArray().Select(e => new Field(Json(e, "name") ?? "", Json(e, "title") ?? Json(e, "name") ?? "", Json(e, "about") ?? "",
+                Json(e, "default"), e.TryGetProperty("required", out var r) && r.ValueKind == JsonValueKind.True, e.TryGetProperty("secret", out var s) && s.ValueKind == JsonValueKind.True, Json(e, "value"))).ToList(), null);
+        }
+        catch { return (null, "The core's answer couldn't be read"); }
+    }
+
+    // 7. Empty clears it, so its default applies again. Gives why it failed, in words, or null.
+    public static string? Set(string lingo, string key, string text) =>
+        Ask("--set", lingo, key, text.Length == 0 ? "null" : JsonSerializer.Serialize(text)) is (false, var why) ? why : null;
+
+    // The core run once with its settings file and these, its output or its error.
+    static (bool ok, string said) Ask(params string[] args)
+    {
+        if (!File.Exists(Exe) || !File.Exists(Config)) return (false, "Sign in to Onsay first, from his right click menu, to change a lingo's settings.");
+        var info = new ProcessStartInfo(Exe) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = System.Text.Encoding.UTF8 };
+        info.ArgumentList.Add(Config);
+        foreach (var a in args) info.ArgumentList.Add(a);
+        try
+        {
+            using var p = Process.Start(info)!;
+            var output = p.StandardOutput.ReadToEndAsync();
+            var error = p.StandardError.ReadToEnd();
+            if (!p.WaitForExit(20_000)) { p.Kill(); return (false, "The core took too long to answer"); }
+            // What it said last is why: the lines before it are the lingos it loaded.
+            return p.ExitCode == 0 ? (true, output.Result) : (false, error.Trim().Split('\n').Last().Trim() is { Length: > 0 } last ? last : "The core couldn't do that");
+        }
+        catch (Exception e) { return (false, e.Message); }
     }
 
     ////////// 6. ROUTES //////////
