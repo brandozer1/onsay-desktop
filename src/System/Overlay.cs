@@ -1,5 +1,5 @@
 // Overlay.cs - what the core asks to be drawn while Onsay acts, read from its output a line of JSON at a time (Core.cs).
-// The windows lingo writes them, see ../onsay/lingos/windows/windows.c, the hand:
+// The windows lingo writes them, see ../lingo-client/lingos/windows/windows.c, the hand:
 //   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r}   his pointer glides there along that curve,
 //                                                               the real mouse with it when r
 //   {"show":"press","button":"left","times":1}                  it clicks

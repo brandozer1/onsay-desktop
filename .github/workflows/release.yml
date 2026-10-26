@@ -1,7 +1,7 @@
 # release.yml - a release of Onsay for Windows, made on GitHub when a tag like v0.2.0 is pushed: release.ps1 run with
-# that version, its Releases\ folder kept as the run's download. Needs the secret ONSAY_REPO_TOKEN, a token that can
-# read the onsay repo, since the core is built from it. Publishing to the feed (src/System/Updates.cs) is the last
-# step to add once where the feed lives is decided.
+# that version, its Releases\ folder kept as the run's download. The lingo client is built from its own public repo,
+# checked out beside this one. Publishing to the feed (src/System/Updates.cs) is the last step to add once where the
+# feed lives is decided.
 name: release
 
 on:
@@ -17,9 +17,8 @@ jobs:
           path: onsay-desktop
       - uses: actions/checkout@v4
         with:
-          repository: brandozer1/onsay
-          token: ${{ secrets.ONSAY_REPO_TOKEN }}
-          path: onsay
+          repository: brandozer1/lingo-client
+          path: lingo-client
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |

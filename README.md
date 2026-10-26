@@ -39,14 +39,14 @@ message's 7 day trace (see `..\onsay\docs\lingo-function.md`, the context).
 His hands are the core, which runs the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`, when Onsay
 relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships only `windows`, and puts it in that
 folder each time it starts the core. Right click him and choose Open lingos folder to add your own, like the `.lingo` files in
-`..\onsay\lingo-library`, each one file: every lingo there runs on this computer, and the core tells Onsay what each one does, never
+the lingo client's `lingo-library`, each one file: every lingo there runs on this computer, and the core tells Onsay what each one does, never
 its code. What lingos remember is kept here, in the core's store. Their settings, like keys, are on your account
 instead, set on the dashboard.
 
 ## Building
 
 ```
-..\onsay\core\build.ps1     builds the core and its lingos first, in the onsay project beside this one
+..\lingo-client\core\build.ps1   builds the core and its lingos first, in the lingo-client project beside this one
 .\start.ps1                 builds and starts the app. Needs the .NET 7 SDK
 .\release.ps1 0.2.0         a release: the installer and its updates, in Releases\. Needs vpk, see Releasing
 ```

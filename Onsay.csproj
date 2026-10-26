@@ -1,4 +1,4 @@
-<!-- Onsay.csproj - the Windows app's build: a WPF program, with the core and its lingos from ..\onsay\core\bin beside it. -->
+<!-- Onsay.csproj - the Windows app's build: a WPF program, with the lingo client and its lingos from ..\lingo-client\core\bin beside it. -->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -21,12 +21,12 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
-  <!-- The core, his hands on this computer, ships beside the app, and so do the lingos the app provides, like windows,
-       which it puts in the core's lingos folder. Both come from the onsay project beside this one: build them first with
-       ..\onsay\core\build.ps1. -->
+  <!-- The lingo client, his hands on this computer, ships beside the app, and so do the lingos it provides, like windows,
+       which go in its lingos folder. Both come from the lingo-client project beside this one: build them first with
+       ..\lingo-client\core\build.ps1. -->
   <ItemGroup>
-    <None Include="..\onsay\core\bin\onsay-core.exe" Link="onsay-core.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\onsay\core\bin\onsay-core.exe')" />
-    <None Include="..\onsay\core\bin\lingos\**\*" Link="lingos\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\lingo-client\core\bin\onsay-core.exe" Link="onsay-core.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')" />
+    <None Include="..\lingo-client\core\bin\lingos\**\*" Link="lingos\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
