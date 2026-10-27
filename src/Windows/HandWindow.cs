@@ -13,6 +13,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using static Onsay.Desktop.ChatWindow;
 using static Onsay.Desktop.Native;
 
 namespace Onsay.Desktop;
@@ -21,10 +22,9 @@ sealed class HandWindow : Window
 {
     const double SpotX = 20, SpotY = 40;                       // where the arrow's tip sits inside the window, in DIPs
     static readonly TimeSpan Idle = TimeSpan.FromSeconds(4);   // still this long, it fades out where it is
-    static readonly Brush Outline = new SolidColorBrush(Color.FromRgb(0x58, 0x65, 0xF2));
 
     readonly ScaleTransform pulse = new();
-    readonly Ellipse ripple = new() { Width = 28, Height = 28, StrokeThickness = 2.5, Stroke = Outline, Opacity = 0 };
+    readonly Ellipse ripple = new() { Width = 28, Height = 28, StrokeThickness = 2.5, Stroke = Accent, Opacity = 0 };
     readonly DispatcherTimer idle;
     readonly IntPtr hwnd;
     readonly Stopwatch clock = new();
@@ -42,7 +42,7 @@ sealed class HandWindow : Window
         // Drawn around the tip at 0,0. Round joins on a thick stroke are what make it soft and cartoonish.
         var arrow = new Path
         {
-            Data = Geometry.Parse("M0,0 L0,21 L6,16 L15.5,15.5 Z"), Fill = Brushes.White, Stroke = Outline,
+            Data = Geometry.Parse("M0,0 L0,21 L6,16 L15.5,15.5 Z"), Fill = Card, Stroke = Accent,
             StrokeThickness = 3, StrokeLineJoin = PenLineJoin.Round,
         };
         var hand = new Canvas { Children = { arrow }, RenderTransform = pulse, Effect = new DropShadowEffect { BlurRadius = 6, ShadowDepth = 1.5, Opacity = 0.3 } };
@@ -53,9 +53,9 @@ sealed class HandWindow : Window
         // Above and right of the tip, out of his way below it.
         var hint = new Border
         {
-            Background = Brushes.White, CornerRadius = new CornerRadius(10), Padding = new Thickness(7, 2, 7, 3),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xD9, 0xE5)), BorderThickness = new Thickness(1),
-            Child = new TextBlock { Text = "Alt+Shift+O to stop", FontSize = 11, FontFamily = new FontFamily("Segoe UI"), Foreground = new SolidColorBrush(Color.FromRgb(0x7B, 0x7F, 0x92)) },
+            Background = Card, CornerRadius = new CornerRadius(10), Padding = new Thickness(7, 2, 7, 3),
+            BorderBrush = Edge_, BorderThickness = new Thickness(1),
+            Child = new TextBlock { Text = "Alt+Shift+O to stop", FontSize = 11, FontFamily = new FontFamily("Segoe UI"), Foreground = Ink3 },
         };
         Canvas.SetLeft(hint, SpotX + 14);
         Canvas.SetTop(hint, SpotY - 32);

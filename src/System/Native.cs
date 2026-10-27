@@ -3,14 +3,13 @@
 // 1. MonitorAt(p, fallback)     the monitor under a point, with its work area
 // 2. SomethingFullscreen()      a game, film or presentation has the whole screen
 // 3. Place(hwnd, p, size)       moves a window, and sizes it when size is given, without activating it
-// 4. Hook(type, proc)           a low level hook, for the stop key
-// 5. Raise(hwnd)                above every other always on top window, without taking focus
-// 6. PlaceTogether(moves)       several windows moved in one go, so they never draw apart
-// 7. Hide/ShowSystemCursor()    Windows' own cursor hidden while his rides on the real mouse, and given back
-// 8. Bare(window)               borderless, transparent, always on top, off screen and out of the taskbar
-// 9. ClickThrough(window)       never clicked or activated, for a window that is only a picture. Returns its handle
-// 10. Open(target)              a file, folder or link in its default app
-// 11. InFront()                 the app and title of the window in front that isn't one of his, like ("chrome", "Inbox")
+// 4. Raise(hwnd)                above every other always on top window, without taking focus
+// 5. PlaceTogether(moves)       several windows moved in one go, so they never draw apart
+// 6. Hide/ShowSystemCursor()    Windows' own cursor hidden while his rides on the real mouse, and given back
+// 7. Bare(window)               borderless, transparent, always on top, off screen and out of the taskbar
+// 8. ClickThrough(window)       never clicked or activated, for a window that is only a picture. Returns its handle
+// 9. Open(target)               a file, folder or link in its default app
+// 10. InFront()               the app and title of the window in front that isn't one of his, like ("chrome", "Inbox")
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -60,7 +59,7 @@ static class Native
     static readonly IntPtr HWND_TOPMOST = new(-1);
     public const uint MONITOR_DEFAULTTOPRIMARY = 1, MONITOR_DEFAULTTONEAREST = 2;
     public const int WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3, WM_SETTINGCHANGE = 0x1A, SPI_SETWORKAREA = 0x2F, WM_DISPLAYCHANGE = 0x7E, WM_HOTKEY = 0x312;
-    public const uint MOD_ALT = 0x1, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000, WM_LBUTTONUP = 0x202;
+    public const uint MOD_ALT = 0x1, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000;
 
     ////////// IMPORTS //////////
 
@@ -73,11 +72,10 @@ static class Native
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
     [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr hwnd, int id, uint mods, uint vk);
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
-    [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
-    [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr module, uint thread);
+    [DllImport("user32.dll")] public static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr module, uint thread);
     [DllImport("user32.dll")] public static extern bool UnhookWindowsHookEx(IntPtr hook);
     [DllImport("user32.dll")] public static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr w, IntPtr l);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string? name);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandle(string? name);
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern IntPtr BeginDeferWindowPos(int count);
     [DllImport("user32.dll")] static extern IntPtr DeferWindowPos(IntPtr batch, IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
@@ -109,13 +107,10 @@ static class Native
     public static void Place(IntPtr hwnd, POINT p, (int w, int h)? size = null) =>
         SetWindowPos(hwnd, IntPtr.Zero, p.X, p.Y, size?.w ?? 0, size?.h ?? 0, (size is null ? SWP_NOSIZE : 0) | SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // 4. The thread that sets it must pump messages, and proc must be kept alive.
-    public static IntPtr Hook(int type, HookProc proc) => SetWindowsHookEx(type, proc, GetModuleHandle(null), 0);
-
-    // 5.
+    // 4.
     public static void Raise(IntPtr hwnd) => SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
-    // 6.
+    // 5.
     public static void PlaceTogether(params (IntPtr hwnd, POINT p)[] moves)
     {
         var batch = BeginDeferWindowPos(moves.Length);
@@ -123,7 +118,7 @@ static class Native
         if (batch != IntPtr.Zero) EndDeferWindowPos(batch);
     }
 
-    // 7. Every shape of Windows' cursor swapped for an empty one, and back to the user's own scheme.
+    // 6. Every shape of Windows' cursor swapped for an empty one, and back to the user's own scheme.
     static readonly uint[] Cursors = { 32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651 };
     public static void HideSystemCursor()
     {
@@ -132,7 +127,7 @@ static class Native
     }
     public static void ShowSystemCursor() => SystemParametersInfo(0x57, 0, IntPtr.Zero, 0);   // SPI_SETCURSORS
 
-    // 8.
+    // 7.
     public static void Bare(Window w)
     {
         w.WindowStyle = WindowStyle.None;
@@ -145,7 +140,7 @@ static class Native
         w.Left = w.Top = -10000;
     }
 
-    // 9.
+    // 8.
     public static IntPtr ClickThrough(Window w)
     {
         w.ShowActivated = false;
@@ -155,10 +150,10 @@ static class Native
         return hwnd;
     }
 
-    // 10.
+    // 9.
     public static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
 
-    /* 11. Down the windows from the one in front, past his own, like the chat, to the first shown with a title: the one the
+    /* 10. Down the windows from the one in front, past his own, like the chat, to the first shown with a title: the one the
            person was in. Its app is its program's name, as the core's window.list gives it. */
     public static (string app, string title) InFront()
     {

@@ -23,9 +23,10 @@ sealed class PanelWindow : Window
 {
     const double Head = 36;   // the title bar's height, in DIPs
     // A page given without its own document gets the chat's look, so a plain table or list reads well as it is.
-    const string Look = "<meta charset=\"utf-8\"><style>html{background:#fff;color-scheme:light}body{font:14px/1.5 'Segoe UI',sans-serif;color:#12131C;margin:14px 16px}" +
-        "table{border-collapse:collapse}th,td{border:1px solid #E8E8F0;padding:4px 8px;text-align:left}th{background:#F7F7FA}" +
-        "code,pre{font-family:Consolas,monospace;background:#F7F7FA;border-radius:6px}pre{padding:8px 10px;white-space:pre-wrap}img{max-width:100%}</style>";
+    static string Css(SolidColorBrush b) => $"#{b.Color.R:X2}{b.Color.G:X2}{b.Color.B:X2}";
+    static readonly string Look = $"<meta charset=\"utf-8\"><style>html{{background:{Css(Card)};color-scheme:light}}body{{font:14px/1.5 'Segoe UI',sans-serif;color:{Css(Ink)};margin:14px 16px}}" +
+        $"table{{border-collapse:collapse}}th,td{{border:1px solid {Css(Rule)};padding:4px 8px;text-align:left}}th{{background:{Css(Page_)}}}" +
+        $"code,pre{{font-family:Consolas,monospace;background:{Css(Page_)};border-radius:6px}}pre{{padding:8px 10px;white-space:pre-wrap}}img{{max-width:100%}}</style>";
 
     readonly TextBlock title = new() { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly WebView2 web = new() { DefaultBackgroundColor = System.Drawing.Color.White };
@@ -48,14 +49,7 @@ sealed class PanelWindow : Window
         // No frame, but its edges still resize it. A layered, see-through window can't hold a WebView2, so this one is whole.
         WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 0, ResizeBorderThickness = new Thickness(6), GlassFrameThickness = new Thickness(0), UseAeroCaptionButtons = false });
 
-        var close = new Border
-        {
-            Width = 28, Height = 28, CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = "Close",
-            Child = new TextBlock { Text = "", FontFamily = Icons, FontSize = 11, Foreground = Ink2, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
-        };
-        close.MouseEnter += (_, _) => close.Background = Rule;
-        close.MouseLeave += (_, _) => close.Background = Brushes.Transparent;
-        close.MouseLeftButtonUp += (_, e) => { e.Handled = true; Hide(); };
+        var close = Button("\uE711", Kind.Icon, Hide, "Close");
         var head = new DockPanel { Height = Head, Margin = new Thickness(14, 0, 6, 0), Background = Brushes.Transparent, Children = { close, title } };
         DockPanel.SetDock(close, System.Windows.Controls.Dock.Right);
         head.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
@@ -74,7 +68,7 @@ sealed class PanelWindow : Window
         {
             // Rounded corners and a border in the card's colour, where Windows draws them (Windows 11). Square before that.
             var hwnd = new WindowInteropHelper(this).Handle;
-            int round = 2, edge = 0x00E5D9D8;   // DWMWCP_ROUND; #D8D9E5 as 0x00BBGGRR
+            int round = 2, edge = Edge_.Color.B << 16 | Edge_.Color.G << 8 | Edge_.Color.R;   // DWMWCP_ROUND; the colour as 0x00BBGGRR
             DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));
             DwmSetWindowAttribute(hwnd, 34, ref edge, sizeof(int));
         };

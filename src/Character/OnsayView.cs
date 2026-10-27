@@ -31,7 +31,7 @@ public sealed class OnsayView : FrameworkElement
 
     /* How he looks, one look for every one of him on screen: his body colour, his face colour, and his surface, a name in
        Materials. Paint(look) changes it, and every one of him repaints. The same names as the website's character. */
-    public sealed record Appearance(string Color = "#5865F2", string Face = "#FFFFFF", string Material = "soft");
+    public sealed record Appearance(string Color = Desktop.ChatWindow.Brand, string Face = "#FFFFFF", string Material = "soft");
 
     // Each surface is how strong the depth toward his edge and the gloss on top are. The highlight follows the gloss.
     public static readonly Dictionary<string, (double depth, double gloss)> Materials = new()
@@ -58,7 +58,7 @@ public sealed class OnsayView : FrameworkElement
     {
         static Color? Read(string hex) { try { return (Color)ColorConverter.ConvertFromString(hex); } catch { return null; } }
         var (depth, gloss) = Materials.GetValueOrDefault(look.Material, Materials["soft"]);
-        BodyBrush = Frozen(new SolidColorBrush(Read(look.Color) ?? Color.FromRgb(0x58, 0x65, 0xF2)));
+        BodyBrush = Frozen(new SolidColorBrush(Read(look.Color) ?? Desktop.ChatWindow.Accent.Color));
         FaceBrush = Frozen(new SolidColorBrush(Read(look.Face) ?? Colors.White));
         SlitPen = Stroke(Face.MouthT * 0.62, PenLineCap.Flat);
         ArcPen = Stroke(Face.MouthT * 0.8, PenLineCap.Flat);
@@ -221,15 +221,9 @@ public sealed class OnsayView : FrameworkElement
         double pitch = -V(Ch.LookY) * (1 - about) * Face.LookPitch;
 
         dc.PushClip(BallClip);
-        double hasFace = Unit(V(Ch.FaceShow));
-        if (hasFace >= 0.01)
-        {
-            dc.PushOpacity(hasFace);
-            DrawEye(dc, -Face.EyeX, Ch.EyeArcL, Ch.EyeScaleL, Ch.LidL, Ch.LowerL, yaw, pitch);
-            DrawEye(dc, Face.EyeX, Ch.EyeArcR, Ch.EyeScaleR, Ch.LidR, Ch.LowerR, yaw, pitch);
-            DrawMouth(dc, yaw, pitch);
-            dc.Pop();
-        }
+        DrawEye(dc, -Face.EyeX, Ch.EyeArcL, Ch.EyeScaleL, Ch.LidL, Ch.LowerL, yaw, pitch);
+        DrawEye(dc, Face.EyeX, Ch.EyeArcR, Ch.EyeScaleR, Ch.LidR, Ch.LowerR, yaw, pitch);
+        DrawMouth(dc, yaw, pitch);
         // The X sits on the far side of the ball, drawn with the same projection half a turn further round.
         double behind = yaw + Math.PI;
         if (about > 0.02 && Project(0, 0, behind, pitch).z > 0.05)
@@ -397,14 +391,8 @@ public sealed class OnsayView : FrameworkElement
         int mine = ++era;
         if (Reduced) return;
         var m = Moods.All[mood];
-        if (m.Blink is { } b) Every(b, mine, () =>
-        {
-            if (ch[(int)Ch.LidL].Target < 0.95 && ch[(int)Ch.LidR].Target < 0.95) Blink();   // not mid wink
-        }, t => blinkTimer = t);
-        if (m.Wander is { } w && m.WanderWith.Length > 0) Every(w, mine, () =>
-        {
-            if (gestures.Count == 0) Play(m.WanderWith[rng.Next(m.WanderWith.Length)]);
-        }, t => wanderTimer = t);
+        Every(m.Blink, mine, Blink, t => blinkTimer = t);
+        Every(m.Wander, mine, () => { if (gestures.Count == 0) Play(m.WanderWith[rng.Next(m.WanderWith.Length)]); }, t => wanderTimer = t);
     }
 
     // 4.
@@ -437,10 +425,10 @@ public sealed class OnsayView : FrameworkElement
         Wake();
     }
 
-    ////////// 6-14. API //////////
+    ////////// 6-14. WHAT HE DOES //////////
 
     // 6. Measures what each eye has left to close, so a squint blinks shut rather than past it.
-    public void Blink()
+    void Blink()
     {
         if (gestures.Any(g => g.Def == Gestures.All["blink"])) return;
         Play("blink", null, g =>

@@ -1,5 +1,5 @@
 // Requests.cs - the log of every request between this computer and Onsay, kept here so anyone can read it: the app's own
-// messages (Link.cs) and the core's (Core.cs runs it with --sent, and it prints each as it goes). Written as it happens
+// messages (Link.cs) and the core's (Core.cs runs the lingo client with --sent, and it prints each as it goes). Written as it happens
 // to %AppData%\Onsay\requests.log, one JSON line each, oldest first, the sign in token the one thing masked. Pings are
 // not kept. The file is cut to its newest half when it passes Limit, so it never grows without end. Shown under
 // Settings, Requests (SettingsWindow.cs).
@@ -24,13 +24,12 @@ static class Requests
     // 3.
     public static readonly Dictionary<string, string> Kinds = new()
     {
-        ["hello"] = "This computer connected: its name and what its lingos can do, never their code",
-        ["say"] = "A prompt you sent, with the chat before it and what was on screen around it",
-        ["stop"] = "Stop",
-        ["halt"] = "The stop key",
-        ["catalog"] = "Its lingos changed: the routes it offers now",
-        ["lingo"] = "A lingo asked for something while it ran: lingo(...), use(...) or a setting it needs",
-        ["result"] = "A lingo's answer, sent back through Onsay to whoever asked",
+        ["hello"] = "This computer connected to Onsay",
+        ["say"] = "A prompt you sent, with the chat before it and the app and window you were in",
+        ["stop"] = "You pressed Stop",
+        ["catalog"] = "The lingos on this computer changed",
+        ["lingo"] = "A lingo asked Onsay for something while it ran: lingo(...) or use(...)",
+        ["response"] = "A lingo's answer to a request that came through Onsay: from Onsay itself, or from the web through your proxy",
     };
 
     // 1.

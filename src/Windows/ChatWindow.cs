@@ -1,27 +1,27 @@
-// ChatWindow.cs - the card that opens beside him: the sign in page, home, or the chat. The chat lives only here, in this
-// window: each message is run on the server as lingo(words), the chat before it given with it, and nothing of it is kept
-// there.
+// ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. The
+// chat lives only here, in this window: each message is run on the server as lingo(words), the chat before it given with
+// it, and nothing of it is kept there.
 // He is its close button (his back has an X while it is open), and Esc closes it too.
 //
 // 1.  Open(body, monitor, scale, focus)   opens, or follows him, next to his body rect in pixels, growing out of him
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
-// 3.  Stop()                              Stop, or Alt+Shift+O from any thread: stops his turn and the core at once
-// 4.  SignIn(), SignOut()                 through the browser, from the sign in page or his menu
-// 5.  Page()                              shows the page that fits: the walkthrough, sign in, home or chat
-//     Welcome()                           the walkthrough the first time: who he is, what he is for, how to stop him,
-//                                         what is sent to Onsay, agreed with one press, and signing in
+// 3.  Stop()                              Stop, or Alt+Shift+O from any thread: stops his turn and the lingo client at once
+// 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
+//                                         Settings, Account, and signing out from there
+// 5.  Page()                              shows the page that fits: sign in, home or chat
 // 6.  Send()                              your message goes to the server with an id, and its reply comes back with it
 //     Heard(m), Replied(...)              what the server says, drawn here as it happens, and his reply
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
 // 8.  Tell(text, bad)                     a line across the top, for what happens outside the chat
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
 //                                         of the conversation
-// 10. Button(text, kind, click)           every button in the card, one shape
-// 11. Steps(), AddStep(list, done)        a message's steps on other computers, folded under his reply, each opening to
+// 10. Steps(), AddStep(list, done)        a message's steps on other computers, folded under his reply, each opening to
 //                                         its IN and OUT
-// 12. Clear()                             a new chat: the conversation here forgotten, and home again
-// 13. Menu(), Permissions()               the menus
-using System.Text;
+// 11. Clear()                             a new chat: the conversation here forgotten, and home again
+// 12. Menu()                              the header's menu: Copy chat and Settings
+// 13. CountPermissions()                  the words on the footer's button, which opens Settings, Permissions
+// 14. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
+//                                         Note, Switch, Selectable and the Thin scrollbar
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,22 +40,12 @@ namespace Onsay.Desktop;
 
 sealed class ChatWindow : Window
 {
-    ////////// LOOK //////////
+    ////////// SIZES AND ICONS //////////
 
-    // brand.css tokens, light theme. Shared with the windows drawn from the same look, like Markdown.cs and PanelWindow.cs.
-    internal static readonly Brush Card = Hex("#FFFFFF"), Page_ = Hex("#F7F7FA"), Edge_ = Hex("#D8D9E5"), Rule = Hex("#E8E8F0"),
-        Ink = Hex("#12131C"), Ink2 = Hex("#4A4D5E"), Ink3 = Hex("#7B7F92"), Ink4 = Hex("#A9ACBC"),
-        BlueSoft = Hex("#EEF0FF"), Accent = Hex("#5865F2"), AccentDeep = Hex("#4752C4"), Good = Hex("#1F9D55"),
-        Bad = Hex("#C62A2F"), BadSoft = Hex("#FDECEC"), Butter = Hex("#FFF6D6");
-    internal static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets"), Mono = new("Consolas");
-    // Glyphs from Icons, by code point.
-    static readonly string NewIcon = Glyph(0xE710), MoreIcon = Glyph(0xE712), SendIcon = Glyph(0xE724),
-        ClosedIcon = Glyph(0xE76C), OpenIcon = Glyph(0xE70D);
     public const double Shadow = 16;   // transparent room around the card for its shadow, in DIPs
     const int DetailMax = 1500;        // characters of a step's IN or OUT shown, the rest is trimmed
-
-    // Every kind of button is the same shape: a rounded rectangle, never a pill.
-    enum Kind { Primary, Quiet, Danger, Icon }
+    // Glyphs from Icons.
+    const string NewIcon = "", MoreIcon = "", SendIcon = "", ClosedIcon = "", OpenIcon = "";
 
     ////////// STATE //////////
 
@@ -63,20 +53,14 @@ sealed class ChatWindow : Window
     readonly Action<bool> setOpen;
     readonly OnsayView face = new() { Width = 32, Height = 32 };
     readonly TextBlock subtitle = new() { FontSize = 12, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly Border fresh, more, permits, send;          // the header's new chat and menu, permissions, and send
+    readonly Border fresh, permits, send;          // the header's new chat, the footer's permissions, and send
 
     // The pages. Only one shows at a time, see Page.
-    readonly FrameworkElement welcomePage, signInPage, homePage;
-    int welcomeStep;
-    readonly StackPanel welcomeBody = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 20) };
+    readonly FrameworkElement signInPage, homePage;
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
     readonly Ellipse readyDot = new() { Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0) };
-    readonly StackPanel codePanel = new() { Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Center };
-    readonly TextBlock code = new() { FontFamily = Mono, FontSize = 26, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center };
-    readonly TextBlock signInError = new() { FontSize = 12, Foreground = Bad, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Visibility = Visibility.Collapsed };
-    readonly Border signInButton;
 
     // The banner across the top, the bar while he works, the box, and the line at the bottom.
     readonly Border banner = new() { Visibility = Visibility.Collapsed, Padding = new Thickness(14, 8, 14, 8) };
@@ -95,18 +79,18 @@ sealed class ChatWindow : Window
 
     readonly HashSet<string> asking = new();     // the ids of the messages sent from here still waiting for their reply
     string? me;                                  // this computer's instance id, from ready
-    string called = Environment.MachineName;     // its route on Onsay, like laptop.brandon, from ready
-    bool online;                                 // whether this computer's core is connected, so he can act here
+    string? called;                              // its name on Onsay, like laptop.brandon, from ready
+    bool online;                                 // whether this computer's lingo client is connected, so he can act here
     bool greeted, following = true;
     DateTime doingSince;                         // when what he is doing now started, for the bar's timer
     StepList? turn;                              // the steps of the message in progress, before his next line
     (RichTextBox row, string text)? speaking;
     CancellationTokenSource? signing;            // a sign in waiting on the browser
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    readonly StringBuilder transcript = new();   // everything said and done, with every step in full, for Copy chat
-    readonly List<(string from, string text)> said = new();   // the chat, from you or onsay, oldest first
-    const int ChatTurns = 40, ChatText = 20_000; // the most of it that goes with a message: its newest turns that fit, as the
-                                                 // server reads them (../onsay/server/search/search.js chat)
+    // The chat, oldest first: from "you", "onsay", or a "step" he took. Copy chat gives all of it, and each message goes
+    // with its newest turns that fit, steps left out, as the server reads them (../onsay/server/search/search.js chat).
+    readonly List<(string from, string text)> said = new();
+    const int ChatTurns = 40, ChatText = 20_000;
 
     // One accordion per reply. Head is its clickable line, Body its rows, hidden while it has none.
     sealed class StepList { public required Border Root; public required TextBlock Head; public required StackPanel Body; public int Count; public double Ms; }
@@ -114,8 +98,7 @@ sealed class ChatWindow : Window
     sealed record Done(string Title, string In, string Out, double Ms);
     readonly List<StepList> stepLists = new();
 
-    public string Route => called;                  // this computer's name on Onsay, like laptop.brandon
-    public bool Signing => signing is not null;
+    public string? Route => called;                 // this computer's name on Onsay once it is known, like laptop.brandon
     public bool Busy => asking.Count > 0;           // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
 
@@ -135,7 +118,8 @@ sealed class ChatWindow : Window
 
         // The header: him, who he is and where, and the buttons.
         fresh = Button(NewIcon, Kind.Icon, () => { Clear(); box.Focus(); }, "New chat");
-        more = Button(MoreIcon, Kind.Icon, () => Popup(more!, Menu), "More");
+        Border more = null!;
+        more = Button(MoreIcon, Kind.Icon, () => Menu(more), "More");
         var header = new DockPanel { Margin = new Thickness(10, 10, 10, 10) };
         header.Children.Add(Right(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { fresh, more } }));
         header.Children.Add(face);
@@ -147,32 +131,16 @@ sealed class ChatWindow : Window
         banner.Child = bannerText;
 
         // The sign in page.
-        signInButton = Button("Sign in", Kind.Primary, SignIn);
-        signInButton.HorizontalAlignment = HorizontalAlignment.Center;
-        codePanel.Children.Add(new TextBlock { Text = "Your code", FontSize = 12, Foreground = Ink3, HorizontalAlignment = HorizontalAlignment.Center });
-        codePanel.Children.Add(new Border
-        {
-            Background = Page_, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(18, 6, 18, 8), Margin = new Thickness(0, 6, 0, 10), Child = code,
-        });
-        codePanel.Children.Add(Paragraph("Your browser opened. Sign in there, and press Connect if it shows this code."));
-        var cancel = Button("Cancel", Kind.Quiet, () => signing?.Cancel());
-        cancel.HorizontalAlignment = HorizontalAlignment.Center;
-        cancel.Margin = new Thickness(0, 14, 0, 0);
-        codePanel.Children.Add(cancel);
         signInPage = new StackPanel
         {
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 20),
             Children =
             {
                 new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
-                new TextBlock { Text = "Hi, I'm Onsay", FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center },
-                Paragraph("I help on this computer: tidying files, filling things in, reading what's on screen. Sign in and tell me what you need.", 8, 20),
-                signInButton, codePanel, signInError,
+                Paragraph("Sign in so I can help on this computer.", centre: true),
+                SignInBox(centre: true),
             },
         };
-
-        welcomePage = welcomeBody;
 
         // The home page.
         homePage = new ScrollViewer
@@ -233,22 +201,26 @@ sealed class ChatWindow : Window
         box.GotKeyboardFocus += (_, _) => field.BorderBrush = Accent;
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
-        // The bottom line: what he may do here, and the stop key.
-        permits = Button("", Kind.Quiet, () => Popup(permits!, Permissions), "What Onsay may do on this computer");
+        // The bottom line: what he may do here, and the stop key, written the way a keyboard shortcut is.
+        permits = Button("", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Permissions"), "What Onsay may do on this computer");
         var stopKey = new StackPanel
         {
             Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Stops him from any app, at any time",
             Children =
             {
                 new TextBlock { Text = "Stop anytime", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) },
-                Shortcut("Alt+Shift+O"),
+                new Border
+                {
+                    Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 0, 5, 1),
+                    Child = new TextBlock { Text = "Alt+Shift+O", FontSize = 10.5, FontFamily = Mono, Foreground = Ink3 },
+                },
             },
         };
-        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), Children = { Right(stopKey), new StackPanel { Orientation = Orientation.Horizontal, Children = { permits } } } };
-        Labels();
+        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), Children = { Right(stopKey), permits } };
+        CountPermissions();
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { welcomePage, signInPage, homePage, chatPage } };
+        var pages = new Grid { Children = { signInPage, homePage, chatPage } };
         var layout = new Grid();
         UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input, footer };
         for (int i = 0; i < rows.Length; i++)
@@ -264,7 +236,7 @@ sealed class ChatWindow : Window
         var shadow = new Border
         {
             Background = Card, CornerRadius = new CornerRadius(14), CacheMode = new BitmapCache(),
-            Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.18, Color = Color.FromRgb(15, 17, 21) },
+            Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.18 },
         };
         var card = new Border
         {
@@ -283,11 +255,10 @@ sealed class ChatWindow : Window
         Online();
     }
 
-    // Once signed in: the chat's connection, and the core.
+    // Signed in or out: the chat's connection while signed in, and the lingo client started with the settings that fit.
     void Online()
     {
-        if (settings.Token is null) return;
-        Link.Start(settings, Heard);
+        if (settings.Token is not null) Link.Start(settings, Heard);
         Core.Start(settings);
     }
 
@@ -379,11 +350,11 @@ sealed class ChatWindow : Window
         zoom.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(size, time) { EasingFunction = ease });
     }
 
-    // 3. Asks the server to stop every message waiting here, and restarts the core so whatever program it is running ends
-    //    now, even if the server never hears.
+    // 3. Asks the server to stop every message waiting here, and starts the lingo client afresh so whatever program it is
+    //    running ends now, even if the server never hears.
     public void Stop()
     {
-        Core.Restart();
+        Core.Start(settings);
         Dispatcher.BeginInvoke(() =>
         {
             foreach (var id in asking) Link.Stop(id);
@@ -393,40 +364,67 @@ sealed class ChatWindow : Window
 
     ////////// 4-5. SIGNING IN, AND THE PAGES //////////
 
-    // 4. The code shows here too, so the person knows the browser page is theirs.
-    public async void SignIn()
+    /* 4. Sign in opens Onsay's page in the browser, and the code that page shows appears here too, so the person knows it
+          is theirs, with Cancel. done runs once signed in. centre lines it up for the chat's own page. */
+    public FrameworkElement SignInBox(Action? done = null, bool centre = false)
     {
-        if (signing is not null) return;
-        if (settings.Welcomed != true) { settings.Welcomed = true; settings.Save(); Page(); }   // asked from his menu before the walkthrough ended
-        if (!Showing) setOpen(true);
-        signing = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-        signInError.Visibility = Visibility.Collapsed;
-        signInButton.Visibility = Visibility.Collapsed;
-        try
+        var align = centre ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        var code = new TextBlock { FontFamily = Mono, FontSize = 26, FontWeight = FontWeights.SemiBold, Foreground = Ink };
+        var error = Paragraph("", centre);
+        error.Foreground = Bad;
+        error.Visibility = Visibility.Collapsed;
+        var cancel = Button("Cancel", Kind.Quiet, () => signing?.Cancel());
+        cancel.HorizontalAlignment = align;
+        var waiting = new StackPanel
         {
-            var who = await Link.Connect(settings, c => Dispatcher.Invoke(() => { code.Text = c; codePanel.Visibility = Visibility.Visible; }), signing.Token);
-            Online();
-            Page();
-            face.React("greet");
-            Tell($"Signed in as {who}.");
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception e) { signInError.Text = $"That didn't work: {e.Message}"; signInError.Visibility = Visibility.Visible; }
-        finally
+            Visibility = Visibility.Collapsed, HorizontalAlignment = align,
+            Children =
+            {
+                new TextBlock { Text = "Your code", FontSize = 12, Foreground = Ink3, HorizontalAlignment = align },
+                new Border
+                {
+                    Background = Page_, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(18, 6, 18, 8), Margin = new Thickness(0, 6, 0, 10), HorizontalAlignment = align, Child = code,
+                },
+                Paragraph("Your browser opened. Sign in there, and press Connect if it shows this code.", centre),
+                cancel,
+            },
+        };
+        Border start = null!;
+        start = Button("Sign in", Kind.Primary, async () =>
         {
-            signing = null;
-            codePanel.Visibility = Visibility.Collapsed;
-            signInButton.Visibility = Visibility.Visible;
-        }
+            if (signing is not null) return;
+            signing = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            error.Visibility = start.Visibility = Visibility.Collapsed;
+            try
+            {
+                await Link.Connect(settings, c => Dispatcher.Invoke(() => { code.Text = c; waiting.Visibility = Visibility.Visible; }), signing.Token);
+                Online();
+                Page();
+                face.React("greet");
+                done?.Invoke();
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { error.Text = $"That didn't work: {e.Message}"; error.Visibility = Visibility.Visible; }
+            finally
+            {
+                signing = null;
+                waiting.Visibility = Visibility.Collapsed;
+                start.Visibility = Visibility.Visible;
+            }
+        });
+        start.HorizontalAlignment = align;
+        return new StackPanel { Children = { start, waiting, error } };
     }
 
+    // 4. The lingo client starts again bare, for this computer alone.
     public void SignOut()
     {
-        if (signing is not null) { signing.Cancel(); return; }
         (settings.Token, settings.User) = (null, null);
         settings.Save();
+        (online, called) = (false, null);
         Link.Close();
-        Core.Stop();
+        Online();
         Clear();
     }
 
@@ -435,64 +433,14 @@ sealed class ChatWindow : Window
 
     void Page()
     {
-        bool welcomed = settings.Welcomed == true, signedIn = welcomed && settings.Token is not null, talking = signedIn && Talking;
-        welcomePage.Visibility = Shown(!welcomed);
-        if (!welcomed) Welcome();
-        signInPage.Visibility = Shown(welcomed && !signedIn);
+        bool signedIn = settings.Token is not null, talking = signedIn && Talking;
+        signInPage.Visibility = Shown(!signedIn);
         homePage.Visibility = Shown(signedIn && !talking);
         chatPage.Visibility = fresh.Visibility = Shown(talking);
-        input.Visibility = footer.Visibility = more.Visibility = Shown(signedIn);
-        subtitle.Text = !signedIn ? "Not signed in" : settings.User ?? "";
+        input.Visibility = footer.Visibility = Shown(signedIn);
+        subtitle.Text = signedIn ? settings.User ?? "" : "Not signed in";
         if (!signedIn) Working(null);
         ReadyInput();
-        Readiness();
-    }
-
-    /* 5. One short page a step, Next to go on. The page about what is sent to Onsay has one button, Agree and continue, and
-          a quiet way to the request log (Requests.cs); Skip on the pages before it lands there, never past it.
-          The last page signs in, or starts when already signed in. Finished, it never shows again. */
-    static readonly (string Title, string Words)[] Walkthrough =
-    {
-        ("Hi, I'm Onsay", "Tell me what you need in plain words, and I'll do it on this computer for you."),
-        ("How I get it done", "For each thing you ask, I find a small program made for exactly that, a lingo, and run it here. I can open apps, click and type, read what's on screen, and work with your files."),
-        ("You're in charge", "You choose what I may do under Permissions, and you can change it any time. Press Stop, or Alt+Shift+O from any app, and I stop at once."),
-        ("What I send to Onsay", "To help, this computer tells Onsay what it can do, and sends what you ask for so it can be answered. Your files, passwords and screen stay here unless you ask me to send something. Every request is kept in a log you can read any time, under Settings, Requests."),
-        ("Sign in to start", "Signing in gives this computer its own name on Onsay, like laptop.yourname, so I can reach it to help you."),
-    };
-    const int Agree = 3;   // the page about what is sent
-
-    void Welcome()
-    {
-        var (title, words) = Walkthrough[welcomeStep];
-        bool last = welcomeStep == Walkthrough.Length - 1, agree = welcomeStep == Agree;
-        var progress = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 18) };
-        for (int i = 0; i < Walkthrough.Length; i++)
-            progress.Children.Add(new Ellipse { Width = 7, Height = 7, Margin = new Thickness(3, 0, 3, 0), Fill = i == welcomeStep ? Accent : Rule });
-        void Done()
-        {
-            settings.Welcomed = true;
-            settings.Save();
-            Page();
-            if (settings.Token is null) SignIn();
-        }
-        var next = Button(last ? settings.Token is null ? "Sign in" : "Get started" : agree ? "Agree and continue" : "Next", Kind.Primary, () =>
-        {
-            if (agree) { settings.Agreed = DateTime.UtcNow; settings.Save(); }
-            if (last) Done(); else { welcomeStep++; Welcome(); }
-        });
-        var skip = agree ? Button("See what is sent", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Requests")) : Button("Skip", Kind.Quiet, () => { welcomeStep = Agree; Welcome(); });
-        skip.Margin = new Thickness(0, 0, 8, 0);
-        welcomeBody.Children.Clear();
-        welcomeBody.Children.Add(new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) });
-        welcomeBody.Children.Add(progress);
-        welcomeBody.Children.Add(new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center });
-        welcomeBody.Children.Add(Paragraph(words, 8, 22, agree ? 360 : 320));
-        welcomeBody.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Children = { last ? new Border() : skip, next } });
-    }
-
-    // Whether he can act on this computer right now, on the home page.
-    void Readiness()
-    {
         readyDot.Fill = online ? Good : Ink4;
         ready.Text = online ? $"This computer is {called}" : "Getting this computer ready";
     }
@@ -509,8 +457,12 @@ sealed class ChatWindow : Window
         // The chat before it, its oldest turns dropped first, and what was around it: this computer's time, zone and
         // language, and the window the person was in.
         var chat = new JsonArray();
-        for (int i = said.Count - 1, room = ChatText; i >= 0 && chat.Count < ChatTurns && (room -= said[i].text.Length) >= 0; i--)
+        for (int i = said.Count - 1, room = ChatText; i >= 0 && chat.Count < ChatTurns; i--)
+        {
+            if (said[i].from == "step") continue;
+            if ((room -= said[i].text.Length) < 0) break;
             chat.Insert(0, new JsonObject { ["from"] = said[i].from, ["text"] = said[i].text });
+        }
         var (now, zone, (app, window)) = (DateTimeOffset.Now, TimeZoneInfo.Local, Native.InFront());
         var context = new JsonObject
         {
@@ -527,7 +479,6 @@ sealed class ChatWindow : Window
         asking.Add(id);
         turn = null;
         Yours(text);
-        Record($"You: {text}");
         said.Add(("you", text));
         Page();
         following = true;
@@ -544,10 +495,10 @@ sealed class ChatWindow : Window
             case "ready":
                 (me, online) = ($"{m["instance"]}", (bool?)m["online"] == true);
                 if ($"{m["name"]}" is { Length: > 0 } name) called = name;
-                Readiness();
+                Page();
                 return;
             case "instance":
-                if ($"{m["id"]}" == me) { online = (bool?)m["online"] == true; Readiness(); }
+                if ($"{m["id"]}" == me) { online = (bool?)m["online"] == true; Page(); }
                 return;
             // A reply can't come back on a connection that dropped, so what was waiting is said to be lost.
             case "offline":
@@ -559,7 +510,8 @@ sealed class ChatWindow : Window
                 return;
             case "error": Tell($"My server couldn't do that: {m["error"]}", bad: true); return;
             case "signedout":
-                Core.Stop();
+                (online, called) = (false, null);
+                Online();
                 Clear();
                 Tell("This computer was signed out of Onsay.", bad: true);
                 return;
@@ -618,7 +570,7 @@ sealed class ChatWindow : Window
         if (bannerText.Text == text) banner.Visibility = Visibility.Collapsed;
     }
 
-    ////////// 9-10. MESSAGES AND BUTTONS //////////
+    ////////// 9. MESSAGES //////////
 
     /* 9. The words type out on the same characters his mouth is shaping, drawn as Markdown as they come (Markdown.cs), at
           most a few frames apart. A long reply types faster, so it never takes more than about four seconds. An error reads
@@ -627,7 +579,6 @@ sealed class ChatWindow : Window
     {
         var row = His();
         if (error) row.Foreground = Bad;
-        Record($"Onsay: {text}");
         said.Add(("onsay", text));
         speaking = (row, text);
         var drawn = DateTime.MinValue;
@@ -664,42 +615,6 @@ sealed class ChatWindow : Window
         return shown;
     }
 
-    /* 10. Darker under the pointer and pressed in while held. An icon button is a glyph from Windows' icon font with no
-           border. A click needs both press and release on it. */
-    static Border Button(string text, Kind kind, Action click, string? tip = null)
-    {
-        bool icon = kind == Kind.Icon;
-        Brush rest = kind == Kind.Primary ? Accent : icon ? Brushes.Transparent : Card;
-        Brush hover = kind == Kind.Primary ? AccentDeep : kind == Kind.Danger ? BadSoft : Page_;
-        var b = new Border
-        {
-            Background = rest, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, ToolTip = tip, VerticalAlignment = VerticalAlignment.Center,
-            BorderBrush = kind == Kind.Primary ? Accent : kind == Kind.Danger ? Bad : Edge_, BorderThickness = new Thickness(icon ? 0 : 1),
-            Padding = icon ? new Thickness(0) : new Thickness(12, 5, 12, 6), Width = icon ? 32 : double.NaN, Height = icon ? 32 : double.NaN,
-            Child = new TextBlock
-            {
-                Text = text, FontSize = icon ? 14 : 13, FontWeight = icon ? FontWeights.Normal : FontWeights.SemiBold,
-                FontFamily = icon ? Icons : new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                Foreground = kind == Kind.Primary ? Brushes.White : kind == Kind.Danger ? Bad : icon ? Ink2 : Ink,
-            },
-            RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(),
-        };
-        bool down = false;
-        void press(bool on) { var s = (ScaleTransform)b.RenderTransform; s.ScaleX = s.ScaleY = on ? 0.95 : 1; }
-        Hover(b, hover, rest);
-        b.MouseLeave += (_, _) => { down = false; press(false); };
-        b.MouseLeftButtonDown += (_, e) => { down = true; press(true); e.Handled = true; };
-        b.MouseLeftButtonUp += (_, e) =>
-        {
-            press(false);
-            if (!down) return;
-            down = false;
-            e.Handled = true;
-            click();
-        };
-        return b;
-    }
-
     ////////// HELPERS //////////
 
     static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
@@ -716,28 +631,6 @@ sealed class ChatWindow : Window
         b.MouseLeave += (_, _) => b.Background = rest;
     }
 
-    // Read only text that can still be selected and copied.
-    static TextBox Selectable(double size, Brush ink) => new()
-    {
-        IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Padding = new Thickness(0),
-        TextWrapping = TextWrapping.Wrap, FontSize = size, Foreground = ink,
-    };
-
-    // A key, the way a keyboard shortcut is written.
-    static Border Shortcut(string text) => new()
-    {
-        Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 0, 5, 1),
-        Child = new TextBlock { Text = text, FontSize = 10.5, FontFamily = Mono, Foreground = Ink3 },
-    };
-
-    static TextBlock Paragraph(string text, double above = 6, double below = 0, double width = 320) => new()
-    {
-        Text = text, FontSize = 13, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
-        Margin = new Thickness(0, above, 0, below), MaxWidth = width, HorizontalAlignment = HorizontalAlignment.Center,
-    };
-
-    static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 6, 10, 6) };
-
     // How long, the way a person reads it: 0.8s, 12s, 1m 05s. Live, it counts whole seconds.
     static string Took(double ms, bool live = false)
     {
@@ -746,16 +639,7 @@ sealed class ChatWindow : Window
         return $"{(int)(s / 60)}m {(int)(s % 60):00}s";
     }
 
-    static string Glyph(int code) => ((char)code).ToString();
-
-    static Brush Hex(string hex)
-    {
-        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-        b.Freeze();
-        return b;
-    }
-
-    ////////// 11. STEPS //////////
+    ////////// 10. STEPS //////////
 
     bool StepsOpen => settings.ShowSteps == true;
 
@@ -778,14 +662,15 @@ sealed class ChatWindow : Window
         return list;
     }
 
-    // 11. One line per step with how long it took, opening to what went in and came out.
+    // 10. One line per step with how long it took, opening to what went in and came out. Copy chat gives it in full.
     void AddStep(StepList list, Done done)
     {
         list.Count++;
         list.Ms += done.Ms;
         list.Root.Visibility = Visibility.Visible;
         Head(list);
-        Record($"  {done.Title}{(done.Ms > 0 ? $" ({Took(done.Ms)})" : "")}\n    IN:\n{Indent(done.In)}\n    OUT:\n{Indent(done.Out)}");
+        static string Indent(string text) => string.Join("\n", (text.Trim().Length == 0 ? "(nothing)" : text.Trim()).Split('\n').Select(l => "      " + l.TrimEnd('\r')));
+        said.Add(("step", $"  {done.Title}{(done.Ms > 0 ? $" ({Took(done.Ms)})" : "")}\n    IN:\n{Indent(done.In)}\n    OUT:\n{Indent(done.Out)}"));
         bool failed = done.Out.StartsWith("error") || done.Out.StartsWith("It did not");
         var chevron = new TextBlock { Text = ClosedIcon, FontFamily = Icons, FontSize = 9, Foreground = Ink4, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         var line = new DockPanel { LastChildFill = true };
@@ -845,18 +730,13 @@ sealed class ChatWindow : Window
         };
     }
 
-    void Record(string line) => transcript.AppendLine(line).AppendLine();
+    ////////// 11. A NEW CHAT //////////
 
-    static string Indent(string text) => string.Join("\n", (text.Trim().Length == 0 ? "(nothing)" : text.Trim()).Split('\n').Select(l => "      " + l.TrimEnd('\r')));
-
-    ////////// 12. A NEW CHAT //////////
-
-    // 12. Replies still on their way are dropped when they come.
+    // 11. Replies still on their way are dropped when they come.
     void Clear()
     {
         lines.Children.Clear();
         stepLists.Clear();
-        transcript.Clear();
         said.Clear();
         asking.Clear();
         turn = null;
@@ -864,21 +744,30 @@ sealed class ChatWindow : Window
         Page();
     }
 
-    ////////// 13. MENUS //////////
+    ////////// 12-13. THE MENU AND THE PERMISSIONS BUTTON //////////
 
-    // A row in a menu: a title, and a quieter line under it when there is one.
-    Border Row(string text, string? under, Action click)
+    // A row in a menu: a title, and a quieter line under it.
+    static Border Row(string text, string under, Action click)
     {
-        var stack = new StackPanel { Children = { new TextBlock { Text = text, FontSize = 13, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis } } };
-        if (under is not null) stack.Children.Add(new TextBlock { Text = under, FontSize = 11, Foreground = Ink4 });
-        var row = new Border { Padding = new Thickness(10, 7, 10, 7), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, Background = Brushes.Transparent, Child = stack };
+        var row = new Border
+        {
+            Padding = new Thickness(10, 7, 10, 7), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, Background = Brushes.Transparent,
+            Child = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = text, FontSize = 13, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis },
+                    new TextBlock { Text = under, FontSize = 11, Foreground = Ink4 },
+                },
+            },
+        };
         Hover(row, Page_, Brushes.Transparent);
         row.MouseLeftButtonUp += (_, _) => click();
         return row;
     }
 
-    // A small menu under a button, closed by clicking anywhere else. fill puts its rows in, and gets how to close it.
-    void Popup(FrameworkElement anchor, Func<StackPanel, Action, Task> fill)
+    // 12. A small menu under the button, closed by clicking anywhere else.
+    void Menu(FrameworkElement anchor)
     {
         var rows = new StackPanel();
         var menu = new Popup
@@ -887,63 +776,130 @@ sealed class ChatWindow : Window
             Child = new Border
             {
                 Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(6),
-                MinWidth = 220, MaxWidth = 320, Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 },
-                Resources = { MergedDictionaries = { Thin } },
-                Child = new ScrollViewer { MaxHeight = 380, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = rows },
+                MinWidth = 220, MaxWidth = 320, Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 }, Child = rows,
             },
         };
-        menu.IsOpen = true;
-        _ = fill(rows, () => menu.IsOpen = false);
-    }
-
-    // 13. The header's menu: Copy chat while there is one, Settings, and signing out.
-    Task Menu(StackPanel rows, Action close)
-    {
         if (Talking) rows.Children.Add(Row("Copy chat", "The whole chat, every step, as text", () =>
         {
-            close();
-            Clipboard.SetText(transcript.Length > 0 ? transcript.ToString() : "(nothing said yet)");
+            menu.IsOpen = false;
+            Clipboard.SetText(string.Join("\n\n", said.Select(s => s.from switch { "you" => $"You: {s.text}", "onsay" => $"Onsay: {s.text}", _ => s.text })));
             Tell("Copied the chat.");
         }));
-        rows.Children.Add(Row("Settings", "What he may do, your lingos' settings, and more", () => { close(); SettingsWindow.Open(settings, this); }));
-        rows.Children.Add(new Border { Height = 1, Background = Rule, Margin = new Thickness(6, 4, 6, 4) });
-        rows.Children.Add(Row("Sign out", settings.User, () => { close(); SignOut(); }));
-        return Task.CompletedTask;
+        rows.Children.Add(Row("Settings", "Your lingos, what he may do, your account and more", () => { menu.IsOpen = false; SettingsWindow.Open(settings, this); }));
+        menu.IsOpen = true;
     }
 
-    // What his programs may do here. The core enforces it, and a change restarts it with the new list.
-    Task Permissions(StackPanel rows, Action close)
+    // 13. Settings calls it when they change.
+    public void CountPermissions() => ((TextBlock)permits.Child).Text = $"Permissions · {Core.Allowed(settings).Count} of {Core.Permissions.Length}";
+
+    ////////// 14. THE LOOK EVERY WINDOW SHARES //////////
+
+    // brand.css's tokens, light theme. Every window draws with these, through using static Onsay.Desktop.ChatWindow.
+    internal const string Brand = "#5865F2";
+    internal static readonly SolidColorBrush Card = Hex("#FFFFFF"), Page_ = Hex("#F7F7FA"), Edge_ = Hex("#D8D9E5"), Rule = Hex("#E8E8F0"),
+        Ink = Hex("#12131C"), Ink2 = Hex("#4A4D5E"), Ink3 = Hex("#7B7F92"), Ink4 = Hex("#A9ACBC"), DropSoft = Hex("#D9DAEC"),
+        BlueSoft = Hex("#EEF0FF"), Accent = Hex(Brand), AccentDeep = Hex("#4752C4"), AccentEdge = Hex("#353DB8"), Good = Hex("#1F9D55"),
+        Bad = Hex("#C62A2F"), BadSoft = Hex("#FDECEC"), Butter = Hex("#FFF6D6");
+    internal static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets"), Mono = new("Consolas");
+
+    internal static SolidColorBrush Hex(string hex)
     {
-        rows.Children.Add(Note("What Onsay may do on this computer:"));
-        foreach (var (name, words, _) in Core.Permissions)
+        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        b.Freeze();
+        return b;
+    }
+
+    // Every kind of button is the same shape: a rounded rectangle, never a pill.
+    internal enum Kind { Primary, Quiet, Danger, Icon }
+
+    /* Darker under the pointer and pressed in while held. The primary one is filled in the brand colour on a hard shadow,
+       the way the website's is. An icon button is a glyph from Icons with no border. A click needs both press and
+       release on it. */
+    internal static Border Button(string text, Kind kind, Action click, string? tip = null)
+    {
+        bool icon = kind == Kind.Icon, primary = kind == Kind.Primary;
+        Brush rest = primary ? Accent : icon ? Brushes.Transparent : Card;
+        Brush hover = primary ? AccentDeep : kind == Kind.Danger ? BadSoft : Page_;
+        var b = new Border
         {
-            var check = new CheckBox { Content = words, IsChecked = Core.Allowed(settings).Contains(name), FontSize = 13, Foreground = Ink, Margin = new Thickness(10, 5, 10, 5) };
-            check.Checked += (_, _) => Permit(name, true);
-            check.Unchecked += (_, _) => Permit(name, false);
-            rows.Children.Add(check);
-        }
-        return Task.CompletedTask;
+            Background = rest, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, ToolTip = tip, VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left, BorderBrush = primary ? AccentEdge : kind == Kind.Danger ? Bad : Edge_,
+            BorderThickness = new Thickness(icon ? 0 : 1), Padding = icon ? new Thickness(0) : new Thickness(14, 6, 14, 7),
+            Width = icon ? 32 : double.NaN, Height = icon ? 32 : double.NaN,
+            Effect = primary ? new DropShadowEffect { BlurRadius = 0, ShadowDepth = 2.5, Direction = 315, Color = AccentEdge.Color, Opacity = 1 } : null,
+            Child = new TextBlock
+            {
+                Text = text, FontSize = icon ? 14 : 13, FontWeight = icon ? FontWeights.Normal : FontWeights.SemiBold,
+                FontFamily = icon ? Icons : new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                Foreground = primary ? Brushes.White : kind == Kind.Danger ? Bad : icon ? Ink2 : Ink,
+            },
+            RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(),
+        };
+        bool down = false;
+        void press(bool on) { var s = (ScaleTransform)b.RenderTransform; s.ScaleX = s.ScaleY = on ? 0.95 : 1; }
+        Hover(b, hover, rest);
+        b.MouseLeave += (_, _) => { down = false; press(false); };
+        b.MouseLeftButtonDown += (_, e) => { down = true; press(true); e.Handled = true; };
+        b.MouseLeftButtonUp += (_, e) =>
+        {
+            press(false);
+            if (!down) return;
+            down = false;
+            e.Handled = true;
+            click();
+        };
+        return b;
     }
 
-    void Permit(string name, bool on)
+    // Body text. centre is for a page of its own, like the chat's sign in.
+    internal static TextBlock Paragraph(string text, bool centre = false) => new()
     {
-        var allow = Core.Allowed(settings);
-        allow.Remove(name);
-        if (on) allow.Add(name);
-        settings.Allow = allow;
-        settings.Save();
-        Labels();
-        Core.Restart();
+        Text = text, FontSize = 13, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, centre ? 16 : 10),
+        TextAlignment = centre ? TextAlignment.Center : TextAlignment.Left, HorizontalAlignment = centre ? HorizontalAlignment.Center : HorizontalAlignment.Stretch,
+        MaxWidth = centre ? 320 : double.PositiveInfinity,
+    };
+
+    // A heading over a few things, like a setting's name.
+    internal static TextBlock Label(string text) => new() { Text = text, FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 6) };
+
+    // A quieter line, under or beside something.
+    internal static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
+
+    // A setting that is on or off: its words on the left, a switch on the right whose knob slides across.
+    internal static Border Switch(string text, string? under, bool on, Action<bool> changed)
+    {
+        var knob = new Ellipse { Width = 16, Height = 16, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
+        var track = new Border { Width = 40, Height = 22, CornerRadius = new CornerRadius(11), VerticalAlignment = VerticalAlignment.Center, Child = knob };
+        void Draw(bool animate)
+        {
+            track.Background = on ? Accent : Edge_;
+            var to = on ? 18.0 : 0;
+            var move = (TranslateTransform)knob.RenderTransform;
+            if (animate && SystemParameters.ClientAreaAnimation) move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase() });
+            else { move.BeginAnimation(TranslateTransform.XProperty, null); move.X = to; }
+        }
+        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = text, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap } } };
+        if (under is not null) words.Children.Add(new TextBlock { Text = under, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 2, 12, 0), TextWrapping = TextWrapping.Wrap });
+        var row = new Border
+        {
+            Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16, 12, 16, 12),
+            Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand, Child = new DockPanel { Children = { Right(track), words } },
+        };
+        Hover(row, Page_, Card);
+        row.MouseLeftButtonUp += (_, _) => { on = !on; Draw(true); changed(on); };
+        Draw(false);
+        return row;
     }
 
-    // The permissions changed somewhere else, in Settings.
-    public void Permitted() => Labels();
+    // Read only text that can still be selected and copied.
+    internal static TextBox Selectable(double size, Brush ink) => new()
+    {
+        IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Padding = new Thickness(0),
+        TextWrapping = TextWrapping.Wrap, FontSize = size, Foreground = ink,
+    };
 
-    // The words on the permissions button.
-    void Labels() => ((TextBlock)permits.Child).Text = $"Permissions · {Core.Allowed(settings).Count} of {Core.Permissions.Length}";
-
-    // A thin rounded scrollbar with no arrows. Horizontal ones never appear in the chat, so they are hidden.
-    static readonly ResourceDictionary Thin = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse("""
+    // A thin rounded scrollbar with no arrows. Horizontal ones never appear in these windows, so they are hidden.
+    internal static readonly ResourceDictionary Thin = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse($"""
         <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
           <Style TargetType="ScrollBar">
             <Setter Property="Width" Value="10" />
@@ -956,10 +912,10 @@ sealed class ChatWindow : Window
                       <Thumb>
                         <Thumb.Template>
                           <ControlTemplate TargetType="Thumb">
-                            <Border x:Name="bar" Background="#D8D9E5" CornerRadius="3" Margin="3,2" />
+                            <Border x:Name="bar" Background="{Edge_.Color}" CornerRadius="3" Margin="3,2" />
                             <ControlTemplate.Triggers>
-                              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bar" Property="Background" Value="#A9ACBC" /></Trigger>
-                              <Trigger Property="IsDragging" Value="True"><Setter TargetName="bar" Property="Background" Value="#7B7F92" /></Trigger>
+                              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bar" Property="Background" Value="{Ink4.Color}" /></Trigger>
+                              <Trigger Property="IsDragging" Value="True"><Setter TargetName="bar" Property="Background" Value="{Ink3.Color}" /></Trigger>
                             </ControlTemplate.Triggers>
                           </ControlTemplate>
                         </Thumb.Template>

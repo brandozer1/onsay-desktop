@@ -21,7 +21,7 @@ static class StopKey
         pressed = onPressed;
         var t = new Thread(() =>
         {
-            var hook = Hook(13, OnKey);   // 13 is the keyboard
+            var hook = SetWindowsHookEx(13, OnKey, GetModuleHandle(null), 0);   // 13 is the keyboard. This thread pumps messages, as a hook needs
             Dispatcher.Run();
             UnhookWindowsHookEx(hook);
         }) { IsBackground = true, Name = "Onsay stop key" };

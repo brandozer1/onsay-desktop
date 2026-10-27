@@ -4,7 +4,7 @@
 
 $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
 if (-not $dotnet) { $dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }
-if (-not (Test-Path $dotnet)) { Write-Host "The .NET 7 SDK is not installed. See README.md."; exit 1 }
+if (-not (Test-Path $dotnet)) { Write-Host "The .NET 8 SDK is not installed. See README.md."; exit 1 }
 if (-not (Test-Path "$PSScriptRoot\..\lingo-client\core\bin\onsay-core.exe")) { Write-Host "Build the lingo client first: ..\lingo-client\core\build.ps1"; exit 1 }
 
 Get-Process Onsay -ErrorAction SilentlyContinue | Stop-Process -Force

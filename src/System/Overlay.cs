@@ -1,4 +1,4 @@
-// Overlay.cs - what the core asks to be drawn while Onsay acts, read from its output a line of JSON at a time (Core.cs).
+// Overlay.cs - what the lingo client asks to be drawn while Onsay acts, read from its output a line of JSON at a time (Core.cs).
 // The windows lingo writes them, see ../lingo-client/lingos/windows/windows.c, the hand:
 //   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r}   his pointer glides there along that curve,
 //                                                               the real mouse with it when r
@@ -7,10 +7,10 @@
 //   {"show":"clear"}                                            the ring goes
 //   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
 //   {"show":"unpanel"}                                          his panel goes
-//   {"sent":{...}}                                              a message the core sent to Onsay, for the request log
+//   {"sent":{...}}                                              a message it sent to Onsay, for the request log
 // Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept.
 //
-// 1. Line(text)    one line from the core, on any thread
+// 1. Line(text)    one line from the lingo client, on any thread
 // 2. Hand          where his pointer is while it shows, for him to watch instead of the mouse
 // 3. Rest()        the core stopped or restarted: the pointer fades where it is and the ring goes
 using System.Text.Json;

@@ -6,12 +6,11 @@
 // 4. Put(p)                          puts him there now, and the chat with him in the same move
 // 5. OnPress / OnDrag / OnRelease    a click opens or closes the chat, a drag carries him
 // 6. Look()                          he follows the cursor, or his own pointer while it shows, and dozes when still
-// 7. StepAside(on)                   hides while something is fullscreen
-// 8. BuildMenu()                     right click: signing in, settings, the lingos folder, put him back, startup, debug, quit
+// 7. StepAside(on)                   hides while something is fullscreen, and comes back when it ends
+// 8. BuildMenu()                     right click: open the chat, settings, the lingos folder, put him back, quit
 // 9. Follow(), Fly                   while his own pointer shows, he flies beside it, then goes home, and the chat comes back
 //                                    if it was open
 using System.Diagnostics;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -39,7 +38,6 @@ sealed class BuddyWindow : Window
     readonly OnsayView him = new() { Width = Body, Height = Body };
     readonly Settings settings = Settings.Load();
     readonly ChatWindow chat;
-    Tray? tray;
     readonly Stopwatch clock = Stopwatch.StartNew();
     IntPtr hwnd;
     bool open, pressed, dragging, asleep, aside, sliding, chasing, reopen;
@@ -78,14 +76,12 @@ sealed class BuddyWindow : Window
             Every(TimeSpan.FromMilliseconds(33), () => { Follow(); Look(); });
             Every(TimeSpan.FromSeconds(1.5), () => StepAside(SomethingFullscreen()));
             him.React("greet");
-            tray = new Tray(() => Toggle(!open));
-            // The first time, he is set up, then opens the chat to introduce himself.
-            if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, () => { if (settings.Welcomed != true) Toggle(true); }));
-            else if (settings.Welcomed != true) Later(() => Toggle(true));
+            // The first time, he is set up, and then the chat opens.
+            if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, chat, () => Toggle(true)));
             Updates.Start();
         };
         DpiChanged += (_, _) => { if (!dragging) Later(() => Park(dropped: false)); };
-        Closed += (_, _) => { tray?.Dispose(); Core.Stop(); Application.Current.Shutdown(); };
+        Closed += (_, _) => { Core.Stop(); Application.Current.Shutdown(); };
 
         MouseLeftButtonDown += OnPress;
         MouseMove += OnDrag;
@@ -285,39 +281,25 @@ sealed class BuddyWindow : Window
 
     ContextMenu BuildMenu()
     {
-        var back = new MenuItem { Header = "Put him back" };
-        back.Click += (_, _) =>
+        static MenuItem Item(string header, Action click) { var i = new MenuItem { Header = header }; i.Click += (_, _) => click(); return i; }
+        return new ContextMenu
         {
-            (settings.Along, settings.MonitorX, settings.MonitorY, settings.FreeX, settings.FreeY) = (1, null, null, null, null);
-            settings.Save();
-            Park(dropped: false, slide: true);
+            Items =
+            {
+                Item("Open chat", () => Toggle(true)),
+                Item("Settings", () => SettingsWindow.Open(settings, chat)),
+                new Separator(),
+                Item("Open lingos folder", () => Native.Open(Core.LingosFolder)),
+                Item("Put him back", () =>
+                {
+                    (settings.Along, settings.MonitorX, settings.MonitorY, settings.FreeX, settings.FreeY) = (1, null, null, null, null);
+                    settings.Save();
+                    Park(dropped: false, slide: true);
+                }),
+                new Separator(),
+                Item("Quit Onsay", Close),
+            },
         };
-        // The same as Sign in on the chat's page. Pressed while it waits, it stops.
-        var account = new MenuItem();
-        account.Click += (_, _) => { if (settings.Token is null && !chat.Signing) chat.SignIn(); else chat.SignOut(); };
-
-        var options = new MenuItem { Header = "Settings" };
-        options.Click += (_, _) => SettingsWindow.Open(settings, chat);
-        var lingos = new MenuItem { Header = "Open lingos folder" };
-        lingos.Click += (_, _) =>
-        {
-            Directory.CreateDirectory(Core.Lingos);
-            Native.Open(Core.Lingos);
-        };
-
-        var startup = new MenuItem { Header = "Start with Windows", IsCheckable = true };
-        startup.Click += (_, _) => Startup.Set(startup.IsChecked);
-        var quit = new MenuItem { Header = "Quit Onsay" };
-        quit.Click += (_, _) => Close();
-
-        var menu = new ContextMenu { Items = { account, options, new Separator(), lingos, back, startup, new Separator(), quit } };
-        menu.Opened += (_, _) =>
-        {
-            account.Header = chat.Signing ? "Stop waiting for the sign in"
-                : settings.User is { } who ? $"Sign out of Onsay ({who})" : "Sign in to Onsay";
-            startup.IsChecked = Startup.IsOn;   // right even if changed in Task Manager
-        };
-        return menu;
     }
 
     ////////// 9. FOLLOWING HIS HAND //////////

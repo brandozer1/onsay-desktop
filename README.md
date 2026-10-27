@@ -1,76 +1,91 @@
-# Onsay for Windows
+# Onsay Desktop
 
-The Onsay app for Windows, in C# and WPF. It is the Onsay core plus some programming on the native platform it is made
-for, Windows, that connects to `windows`, the device lingo dedicated to talking to this program, so the computer it is
-on can be controlled and operated through the INS (the Identity Name System, Onsay's names: one top level name per
-person, their handle, with a route for each of their computers, like `laptop.brandon`).
+Onsay for Windows, in C# and WPF: a free, open source AI agent and employee. Customize, change, tweak and edit it
+however you like: the character, the UI, the setup, the lingos it ships. It is Apache 2.0 licensed and built to be built
+on.
 
-Onsay Desktop is a free, open source AI agent and employee. Customize, change, tweak and edit it however you like: the
-character, the UI, the walkthrough, the lingos it ships, the routes it opens. It is Apache 2.0 licensed and built to be
-built on.
+It is two things:
 
-The core is the lingo client (https://github.com/brandozer1/lingo-client), and the `windows` lingo ships with it. This
-app ships the lingo client's build, `onsay-core.exe`, and the lingos it builds. In this repo it is bundled from a
-release of that project (during local development, a sibling checkout at `..\lingo-client\core\bin` also works).
+- **The lingo client**, `onsay-core.exe`, from [lingo-client](https://github.com/brandozer1/lingo-client): a small
+  program that answers web requests on port 6969, from this computer only by default. Each lingo in its lingos folder is
+  a program installed at its route, `/<name>` or the `route` its `lingo.json` names, and `GET /` lists them. A lingo
+  whose `lingo.json` says `"open": true` can also be reached from outside this computer; the rest answer this computer
+  alone.
+- **The app around it**: his character on the taskbar, the chat, signing in, setting him up, and settings.
 
-## What he does
+## Setting him up
+
+The first time he opens, a window walks through it one step at a time: hello, his look, where to find him (desktop and
+Start menu shortcuts, starting with Windows), what is sent to Onsay (Agree and continue), and signing in, which can be
+skipped. Signing in opens the website, where you name this computer and approve, and the app gets its own token. Then
+his chat opens.
+
+## Using him
 
 He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O stops him at any time, from any app.
-The first time, he opens the chat himself and walks you through who he is, what he is for, how to stop him and what
-this computer sends to Onsay, agreed with one press, then signs you in.
+While a game, film or presentation has the whole screen he steps aside; the stop key still works, and he comes back when
+it ends. Right click him for Open chat, Settings, Open lingos folder, Put him back and Quit.
 
-Every request between this computer and Onsay is kept in a log you can read, under Settings, Requests: the app's own
-messages and the core's, each exactly as it went, your sign in token the one thing masked. The prompts you send, what
-this computer can do, and what each lingo asks for and answers as it runs (`src/System/Requests.cs`,
-`%AppData%\Onsay\requests.log`). Under Settings, Routes are the lingos installed here, each a route Onsay can reach at
-its address under your handle, like `laptop.brandon/lingos/weather.lingo`.
-
-His replies are drawn as Markdown: headings, lists, quotes, tables, links and code, each code block with a Copy button,
-and Copy under every reply for the whole of it. When a page says more than words, a lingo can open his panel, a small
-rounded window of his own showing a page of HTML, with the `windows` lingo's `panel.show(html, title, width, height)`.
-
-The app is the friendly part: his character, the chat, signing in, and permissions. Each message you type goes to
-Onsay, which answers it and sends the reply straight back. Nothing of the
+Each message you type goes to Onsay over the app's own connection, and the reply comes straight back. Nothing of the
 chat is kept there: it lives only in the chat window, and the new chat button starts over. Each message goes with the
-chat before it, its newest 40 turns that come to at most 20,000 characters, oldest dropped first, and with what was
-around it: this computer's time, zone and language, and the app and window you were in. Both are kept nowhere but that
-message's 7 day trace.
+chat before it, its newest 40 turns that come to at most 20,000 characters, and with what was around it: this
+computer's time, zone and language, and the app and window you were in.
 
-His hands are the core, which runs the lingos in its lingos folder, `%AppData%\Onsay\core\lingos`, when Onsay
-relays a call to one, like `laptop.brandon/lingos/test.lingo/find`. The app ships `windows` and `agent`, the AI agent (set
-your Claude, ChatGPT or OpenRouter key in Settings, Routes, agent), and puts them in that folder each time it starts the
-core. Right click him and choose Open lingos folder to add your own, like the lingos in the lingo client's
-`lingo-library`: a folder with its `lingo.json` and its program, or one `.lingo` file. Every lingo there runs on this
-computer, and the core tells Onsay what each one does, never its code. What lingos remember is kept here, in the core's
-store, and so are their settings: never on Onsay's servers. Settings, Routes shows each lingo's settings as its
-`lingo.json` declares them, and saves them through the core, wherever the lingo keeps them.
+His replies are drawn as Markdown, with Copy under every reply and on every code block. A lingo can open his panel, a
+small window showing a page of HTML, with the `windows` lingo's `panel.show(html, title, width, height)`.
+
+## Settings
+
+| Page | What it has |
+|------|-------------|
+| General | starting with Windows, the version, Check for updates now, and Uninstall Onsay |
+| Look | his colour, face and surface |
+| Lingos | every lingo on this computer, with its settings |
+| Permissions | what his programs may do on this computer; the lingo client refuses anything that is off |
+| Account | signing in and out |
+| Requests | every request between this computer and Onsay, exactly as it went, your sign in token masked |
+
+**Lingos.** Each lingo shows its name, what it does, whether it comes with Onsay, its address on this computer, like
+`http://localhost:6969/agent`, and its settings. The list comes from the lingo client itself (`GET /`), so a route its
+`lingo.json` names is the one shown. To add a lingo, put it in the lingos folder (`%AppData%\Onsay\core\lingos`): a
+folder with its `lingo.json` and its program, like the lingos in the lingo client's `lingo-library`, or one `.lingo`
+file. The app ships `windows` and `agent`, the AI agent (set your Claude, ChatGPT or OpenRouter key in its settings),
+and puts them there each time it starts the lingo client.
+
+**Settings stay on this computer.** A lingo's settings form is built from what its `lingo.json` declares, and the app
+reads and saves them through the lingo client (`--settings`, `--set`), wherever the lingo keeps them, never on Onsay's
+servers.
+
+**Signed in, open lingos are reachable from anywhere.** The lingo client runs whether or not you are signed in. Signed
+out it runs bare, for this computer alone. Signed in, the app gives it the same token and `inbound: "onsay"`, so
+Onsay's proxy passes web requests down to it, and an open lingo also shows its proxy address, like
+`https://api.onsay.dev/proxy/laptop.brandon/weather`. Signing in or out starts it again with the new settings.
+
+## Files
+
+Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` and `core.log` for the lingo
+client, `core\` for its lingos folder and storage, `panel\` for his panel's browser storage, and `requests.log`.
 
 ## Building
 
 ```
-..\lingo-client\core\build.ps1   builds the core and its lingos first, in the lingo-client project beside this one
-.\start.ps1                 builds and starts the app. Needs the .NET 7 SDK
-.\release.ps1 0.2.0         a release: the installer and its updates, in Releases\. Needs vpk, see Releasing
+..\lingo-client\core\build.ps1   builds the lingo client and its lingos, in the lingo-client project beside this one
+.\start.ps1                       builds and starts the app. Needs the .NET 8 SDK
+.\release.ps1 0.2.0               a release in Releases\. Needs vpk: dotnet tool install -g vpk
 ```
+
+The app talks to `https://api.onsay.dev`. A debug build can point at another server with `ONSAY_API`, like
+`$env:ONSAY_API = "http://localhost:3000"`.
 
 ## Releasing
 
-`release.ps1` builds the core and the app, then packs them with Velopack into `Releases\`: `Onsay-win-Setup.exe`, the
-installer people download, and the packages installed copies update from. The installer puts him in
-`%LocalAppData%\Onsay` for that person alone, with no admin rights, adds him to the Start menu and desktop, and opens
-him. Installed, he looks for a newer version a minute after starting and every six hours, downloads it quietly, and it
-goes in when he next quits (`src/System/Updates.cs`). Settings, General shows the version, a Check for updates now
-button, and Uninstall Onsay, which removes him, his shortcuts and his startup, the same uninstaller as Windows'
-Installed apps. The updater itself almost never changes: Velopack installs a tiny separate program that applies updates,
-so a new version is a normal update, never a reinstall.
+Push a tag like `v0.2.0`, or run the release workflow from the Actions tab with a version. GitHub builds the lingo
+client and the app, packs them with Velopack (`release.ps1`), and puts them on this repo's release page:
+`Onsay-win-Setup.exe`, the portable zip, and the packages installed copies update from. It needs no secrets.
 
-To release: `dotnet tool install -g vpk` once (it needs .NET 8), then `.\release.ps1 0.2.0`, and upload everything in
-`Releases\` to the feed, `Feed` in `src/System/Updates.cs`, keeping the files already there. Pushing a tag like `v0.2.0`
-does the same on GitHub (`.github/workflows/release.yml`, with the secret `ONSAY_REPO_TOKEN` to read the onsay repo),
-keeping `Releases\` as the run's download. Where the feed lives is not decided yet.
-
-The app talks to `https://api.onsay.dev`. To point it at another server while developing, set `ONSAY_API` before
-starting it, like `$env:ONSAY_API = "http://localhost:3000"`.
+The installer puts him in `%LocalAppData%\Onsay` for that person alone, with no admin rights, adds him to the Start menu
+and desktop, and opens him. Installed copies look at this repo's GitHub Releases a minute after starting and every six
+hours, download a newer version quietly, and it goes in when he next quits (`src/System/Updates.cs`).
 
 ## Layout
 
@@ -83,25 +98,10 @@ starting it, like `$env:ONSAY_API = "http://localhost:3000"`.
 | `release.ps1` | a release: the installer and update packages, in `Releases\` |
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and its walkthrough (`ChatWindow`), his replies drawn as Markdown (`Markdown`), settings (General, Look, Routes, Permissions, Account, Requests), his pointer (`HandWindow`), the ring (`RingWindow`), his panel showing a page (`PanelWindow`), setting him up the first time he opens, his look included (`SetupWindow`), and the tray icon |
-| `src/System/` | Windows itself: Win32 calls, docking maths, the stop key, the core's overlay messages, the app's settings, updates (`Updates`), and the request log (`Requests`) |
-| `src/Core/` | `Core.cs` runs the core, `Link.cs` signs in through the website and holds the live connection to the server |
-| `src/Character/` | the character: his face as data, and the view that animates it |
-
-## Using it
-
-Signing in: right click him and choose Sign in to Onsay. The website opens, you name this computer, its Windows name
-suggested, and approve, and the app gets its own token. The home screen shows the route it goes by, "This computer is
-laptop.brandon". The core signs in with the same token. Permissions under the chat say what his programs may do on this
-computer, and the core refuses anything that needs one not ticked.
-
-Settings, in his right click menu and the chat's menu, has it all on pages: starting with Windows, his look, each
-lingo's settings under Routes, permissions and your account. What a lingo asks for, like a key, is kept on this
-computer (see the lingo client's `core/README.md`, Lingo settings).
-
-Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` and `core.log` for the core, and
-`core\` for the core's own storage, `panel\` for his panel's browser storage, and `requests.log`, every request between
-this computer and Onsay.
+| `src/Core/` | `Core.cs` runs the lingo client, lists its lingos and reads and writes their settings; `Link.cs` signs in through the website and holds the chat's connection to Onsay |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), settings (`SettingsWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
+| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the lingo client asks to be drawn (`Overlay`), the app's settings and starting with Windows (`Settings`), updates (`Updates`) and the request log (`Requests`) |
+| `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 
 ## License
 

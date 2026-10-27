@@ -7,7 +7,7 @@
 #   dotnet tool install -g vpk
 # The installer shows splash.png while it puts him in %LocalAppData%\Onsay for this person alone, with no admin rights,
 # adds him to the Start menu and the desktop, and opens him, where setting him up (src/Windows/SetupWindow.cs) asks the
-# rest: his look, his shortcuts and starting with Windows. Uninstalling him is in Windows' Installed apps.
+# rest: his look, his shortcuts, starting with Windows and signing in. Uninstalling him is in Windows' Installed apps.
 param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot

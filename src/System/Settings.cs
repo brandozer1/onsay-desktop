@@ -23,23 +23,21 @@ sealed class Settings
     public int? FreeX { get; set; }
     public int? FreeY { get; set; }
 
-    // This app's sign in to Onsay, from Sign in to Onsay in his right click menu, and who it is. Null is signed out. The core
-    // signs in with the same token, see Core.cs.
+    // This app's sign in to Onsay, from setting him up or Settings, Account, and who it is. Null is signed out. The lingo
+    // client signs in with the same token, see Core.cs.
     public string? Token { get; set; }
     public string? User { get; set; }
-    // What his programs may do on this computer, as Lingo permissions, from Permissions under the chat. Null is the defaults
-    // in Core.cs. The core refuses any phrase that needs one not listed.
+    // What his programs may do on this computer, as Lingo permissions, from Settings, Permissions. Null is the defaults
+    // in Core.cs. The lingo client refuses any phrase that needs one not listed.
     public List<string>? Allow { get; set; }
-    // Whether he has introduced himself, in the walkthrough the chat opens with the first time. Null until it is finished.
-    public bool? Welcomed { get; set; }
-    // When the person pressed Agree and continue on the walkthrough's page about what is sent to Onsay. Null until then.
-    public DateTime? Agreed { get; set; }
     // Whether the steps under his replies start open. Null is closed, so the chat reads as messages first.
     public bool? ShowSteps { get; set; }
     // This app's own id for itself, made the first time it signs in, so signing in again is the same instance on the server.
     public string? Install { get; set; }
     // Whether setting him up, the window the first open shows (SetupWindow.cs), was finished or skipped. Null until then.
+    // Welcomed is an older version's name for it, read so nobody who finished that is set up again.
     public bool? SetUp { get; set; }
+    public bool? Welcomed { get => null; set { if (value == true) SetUp = true; } }
     // How he looks, picked in that window or Settings, Look. Null is the brand's own look.
     public Onsay.Character.OnsayView.Appearance? Look { get; set; }
 

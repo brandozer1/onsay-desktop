@@ -151,7 +151,7 @@ static class Markdown
         return span;
     }
 
-    public static IEnumerable<Inline> Inlines(string text)
+    static IEnumerable<Inline> Inlines(string text)
     {
         int at = 0;
         foreach (Match m in Spans.Matches(text))
@@ -223,7 +223,7 @@ static class Markdown
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Children = { new TextBlock { Text = "", FontFamily = Icons, FontSize = 11, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) }, words },
+                Children = { new TextBlock { Text = "\uE8C8", FontFamily = Icons, FontSize = 11, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) }, words },
             },
         };
         button.MouseEnter += (_, _) => button.Background = Rule;
