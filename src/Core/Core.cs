@@ -45,13 +45,14 @@ static class Core
 
     ////////// 1-3. RUNNING IT //////////
 
-    // 1.
+    /* 1. Signed in, the lingo client takes web requests from Onsay's proxy too (inbound), so this computer is reachable
+          at its proxy address with nothing for the person to set up. Its own port answers this computer only. */
     public static void Start(Settings s)
     {
         settings = s;
         if (s.Token is null || !File.Exists(Exe)) return;
         Directory.CreateDirectory(Home);
-        File.WriteAllText(Config, JsonSerializer.Serialize(new { token = s.Token, name = Environment.MachineName, home = Home, allow = Allowed(s) }));
+        File.WriteAllText(Config, JsonSerializer.Serialize(new { token = s.Token, name = Environment.MachineName, home = Home, allow = Allowed(s), inbound = "onsay" }));
         wanted = true;
         Run();
     }
