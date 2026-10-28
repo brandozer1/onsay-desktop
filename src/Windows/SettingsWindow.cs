@@ -4,11 +4,13 @@
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
 // 2. General       starting with Windows, the version, updates and removing Onsay
 // 3. Look          his colour, face and surface, the same picker as setting him up
-// 4. Lingos        every lingo on this computer: what it does, its addresses, whether it comes with Onsay, and its
-//                  settings, as its manifest declares them (Fields)
-// 5. Permissions   what his programs may do on this computer. A change starts the lingo client again with the new list
+// 4. Lingos        every lingo on this computer: on or off, what it does, whether it comes with Onsay, and its settings
+//                  (Fields), or why it can't run
+// 5. Permissions   the most his programs may ever do on this computer, the lingo client's ceiling
 // 6. Account       signing in or out
 // 7. Requests      every request between this computer and Onsay, newest first, each opening to the message itself
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -144,69 +146,70 @@ sealed class SettingsWindow : Window
 
     ////////// 4. LINGOS //////////
 
-    /* 4. A lingo on its address is a program installed on this computer. Its address here always answers this computer,
-          and an open one is reachable from anywhere at its Onsay address while this computer is signed in. */
+    // 4. A lingo is a program on this computer. Off, nothing can use it.
     UIElement Lingos()
     {
         var p = Page("Lingos");
-        p.Children.Add(Paragraph("Each lingo is a program on this computer, with its own address. To add one, put it in the lingos folder. " +
+        p.Children.Add(Paragraph("Each lingo is a program on this computer. Turn one off and nothing can use it. To add one, put it in the lingos folder. " +
             "What you set for a lingo stays on this computer."));
         p.Children.Add(Button("Open the lingos folder", Kind.Quiet, () => Native.Open(Core.LingosFolder)));
         var lingos = Core.Lingos();
+        if (lingos is null) { p.Children.Add(Paragraph("Onsay's helper on this computer isn't answering right now. Try again in a moment.")); return p; }
         if (lingos.Count == 0) p.Children.Add(Paragraph("No lingos yet."));
-        string? anywhere = settings.Token is not null && chat.Route is { } computer ? $"{Settings.Api}/proxy/{computer}" : null;
         foreach (var l in lingos)
         {
             var card = new StackPanel { Margin = new Thickness(0, 18, 0, 0) };
-            var head = Label(l.Name);
-            head.Margin = new Thickness(0, 0, 0, 2);
-            if (l.Shipped) head.Inlines.Add(new Run("   comes with Onsay") { Foreground = Ink3, FontSize = 12, FontWeight = FontWeights.Normal });
-            card.Children.Add(head);
-            if (l.About.Length > 0)
-                card.Children.Add(new TextBlock
-                {
-                    Text = l.About, ToolTip = l.About, FontSize = 12.5, Foreground = Ink2, TextWrapping = TextWrapping.Wrap,
-                    TextTrimming = TextTrimming.WordEllipsis, MaxHeight = 54, Margin = new Thickness(0, 0, 0, 6),
-                });
-            void Address(string where, string url)
+            p.Children.Add(card);
+            if (l.Error is not null)
             {
-                var shown = Selectable(12, Ink2);
-                shown.FontFamily = Mono;
-                shown.Text = url;
-                card.Children.Add(new DockPanel { Margin = new Thickness(0, 0, 0, 2), Children = { new TextBlock { Text = where, Width = 120, FontSize = 12, Foreground = Ink3 }, shown } });
+                card.Children.Add(Label(l.Name));
+                var why = Paragraph($"It can't run because of a problem in it: {l.Error}");
+                why.Foreground = Bad;
+                card.Children.Add(why);
+                continue;
             }
-            Address("On this computer", $"http://localhost:{Core.Port}{l.Route}");
-            if (l.Open && anywhere is not null) Address("From anywhere", anywhere + l.Route);
-            var form = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 8, 0, 0) };
-            var settingsButton = Button("Settings", Kind.Quiet, () =>
+            // Its first sentence, so the list reads at a glance.
+            var first = l.About.Split(". ")[0].TrimEnd('.');
+            var about = $"{(first.Length > 0 ? first + "." : "")} {(l.Shipped ? "Comes with Onsay." : "")}".Trim();
+            var said = Note("");
+            said.Visibility = Visibility.Collapsed;
+            card.Children.Add(Switch(l.Name, about.Length > 0 ? about : null, l.Running, on =>
+            {
+                said.Text = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why ?? "";
+                said.Visibility = said.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }));
+            card.Children.Add(said);
+            var form = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 0) };
+            card.Children.Add(Button("Settings", Kind.Quiet, () =>
             {
                 if (form.Children.Count == 0) Fields(form, l.Name);
                 form.Visibility = form.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-            });
-            settingsButton.Margin = new Thickness(0, 6, 0, 0);
-            card.Children.Add(settingsButton);
+            }));
             card.Children.Add(form);
-            p.Children.Add(new Border { BorderBrush = Rule, BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 18, 0, 0), Child = card });
         }
         return p;
     }
 
-    /* 4. A lingo's settings as its manifest declares them, kept on this computer wherever the lingo keeps them. A secret
-          is never shown, only whether it is set, and left empty it stays as it is. Saving writes only what changed. */
+    /* 4. A lingo's settings as its openapi.json declares them, each with its value now, kept on this computer wherever the
+          lingo keeps them. A secret is never shown, only whether it is set, and left empty it stays as it is. Saving writes
+          only what changed, and an empty one goes back to its default. */
     static void Fields(StackPanel form, string lingo)
     {
-        var (fields, why) = Core.SettingsOf(lingo);
-        if (fields is null) { form.Children.Add(Paragraph(why ?? "")); return; }
+        var (got, why) = Core.Control("settings", new() { ["lingo"] = lingo });
+        if (got is not JsonArray fields) { form.Children.Add(Paragraph(why ?? "")); return; }
         if (fields.Count == 0) { form.Children.Add(Paragraph("This lingo has no settings.")); return; }
-        var read = new List<(Core.Field field, Func<string> now)>();
+        var read = new List<(string name, bool secret, string? value, Func<string> now)>();
         foreach (var f in fields)
         {
-            form.Children.Add(Label(f.Required ? $"{f.Title} (needed)" : f.Title));
-            var under = f.About + (f.Default is { } d ? $" Left empty, it is {d}." : "") + (f.Secret && f.Value is not null ? " One is set: type a new one to replace it." : "");
-            if (under.Trim().Length > 0) form.Children.Add(Note(under.Trim()));
+            string? Text(string key) => f?[key] is { } v ? v.GetValueKind() == JsonValueKind.String ? $"{v}" : v.ToJsonString() : null;
+            bool secret = (bool?)f?["secret"] == true;
+            var (name, value, fallback) = (Text("name") ?? "", Text("value"), Text("default"));
+            form.Children.Add(Label((Text("title") ?? name) + ((bool?)f?["required"] == true ? " (needed)" : "")));
+            var under = $"{Text("about")}{(fallback is not null ? $" Left empty, it is {fallback}." : "")}{(secret && value is not null ? " One is set: type a new one to replace it." : "")}".Trim();
+            if (under.Length > 0) form.Children.Add(Note(under));
             var box = new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card };
-            if (f.Secret) { var pw = new PasswordBox { BorderThickness = new Thickness(0), FontSize = 13 }; box.Child = pw; read.Add((f, () => pw.Password)); }
-            else { var tb = new TextBox { Text = f.Value ?? "", BorderThickness = new Thickness(0), FontSize = 13 }; box.Child = tb; read.Add((f, () => tb.Text)); }
+            if (secret) { var pw = new PasswordBox { BorderThickness = new Thickness(0), FontSize = 13 }; box.Child = pw; read.Add((name, true, value, () => pw.Password)); }
+            else { var tb = new TextBox { Text = value ?? "", BorderThickness = new Thickness(0), FontSize = 13 }; box.Child = tb; read.Add((name, false, value, () => tb.Text)); }
             form.Children.Add(box);
         }
         var status = Note("");
@@ -214,8 +217,8 @@ sealed class SettingsWindow : Window
         status.VerticalAlignment = VerticalAlignment.Center;
         var save = Button("Save", Kind.Primary, () =>
         {
-            var changed = read.Where(x => x.field.Secret ? x.now().Length > 0 : x.now() != (x.field.Value ?? "")).ToList();
-            var problem = changed.Select(x => Core.Set(lingo, x.field.Name, x.now())).FirstOrDefault(e => e is not null);
+            var changed = read.Where(x => x.secret ? x.now().Length > 0 : x.now() != (x.value ?? "")).ToList();
+            var problem = changed.Select(x => Core.Control("set", new() { ["lingo"] = lingo, ["key"] = x.name, ["value"] = x.now().Length == 0 ? null : x.now() }).why).FirstOrDefault(e => e is not null);
             status.Text = problem ?? (changed.Count == 0 ? "Nothing changed." : "Saved. The lingo reads them the next time it runs.");
         });
         form.Children.Add(new DockPanel { Margin = new Thickness(0, 12, 0, 0), Children = { save, status } });
@@ -223,21 +226,24 @@ sealed class SettingsWindow : Window
 
     ////////// 5. PERMISSIONS //////////
 
+    // 5. The ceiling: anything off, no program here can do, whatever it says. What is on, a program still asks for first.
     UIElement Permissions()
     {
         var p = Page("Permissions");
-        p.Children.Add(Paragraph("What his programs may do on this computer, without asking. Whatever a program says, he can't do anything that is off."));
-        foreach (var (name, words, _) in Core.Permissions)
-            p.Children.Add(Switch(words, null, Core.Allowed(settings).Contains(name), on =>
+        p.Children.Add(Paragraph("What his programs may ever do on this computer. Whatever a program says, he can't do anything that is off. " +
+            "For anything that matters, a program asks you first."));
+        var (policy, why) = Core.Control("policy");
+        if (policy?["ceiling"] is not JsonArray ceiling) { p.Children.Add(Paragraph(why ?? "")); return p; }
+        var on = ceiling.Select(n => $"{n}").ToList();
+        var said = Note("");
+        foreach (var (name, words, _) in Core.Needs)
+            p.Children.Add(Switch(words, null, on.Contains(name), yes =>
             {
-                var allow = Core.Allowed(settings);
-                allow.Remove(name);
-                if (on) allow.Add(name);
-                settings.Allow = allow;
-                settings.Save();
-                chat.CountPermissions();
-                Core.Start(settings);
+                on.Remove(name);
+                if (yes) on.Add(name);
+                said.Text = Core.Control("ceiling", new() { ["needs"] = new JsonArray(on.Select(n => (JsonNode)n).ToArray()) }).why ?? "";
             }));
+        p.Children.Add(said);
         return p;
     }
 
@@ -248,7 +254,7 @@ sealed class SettingsWindow : Window
         var p = Page("Account");
         if (settings.Token is null)
         {
-            p.Children.Add(Paragraph("Not signed in. Sign in so he can answer you in the chat, and so your open lingos can be reached from anywhere."));
+            p.Children.Add(Paragraph("Not signed in. Sign in so he can answer you in the chat, and use the lingos on this computer for you."));
             p.Children.Add(chat.SignInBox(() => Go("Account")));
             return p;
         }

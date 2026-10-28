@@ -78,6 +78,7 @@ sealed class BuddyWindow : Window
             him.React("greet");
             // The first time, he is set up, and then the chat opens.
             if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, chat, () => Toggle(true)));
+            new AskWindow(() => Rect().Inset(Pad));   // a lingo asking first, on a card beside him
             Updates.Start();
         };
         DpiChanged += (_, _) => { if (!dragging) Later(() => Park(dropped: false)); };

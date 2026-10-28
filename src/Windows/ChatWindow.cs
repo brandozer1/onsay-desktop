@@ -19,8 +19,7 @@
 //                                         its IN and OUT
 // 11. Clear()                             a new chat: the conversation here forgotten, and home again
 // 12. Menu()                              the header's menu: Copy chat and Settings
-// 13. CountPermissions()                  the words on the footer's button, which opens Settings, Permissions
-// 14. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
+// 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
 //                                         Note, Switch, Selectable and the Thin scrollbar
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -53,7 +52,7 @@ sealed class ChatWindow : Window
     readonly Action<bool> setOpen;
     readonly OnsayView face = new() { Width = 32, Height = 32 };
     readonly TextBlock subtitle = new() { FontSize = 12, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly Border fresh, permits, send;          // the header's new chat, the footer's permissions, and send
+    readonly Border fresh, send;                   // the header's new chat, and send
 
     // The pages. Only one shows at a time, see Page.
     readonly FrameworkElement signInPage, homePage;
@@ -98,7 +97,6 @@ sealed class ChatWindow : Window
     sealed record Done(string Title, string In, string Out, double Ms);
     readonly List<StepList> stepLists = new();
 
-    public string? Route => called;                 // this computer's name on Onsay once it is known, like laptop.brandon
     public bool Busy => asking.Count > 0;           // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
 
@@ -202,7 +200,7 @@ sealed class ChatWindow : Window
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
         // The bottom line: what he may do here, and the stop key, written the way a keyboard shortcut is.
-        permits = Button("", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Permissions"), "What Onsay may do on this computer");
+        var permits = Button("Permissions", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Permissions"), "What Onsay may do on this computer");
         var stopKey = new StackPanel
         {
             Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Stops him from any app, at any time",
@@ -217,7 +215,6 @@ sealed class ChatWindow : Window
             },
         };
         footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), Children = { Right(stopKey), permits } };
-        CountPermissions();
 
         // Everything stacked: the pages share the one row that grows.
         var pages = new Grid { Children = { signInPage, homePage, chatPage } };
@@ -744,7 +741,7 @@ sealed class ChatWindow : Window
         Page();
     }
 
-    ////////// 12-13. THE MENU AND THE PERMISSIONS BUTTON //////////
+    ////////// 12. THE MENU //////////
 
     // A row in a menu: a title, and a quieter line under it.
     static Border Row(string text, string under, Action click)
@@ -789,10 +786,7 @@ sealed class ChatWindow : Window
         menu.IsOpen = true;
     }
 
-    // 13. Settings calls it when they change.
-    public void CountPermissions() => ((TextBlock)permits.Child).Text = $"Permissions · {Core.Allowed(settings).Count} of {Core.Permissions.Length}";
-
-    ////////// 14. THE LOOK EVERY WINDOW SHARES //////////
+    ////////// 13. THE LOOK EVERY WINDOW SHARES //////////
 
     // brand.css's tokens, light theme. Every window draws with these, through using static Onsay.Desktop.ChatWindow.
     internal const string Brand = "#5865F2";

@@ -1,80 +1,98 @@
 // Core.cs - runs the lingo client, onsay-core.exe: a small program that answers web requests on this computer, each
 // lingo at its own route, and is his hands here. It runs whether or not the person is signed in.
 //
-// 1. Start(settings)    writes core.json and starts the lingo client with it, ending the one running first: on startup,
-//                       a sign in or out, a change of permissions, and the stop key. It runs with --sent, so every
-//                       message it sends to Onsay comes on its output too, for the request log (Requests.cs)
-// 2. Stop()             ends it, and keeps it ended
-// 3. Permissions        every Lingo permission, in words, and Allowed(settings), the ones ticked
-// 4. Provide()          the lingos this app ships, like windows and agent, put in the lingos folder
-// 5. Lingos()           every lingo on this computer: its route, what it does, and whether it is open
-// 6. SettingsOf(lingo), Set(lingo, key, text)   a lingo's settings as its manifest declares them, read and changed
-//                       through the lingo client, wherever the lingo keeps them
+// 1. Start(settings)          writes core.json, puts the lingos this app ships in the lingos folder and starts the lingo
+//                             client with them, ending the one running first: on startup, a sign in or out, and the stop
+//                             key. It runs with --sent, so every message it sends to Onsay comes on its output too, for
+//                             the request log (Requests.cs). The first time a shipped lingo appears it is started, with
+//                             its Grants
+// 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
+// 3. Needs                    what a lingo may do on this computer, in words: for Settings, Permissions, and for asking
+// 4. Control(verb, values)    one of the lingo client's verbs, like start, set, ceiling or asks: through its control
+//                             routes, or its command line when it isn't answering. Its answer, or why not, in words
+// 5. Lingos()                 every lingo on this computer: whether it runs, what it is, or why it can't run
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
-using System.Text.Json;
+using System.Text;
+using System.Text.Json.Nodes;
 
 namespace Onsay.Desktop;
 
 static class Core
 {
-    // Each .lingo file in the lingos folder is a lingo, and so is a folder with a lingo.json, a native one like windows,
-    // see ../lingo-client/core/README.md.
+    // Each .lingo file in the lingos folder is a lingo, see ../lingo-client/core/README.md.
     static readonly string Exe = Path.Combine(AppContext.BaseDirectory, "onsay-core.exe");
     static readonly string Shipped = Path.Combine(AppContext.BaseDirectory, "lingos");
     static readonly string Home = Path.Combine(Settings.Folder, "core");
     public static readonly string LingosFolder = Path.Combine(Home, "lingos");
     static readonly string Config = Path.Combine(Settings.Folder, "core.json");
     static readonly string Log = Path.Combine(Settings.Folder, "core.log");
-    public const int Port = 6969;   // the lingo client's own default, answered for this computer only
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
+    const string Url = "http://127.0.0.1:6969";   // the lingo client's own default port, on this computer
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(3) };
 
-    // 3. Seeing and acting on the screen are on by default: without them he can't help with anything on it.
-    public static readonly (string Name, string Words, bool Default)[] Permissions =
+    // 3. Each need, what it is in Settings, Permissions, and what a lingo asking for it wants to do.
+    public static readonly (string Name, string Words, string Wants)[] Needs =
     {
-        ("screen.read", "See windows and what is in them", true),
-        ("screen.act", "Click, type and open apps", true),
-        ("files.read", "Read your files", true),
-        ("files.write", "Change, move and delete files", false),
-        ("run", "Run commands", false),
-        ("net", "Reach the internet", false),
+        ("screen.read", "See windows and what is in them", "see your screen"),
+        ("screen.act", "Click, type and open apps", "use your mouse and keyboard"),
+        ("files.read", "Read your files", "read your files"),
+        ("files.write", "Change, move and delete files", "change your files"),
+        ("run", "Run commands", "run a program"),
+        ("net", "Reach the internet", "reach the internet"),
     };
 
-    public static List<string> Allowed(Settings s) => s.Allow ?? Permissions.Where(p => p.Default).Select(p => p.Name).ToList();
+    // What Onsay's own lingos may do without asking every time, given the first time each appears: what Settings,
+    // Permissions allowed every program before. Anything else they need is asked.
+    static readonly Dictionary<string, string[]> Grants = new() { ["windows"] = new[] { "screen.read", "screen.act", "files.read" } };
 
     static Process? process;
     static bool wanted;
+    static Settings settings = null!;
 
     ////////// 1-2. RUNNING IT //////////
 
-    /* 1. Signed in, it also takes web requests from Onsay's proxy (inbound), so an open lingo is reachable at its proxy
-          address with nothing for the person to set up. Signed out it runs bare, for this computer alone. From any
-          thread: the stop key calls it from its own. */
+    /* 1. Signed in, it keeps its own connection to Onsay with the same token, so Onsay can reach its lingos with nothing
+          for the person to set up. Signed out it runs bare, for this computer alone. From any thread: the stop key calls it
+          from its own. */
     public static void Start(Settings s)
     {
         Stop();
         Directory.CreateDirectory(LingosFolder);
         if (!File.Exists(Exe)) return;
-        var config = new Dictionary<string, object> { ["name"] = Environment.MachineName, ["home"] = Home, ["allow"] = Allowed(s) };
-        if (s.Token is not null) (config["token"], config["inbound"]) = (s.Token, "onsay");
-        File.WriteAllText(Config, JsonSerializer.Serialize(config));
+        var config = new JsonObject();
+        if (s.Token is not null) config["token"] = s.Token;
+        (config["name"], config["home"]) = (Environment.MachineName, Home);
+        File.WriteAllText(Config, config.ToJsonString());
+        settings = s;
         wanted = true;
         Run();
     }
 
-    // Its errors go to core.log, and what it asks to be drawn comes on its output, see Overlay.cs. It comes back if it
-    // ever stops on its own.
+    /* Its errors go to core.log, and what it asks to be drawn comes on its output, see Overlay.cs. It comes back if it ever
+       stops on its own. The lingos are copied before it starts, while nothing has their libraries open, and only those
+       that differ. What an older version put there for one, its folder like windows\, goes, so it is never there twice. */
     static void Run()
     {
         if (!wanted || process is { HasExited: false }) return;
-        Provide();
+        var shipped = Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.lingo") : Array.Empty<string>();
+        foreach (var from in shipped)
+            try
+            {
+                var to = new FileInfo(Path.Combine(LingosFolder, Path.GetFileName(from)));
+                var older = Path.Combine(LingosFolder, Path.GetFileNameWithoutExtension(from));
+                if (Directory.Exists(older)) Directory.Delete(older, recursive: true);
+                var a = new FileInfo(from);
+                if (!to.Exists || to.Length != a.Length || to.LastWriteTimeUtc != a.LastWriteTimeUtc) a.CopyTo(to.FullName, overwrite: true);
+            }
+            catch (IOException) { }   // still open somewhere: the one there stays until next time
         var p = new Process
         {
             StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\" --sent")
             {
                 CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardOutputEncoding = Encoding.UTF8,
             },
             EnableRaisingEvents = true,
         };
@@ -85,6 +103,21 @@ static class Core
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
         process = p;
+
+        // A lingo newly in the folder is stopped, so the ones this app ships are started the first time they appear, once
+        // it answers. Started remembers them, so one the person stops stays stopped.
+        var fresh = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
+        if (fresh.Count > 0) Task.Run(async () =>
+        {
+            for (var until = DateTime.Now.AddSeconds(15); Lingos() is null && DateTime.Now < until;) await Task.Delay(250);
+            foreach (var name in fresh)
+            {
+                if (Control("start", new() { ["lingo"] = name }).why is not null) continue;
+                foreach (var need in Grants.GetValueOrDefault(name, Array.Empty<string>())) Control("grant", new() { ["lingo"] = name, ["need"] = need });
+                (settings.Started ??= new()).Add(name);
+            }
+            settings.Save();
+        });
     }
 
     // 2. Waits for it to end, so its port and its lingos' libraries are let go before anything takes them.
@@ -96,126 +129,77 @@ static class Core
         Overlay.Rest();
     }
 
-    ////////// 4. PROVIDE //////////
+    public static bool Running => process is { HasExited: false };
 
-    // 4. Copied before it starts, while nothing has their libraries open, and only the files that differ.
-    static void Provide()
+    ////////// 4. CONTROL //////////
+
+    /* 4. values go by name to its control route, and in order to its command line, a list as its words. A setting's value
+          is written as JSON there, so text stays text. asks and answer only mean something to the one running. */
+    public static (JsonNode? answer, string? why) Control(string verb, JsonObject? values = null)
     {
-        if (!Directory.Exists(Shipped)) return;
-        foreach (var from in Directory.EnumerateFiles(Shipped, "*", SearchOption.AllDirectories))
-        {
-            var to = Path.Combine(LingosFolder, Path.GetRelativePath(Shipped, from));
-            var a = new FileInfo(from);
-            var b = new FileInfo(to);
-            if (b.Exists && b.Length == a.Length && b.LastWriteTimeUtc == a.LastWriteTimeUtc) continue;
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                a.CopyTo(to, overwrite: true);
-            }
-            catch (IOException) { }   // still open somewhere: the one there stays until next time
-        }
-        // A lingo this app now ships as a folder replaces the one file of it an older version put there, like agent.lingo.
-        foreach (var dir in Directory.EnumerateDirectories(Shipped))
-            try { File.Delete(Path.Combine(LingosFolder, Path.GetFileName(dir) + ".lingo")); } catch (IOException) { }
-    }
-
-    ////////// 5. THE LINGOS //////////
-
-    // One lingo, installed at Route on this computer. Open is reachable from outside it too. Shipped comes with Onsay.
-    public sealed record Lingo(string Name, string Route, string About, bool Open, bool Shipped);
-
-    /* 5. As the lingo client says: GET / from this computer lists every lingo it runs, with its route. While it isn't
-          answering, the lingos folder is read instead, each at the route its manifest names or /<name>. What a lingo
-          does is its manifest's about, or the top lines of its .lingo file, "// name - what it is". */
-    public static List<Lingo> Lingos()
-    {
-        var found = new List<(string name, string? route, bool? open)>();
+        values ??= new();
         try
         {
-            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{Port}/"));
-            using var doc = JsonDocument.Parse(res.Content.ReadAsStream());
-            foreach (var e in doc.RootElement.GetProperty("lingos").EnumerateArray())
-                found.Add((e.GetProperty("name").GetString()!, e.GetProperty("route").GetString(),
-                    e.TryGetProperty("open", out var o) ? o.ValueKind == JsonValueKind.True : null));
+            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Post, $"{Url}/.lingo/{verb}") { Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json") });
+            var said = JsonNode.Parse(res.Content.ReadAsStream());
+            return res.IsSuccessStatusCode ? (said, null) : (null, $"{said?["error"]}");
         }
-        catch (Exception)
-        {
-            found.Clear();
-            if (Directory.Exists(LingosFolder))
-                foreach (var path in Directory.EnumerateFileSystemEntries(LingosFolder))
-                    if (path.EndsWith(".lingo", StringComparison.OrdinalIgnoreCase)) found.Add((Path.GetFileNameWithoutExtension(path), null, null));
-                    else if (File.Exists(Path.Combine(path, "lingo.json"))) found.Add((Path.GetFileName(path), null, null));
-        }
-        return found.Select(f =>
-        {
-            var folder = Path.Combine(LingosFolder, f.name);
-            string about = "", route = "";
-            bool open = false;
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "lingo.json")));
-                var m = doc.RootElement;
-                about = m.TryGetProperty("about", out var a) ? a.GetString() ?? "" : "";
-                route = m.TryGetProperty("route", out var r) ? r.GetString() ?? "" : "";
-                open = m.TryGetProperty("open", out var o) && o.ValueKind == JsonValueKind.True;
-            }
-            catch (Exception) { }   // a bare .lingo file has no manifest
-            if (about.Length == 0)
-                try
-                {
-                    var code = File.Exists(folder + ".lingo") ? folder + ".lingo" : Directory.EnumerateFiles(folder, "*.lingo").FirstOrDefault();
-                    var top = code is null ? "" : string.Join(" ", File.ReadLines(code).TakeWhile(l => l.StartsWith("//") && l.Trim().Length > 2).Select(l => l[2..].Trim()));
-                    about = top.IndexOf(" - ", StringComparison.Ordinal) is var at and >= 0 ? top[(at + 3)..] : top;
-                }
-                catch (Exception) { }
-            return new Lingo(f.name, f.route ?? (route.StartsWith('/') && route.Length > 1 ? route.TrimEnd('/') : "/" + f.name), about,
-                f.open ?? open, Directory.Exists(Path.Combine(Shipped, f.name)));
-        }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
-
-    ////////// 6. A LINGO'S SETTINGS //////////
-
-    /* One setting of a lingo, as its manifest declares it, with its value now: Value and Default are JSON, or null when
-       there is none. Kept wherever the lingo keeps them, on this computer, never on Onsay's servers. */
-    public sealed record Field(string Name, string Title, string About, string? Default, bool Required, bool Secret, string? Value);
-
-    // 6. Through the lingo client, so the values are read and written wherever the lingo keeps them. Null with why, in
-    //    words, when it can't say.
-    public static (List<Field>? fields, string? why) SettingsOf(string lingo)
-    {
-        var (ok, said) = Ask("--settings", lingo);
-        if (!ok) return (null, said);
-        try
-        {
-            using var doc = JsonDocument.Parse(said);
-            static string? Json(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind != JsonValueKind.Null ? v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText() : null;
-            return (doc.RootElement.EnumerateArray().Select(e => new Field(Json(e, "name") ?? "", Json(e, "title") ?? Json(e, "name") ?? "", Json(e, "about") ?? "",
-                Json(e, "default"), e.TryGetProperty("required", out var r) && r.ValueKind == JsonValueKind.True, e.TryGetProperty("secret", out var s) && s.ValueKind == JsonValueKind.True, Json(e, "value"))).ToList(), null);
-        }
-        catch { return (null, "The lingo client's answer couldn't be read."); }
-    }
-
-    // 6. Empty clears it, so its default applies again. Gives why it failed, in words, or null.
-    public static string? Set(string lingo, string key, string text) =>
-        Ask("--set", lingo, key, text.Length == 0 ? "null" : JsonSerializer.Serialize(text)) is (false, var why) ? why : null;
-
-    // The lingo client run once with its settings file and these, its output or its error.
-    static (bool ok, string said) Ask(params string[] args)
-    {
-        if (!File.Exists(Exe) || !File.Exists(Config)) return (false, "This copy of Onsay has no lingo client, so lingo settings can't be changed here.");
-        var info = new ProcessStartInfo(Exe) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = System.Text.Encoding.UTF8 };
+        catch (Exception) when (verb is "asks" or "answer") { return (null, "Onsay's helper on this computer isn't running."); }
+        catch (Exception) { }
+        if (!File.Exists(Exe) || !File.Exists(Config)) return (null, "This copy of Onsay has no lingo client, so this can't be changed here.");
+        var info = new ProcessStartInfo(Exe) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
         info.ArgumentList.Add(Config);
-        foreach (var a in args) info.ArgumentList.Add(a);
+        info.ArgumentList.Add(verb);
+        foreach (var (key, v) in values)
+            if (v is JsonArray list) foreach (var x in list) info.ArgumentList.Add($"{x}");
+            else info.ArgumentList.Add(key != "value" && v is JsonValue j && j.TryGetValue(out string? text) ? text : v?.ToJsonString() ?? "null");
         try
         {
             using var p = Process.Start(info)!;
             var output = p.StandardOutput.ReadToEndAsync();
             var error = p.StandardError.ReadToEnd();
-            if (!p.WaitForExit(20_000)) { p.Kill(); return (false, "The lingo client took too long to answer."); }
+            if (!p.WaitForExit(20_000)) { p.Kill(); return (null, "The lingo client took too long to answer."); }
             // What it said last is why: the lines before it are the lingos it loaded.
-            return p.ExitCode == 0 ? (true, output.Result) : (false, error.Trim().Split('\n').Last().Trim() is { Length: > 0 } last ? last : "The lingo client couldn't do that.");
+            return p.ExitCode == 0 ? (JsonNode.Parse(output.Result), null) : (null, error.Trim().Split('\n').Last().Trim() is { Length: > 0 } last ? last : "The lingo client couldn't do that.");
         }
-        catch (Exception e) { return (false, e.Message); }
+        catch (Exception e) { return (null, e.Message); }
+    }
+
+    ////////// 5. THE LINGOS //////////
+
+    // One lingo on this computer. Error is why it can't run, null when it can. Shipped comes with Onsay.
+    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool Shipped);
+
+    /* 5. As the lingo client says: GET / from this computer lists every lingo, running or not. What one is comes from its
+          openapi.json, in its .lingo file or its folder. Null while the lingo client isn't answering. */
+    public static List<Lingo>? Lingos()
+    {
+        JsonArray all;
+        try
+        {
+            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Get, $"{Url}/"));
+            all = JsonNode.Parse(res.Content.ReadAsStream())!["lingos"]!.AsArray();
+        }
+        catch (Exception) { return null; }
+        return all.Select(e =>
+        {
+            var name = $"{e?["name"]}";
+            var file = Path.Combine(LingosFolder, name + ".lingo");
+            string about = "";
+            try
+            {
+                string manifest;
+                if (File.Exists(file))
+                {
+                    using var zip = ZipFile.OpenRead(file);
+                    using var read = new StreamReader(zip.GetEntry("openapi.json")!.Open());
+                    manifest = read.ReadToEnd();
+                }
+                else manifest = File.ReadAllText(Path.Combine(LingosFolder, name, "openapi.json"));
+                about = $"{JsonNode.Parse(manifest)?["info"]?["description"]}";
+            }
+            catch (Exception) { }   // one being written may have no openapi.json yet
+            return new Lingo(name, (bool?)e?["running"] == true, e?["error"] is { } why ? $"{why}" : null, about, File.Exists(Path.Combine(Shipped, name + ".lingo")));
+        }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

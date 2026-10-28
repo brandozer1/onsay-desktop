@@ -27,9 +27,8 @@ sealed class Settings
     // client signs in with the same token, see Core.cs.
     public string? Token { get; set; }
     public string? User { get; set; }
-    // What his programs may do on this computer, as Lingo permissions, from Settings, Permissions. Null is the defaults
-    // in Core.cs. The lingo client refuses any phrase that needs one not listed.
-    public List<string>? Allow { get; set; }
+    // The lingos this app ships that it has started once (Core.cs), so one the person stops stays stopped.
+    public List<string>? Started { get; set; }
     // Whether the steps under his replies start open. Null is closed, so the chat reads as messages first.
     public bool? ShowSteps { get; set; }
     // This app's own id for itself, made the first time it signs in, so signing in again is the same instance on the server.

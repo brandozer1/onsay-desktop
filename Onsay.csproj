@@ -23,13 +23,12 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
-  <!-- The lingo client, his hands on this computer, ships beside the app, and so do the lingos it provides, like windows
+  <!-- The lingo client, his hands on this computer, ships beside the app, and so do its lingos, .lingo files like windows
        and agent, the AI agent, which go in its lingos folder. All come from the lingo-client project beside this one:
        build them first with ..\lingo-client\core\build.ps1. -->
   <ItemGroup>
     <None Include="..\lingo-client\core\bin\onsay-core.exe" Link="onsay-core.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')" />
-    <None Include="..\lingo-client\core\bin\lingos\**\*" Link="lingos\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\lingo-client\lingo-library\agent\**\*" Link="lingos\agent\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\lingo-client\core\bin\lingos\*.lingo" Link="lingos\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
