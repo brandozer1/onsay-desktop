@@ -175,20 +175,20 @@ sealed class SetupWindow : Window
     {
         Line("Here's what I send.");
         Actions(Button("Back", Kind.Quiet, () => Go(2)), Button("Agree and continue", Kind.Primary, () => Go(4)));
-        return Step("What is sent to Onsay", "To answer you, this computer sends Onsay what you ask for, with the chat before it and the app and window you were in. " +
+        return Step("What is sent to Onsay", "To answer you, this computer sends Onsay what you ask for, with the chat before it, and what your lingos ask Onsay as they run. " +
             "Your files, passwords and screen stay here unless you ask him to send something.",
-            Note("Every request is kept in a log you can read any time, under Settings, Requests."));
+            Note("Everything sent is kept in a log you can read any time, under Settings, Requests."));
     }
 
     // 2. Signed in, here or before, it is the last word: all set.
     UIElement SignIn()
     {
-        if (settings.Token is not null)
+        if (Core.Onsay("status").answer is { } status && (bool?)status["signed_in"] == true)
         {
             Line("All set. Click me any time.");
             him.React("celebrate");
             Actions(Button("Meet Onsay", Kind.Primary, Finish));
-            return Step("You're all set", $"Signed in as {settings.User}. He's on your taskbar now: click him any time to open his chat.", new Border());
+            return Step("You're all set", $"{(status["handle"] is { } handle ? $"You're {handle}. " : "You're signed in. ")}He's on your taskbar now: click him any time to open his chat.", new Border());
         }
         Line("Let's sign you in.");
         Actions(Button("Back", Kind.Quiet, () => Go(3)), Button("Skip for now", Kind.Quiet, Finish));
@@ -294,8 +294,8 @@ sealed class SetupWindow : Window
         return b;
     }
 
-    // 5. One of a few, side by side, the picked one filled.
-    static WrapPanel Chips((string Value, string Name)[] options, Func<string> picked, Action<string> pick)
+    // 5. One of a few, side by side, the picked one filled. Also his questions back in the chat.
+    internal static WrapPanel Chips((string Value, string Name)[] options, Func<string> picked, Action<string> pick)
     {
         var row = new WrapPanel();
         void Draw()

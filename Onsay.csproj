@@ -23,7 +23,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
-  <!-- The lingo client, his hands on this computer, ships beside the app, and so do its lingos, .lingo files like windows
+  <!-- The lingo client, his hands on this computer, ships beside the app, and so do its lingos, .lingo files like onsay, windows
        and agent, the AI agent, which go in its lingos folder. All come from the lingo-client project beside this one:
        build them first with ..\lingo-client\core\build.ps1. -->
   <ItemGroup>

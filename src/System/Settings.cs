@@ -1,4 +1,4 @@
-// Settings.cs - what he remembers between runs, in %AppData%\Onsay\desktop.json, and starting with Windows.
+// Settings.cs - what he remembers between runs, in desktop.json in his folder, and starting with Windows.
 //
 // 1. Settings.Load()     reads the file, or the defaults when there is none
 // 2. settings.Save()     writes it back
@@ -23,16 +23,8 @@ sealed class Settings
     public int? FreeX { get; set; }
     public int? FreeY { get; set; }
 
-    // This app's sign in to Onsay, from setting him up or Settings, Account, and who it is. Null is signed out. The lingo
-    // client signs in with the same token, see Core.cs.
-    public string? Token { get; set; }
-    public string? User { get; set; }
     // The lingos this app ships that it has started once (Core.cs), so one the person stops stays stopped.
     public List<string>? Started { get; set; }
-    // Whether the steps under his replies start open. Null is closed, so the chat reads as messages first.
-    public bool? ShowSteps { get; set; }
-    // This app's own id for itself, made the first time it signs in, so signing in again is the same instance on the server.
-    public string? Install { get; set; }
     // Whether setting him up, the window the first open shows (SetupWindow.cs), was finished or skipped. Null until then.
     // Welcomed is an older version's name for it, read so nobody who finished that is set up again.
     public bool? SetUp { get; set; }
@@ -40,14 +32,10 @@ sealed class Settings
     // How he looks, picked in that window or Settings, Look. Null is the brand's own look.
     public Onsay.Character.OnsayView.Appearance? Look { get; set; }
 
-    // Onsay's server. Built in, never a setting. A debug build can point at another with ONSAY_API, for development.
-#if DEBUG
-    [JsonIgnore] public static string Api => (Environment.GetEnvironmentVariable("ONSAY_API") ?? "https://api.onsay.dev").TrimEnd('/');
-#else
-    [JsonIgnore] public static string Api => "https://api.onsay.dev";
-#endif
-
-    public static readonly string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Onsay");
+    // His folder, %AppData%\Onsay. A test sets ONSAY_DATA to a folder of its own before he starts, so it never touches the
+    // person's.
+    public static readonly string Folder = Environment.GetEnvironmentVariable("ONSAY_DATA") is { Length: > 0 } test ? test
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Onsay");
     static readonly string File_ = Path.Combine(Folder, "desktop.json");
 
     ////////// FUNCTIONS //////////

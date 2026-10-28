@@ -7,8 +7,9 @@
 // 4. Lingos        every lingo on this computer: on or off, what it does, whether it comes with Onsay, and its settings
 //                  (Fields), or why it can't run
 // 5. Permissions   the most his programs may ever do on this computer, the lingo client's ceiling
-// 6. Account       signing in or out
-// 7. Requests      every request between this computer and Onsay, newest first, each opening to the message itself
+// 6. Account       who this computer is signed in as, and signing in or out
+// 7. Requests      everything this computer sent Onsay, newest first, each opening to the message itself
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -249,40 +250,72 @@ sealed class SettingsWindow : Window
 
     ////////// 6. ACCOUNT //////////
 
+    // 6. As the onsay lingo says: who this computer is signed in as, and its name on Onsay.
     UIElement Account()
     {
         var p = Page("Account");
-        if (settings.Token is null)
+        var (status, why) = Core.Onsay("status");
+        if (status is null) { p.Children.Add(Paragraph(why ?? "")); return p; }
+        if ((bool?)status["signed_in"] != true)
         {
             p.Children.Add(Paragraph("Not signed in. Sign in so he can answer you in the chat, and use the lingos on this computer for you."));
             p.Children.Add(chat.SignInBox(() => Go("Account")));
             return p;
         }
-        p.Children.Add(Paragraph($"This computer is signed in to Onsay as {settings.User ?? "your account"}."));
-        p.Children.Add(Button("Sign out", Kind.Quiet, () => { chat.SignOut(); Go("Account"); }));
+        p.Children.Add(Paragraph(status["handle"] is { } handle ? $"You're {handle}. This computer is {status["device"]}."
+            : "This computer is signed in to Onsay, and connecting to it now."));
+        var said = Note("");
+        p.Children.Add(Button("Sign out", Kind.Quiet, () => { if (chat.SignOut() is { } problem) said.Text = problem; else Go("Account"); }));
+        p.Children.Add(said);
         return p;
     }
 
     ////////// 7. REQUESTS //////////
 
-    // 7. Read afresh each time the page is picked, so Refresh is picking it again.
+    // What each kind of message is, in plain words.
+    static readonly Dictionary<string, string> Kinds = new()
+    {
+        ["hello"] = "This computer connected to Onsay, with the lingos on it",
+        ["catalog"] = "The lingos on this computer changed",
+        ["prompt"] = "Something you asked, with the chat before it",
+        ["lingo"] = "A lingo asked Onsay for something while it ran",
+        ["response"] = "A lingo's answer to a request that came through Onsay",
+        ["applied"] = "Your account's newest rules, as this computer put them in place, and any it wouldn't allow",
+        ["log"] = "What was allowed or refused on this computer, for your account's activity",
+        ["api"] = "A question to Onsay: signing in, your account's rules, or checking another of your devices",
+    };
+
+    /* 7. The onsay lingo keeps everything it sends in sent.log in the lingo client's home, a line each, oldest first. Read
+          afresh each time the page is picked, so Refresh is picking it again, newest first, the newest 500. */
     UIElement Requests()
     {
         var p = Page("Requests");
-        p.Children.Add(Paragraph("Every request between this computer and Onsay is kept here, newest first, exactly as it went, so you can see for yourself. " +
+        p.Children.Add(Paragraph("Everything this computer sends Onsay is kept here, newest first, exactly as it went, so you can see for yourself. " +
             "The prompts you send, and what each lingo asks for and answers as it runs. " +
             "Your files, passwords and screen stay here unless you ask him to send something."));
-        var sent = Desktop.Requests.Read();
-        var file = Button("Open the log file", Kind.Quiet, () => { if (System.IO.File.Exists(Desktop.Requests.File_)) Native.Open(Desktop.Requests.File_); });
+        var path = Path.Combine(Core.Home, "sent.log");
+        var file = Button("Open the log file", Kind.Quiet, () => { if (File.Exists(path)) Native.Open(path); });
         file.Margin = new Thickness(8, 0, 0, 0);
         p.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10), Children = { Button("Refresh", Kind.Quiet, () => Go("Requests")), file } });
-        if (sent.Count == 0) { p.Children.Add(Paragraph("No requests yet.")); return p; }
-        p.Children.Add(Paragraph($"The newest {sent.Count} request{(sent.Count == 1 ? "" : "s")}."));
-        foreach (var (at, kind, json) in sent)
+        var lines = new List<string>();
+        try
         {
+            using var read = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            for (string? line; (line = read.ReadLine()) is not null;) lines.Add(line);
+        }
+        catch (IOException) { }   // none sent yet
+        var shown = 0;
+        foreach (var line in Enumerable.Reverse(lines))
+        {
+            JsonNode? sent;
+            try { sent = JsonNode.Parse(line); } catch (JsonException) { continue; }
+            if (sent?["message"] is not JsonObject m) continue;
+            if (++shown > 500) break;
+            var kind = $"{m["type"]}";
             var head = new TextBlock { FontSize = 12.5, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
-            head.Inlines.Add(new Run($"{at:g}  ") { Foreground = Ink3, FontFamily = Mono });
-            head.Inlines.Add(new Run(Desktop.Requests.Kinds.GetValueOrDefault(kind, kind)));
+            head.Inlines.Add(new Run($"{(DateTime.TryParse($"{sent["at"]}", out var at) ? at : default):g}  ") { Foreground = Ink3, FontFamily = Mono });
+            head.Inlines.Add(new Run(Kinds.GetValueOrDefault(kind, kind)));
+            var json = m.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             var body = Selectable(11.5, Ink2);
             body.Text = json.Length > 20_000 ? json[..20_000] + "\n... (the rest is in the log file)" : json;
             body.Background = Page_;
@@ -291,6 +324,7 @@ sealed class SettingsWindow : Window
             body.Margin = new Thickness(0, 4, 0, 0);
             p.Children.Add(new Expander { Header = head, Content = body, Margin = new Thickness(0, 0, 0, 6), Foreground = Ink });
         }
+        if (shown == 0) p.Children.Add(Paragraph("Nothing sent yet."));
         return p;
     }
 }

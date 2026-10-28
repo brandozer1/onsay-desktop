@@ -1,15 +1,15 @@
 // Core.cs - runs the lingo client, onsay-core.exe: a small program that answers web requests on this computer, each
-// lingo at its own route, and is his hands here. It runs whether or not the person is signed in.
+// lingo at its own route, and is his hands here. Its onsay lingo connects it to Onsay: signing in, and the chat's
+// prompts at /onsay.
 //
 // 1. Start(settings)          writes core.json, puts the lingos this app ships in the lingos folder and starts the lingo
-//                             client with them, ending the one running first: on startup, a sign in or out, and the stop
-//                             key. It runs with --sent, so every message it sends to Onsay comes on its output too, for
-//                             the request log (Requests.cs). The first time a shipped lingo appears it is started, with
-//                             its Grants
+//                             client with them, ending the one running first: on startup and the stop key. The first
+//                             time a shipped lingo appears it is started, with its Grants
 // 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
 // 3. Needs                    what a lingo may do on this computer, in words: for Settings, Permissions, and for asking
 // 4. Control(verb, values)    one of the lingo client's verbs, like start, set, ceiling or asks: through its control
 //                             routes, or its command line when it isn't answering. Its answer, or why not, in words
+//    Onsay(phrase, values)    one of the onsay lingo's phrases, like status or sign_in, through call
 // 5. Lingos()                 every lingo on this computer: whether it runs, what it is, or why it can't run
 using System.Diagnostics;
 using System.IO;
@@ -25,12 +25,14 @@ static class Core
     // Each .lingo file in the lingos folder is a lingo, see ../lingo-client/core/README.md.
     static readonly string Exe = Path.Combine(AppContext.BaseDirectory, "onsay-core.exe");
     static readonly string Shipped = Path.Combine(AppContext.BaseDirectory, "lingos");
-    static readonly string Home = Path.Combine(Settings.Folder, "core");
+    public static readonly string Home = Path.Combine(Settings.Folder, "core");
     public static readonly string LingosFolder = Path.Combine(Home, "lingos");
     static readonly string Config = Path.Combine(Settings.Folder, "core.json");
     static readonly string Log = Path.Combine(Settings.Folder, "core.log");
-    const string Url = "http://127.0.0.1:6969";   // the lingo client's own default port, on this computer
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(3) };
+    // Where it answers on this computer: the port in core.json, its own default 6969 when it names none.
+    static int port = 6969;
+    public static string Url => $"http://127.0.0.1:{port}";
+    static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };   // each request has its own, below
 
     // 3. Each need, what it is in Settings, Permissions, and what a lingo asking for it wants to do.
     public static readonly (string Name, string Words, string Wants)[] Needs =
@@ -53,26 +55,24 @@ static class Core
 
     ////////// 1-2. RUNNING IT //////////
 
-    /* 1. Signed in, it keeps its own connection to Onsay with the same token, so Onsay can reach its lingos with nothing
-          for the person to set up. Signed out it runs bare, for this computer alone. From any thread: the stop key calls it
-          from its own. */
+    // 1. core.json holds its home, and keeps a port written there. From any thread: the stop key calls it from its own.
     public static void Start(Settings s)
     {
         Stop();
         Directory.CreateDirectory(LingosFolder);
         if (!File.Exists(Exe)) return;
-        var config = new JsonObject();
-        if (s.Token is not null) config["token"] = s.Token;
-        (config["name"], config["home"]) = (Environment.MachineName, Home);
+        var config = new JsonObject { ["home"] = Home };
+        try { if ((int?)JsonNode.Parse(File.ReadAllText(Config))?["port"] is int kept) config["port"] = port = kept; } catch (Exception) { }
         File.WriteAllText(Config, config.ToJsonString());
         settings = s;
         wanted = true;
         Run();
     }
 
-    /* Its errors go to core.log, and what it asks to be drawn comes on its output, see Overlay.cs. It comes back if it ever
-       stops on its own. The lingos are copied before it starts, while nothing has their libraries open, and only those
-       that differ. What an older version put there for one, its folder like windows\, goes, so it is never there twice. */
+    /* Its errors go to core.log, and what the windows lingo asks to be drawn comes on its output, see Overlay.cs. It comes
+       back if it ever stops on its own. The lingos are copied before it starts, while nothing has their libraries open,
+       and only those that differ. What an older version put there for one, its folder like windows\, goes, so it is never
+       there twice. */
     static void Run()
     {
         if (!wanted || process is { HasExited: false }) return;
@@ -89,7 +89,7 @@ static class Core
             catch (IOException) { }   // still open somewhere: the one there stays until next time
         var p = new Process
         {
-            StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\" --sent")
+            StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\"")
             {
                 CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
                 StandardOutputEncoding = Encoding.UTF8,
@@ -134,18 +134,22 @@ static class Core
     ////////// 4. CONTROL //////////
 
     /* 4. values go by name to its control route, and in order to its command line, a list as its words. A setting's value
-          is written as JSON there, so text stays text. asks and answer only mean something to the one running. */
+          is written as JSON there, so text stays text. The command line only when nothing answers the port: one that is
+          slow to answer is not asked twice. asks and answer only mean something to the one running. */
     public static (JsonNode? answer, string? why) Control(string verb, JsonObject? values = null)
     {
         values ??= new();
         try
         {
-            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Post, $"{Url}/.lingo/{verb}") { Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json") });
+            // A call, like signing in, may wait on Onsay. Anything else answers at once.
+            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Post, $"{Url}/.lingo/{verb}") { Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json") },
+                new CancellationTokenSource(TimeSpan.FromSeconds(verb == "call" ? 40 : 3)).Token);
             var said = JsonNode.Parse(res.Content.ReadAsStream());
             return res.IsSuccessStatusCode ? (said, null) : (null, $"{said?["error"]}");
         }
         catch (Exception) when (verb is "asks" or "answer") { return (null, "Onsay's helper on this computer isn't running."); }
-        catch (Exception) { }
+        catch (HttpRequestException) { }
+        catch (Exception) { return (null, "Onsay's helper on this computer took too long to answer. Try again in a moment."); }
         if (!File.Exists(Exe) || !File.Exists(Config)) return (null, "This copy of Onsay has no lingo client, so this can't be changed here.");
         var info = new ProcessStartInfo(Exe) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
         info.ArgumentList.Add(Config);
@@ -165,6 +169,10 @@ static class Core
         catch (Exception e) { return (null, e.Message); }
     }
 
+    // 4.
+    public static (JsonNode? answer, string? why) Onsay(string phrase, params JsonNode[] values) =>
+        Control("call", new() { ["fn"] = $"onsay.{phrase}", ["values"] = new JsonArray(values) });
+
     ////////// 5. THE LINGOS //////////
 
     // One lingo on this computer. Error is why it can't run, null when it can. Shipped comes with Onsay.
@@ -177,7 +185,7 @@ static class Core
         JsonArray all;
         try
         {
-            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Get, $"{Url}/"));
+            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Get, $"{Url}/"), new CancellationTokenSource(3000).Token);
             all = JsonNode.Parse(res.Content.ReadAsStream())!["lingos"]!.AsArray();
         }
         catch (Exception) { return null; }

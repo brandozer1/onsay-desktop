@@ -1,5 +1,5 @@
-// Overlay.cs - what the lingo client asks to be drawn while Onsay acts, read from its output a line of JSON at a time (Core.cs).
-// The windows lingo writes them, see ../lingo-client/lingos/windows/windows.c, the hand:
+// Overlay.cs - what the windows lingo asks to be drawn while Onsay acts, read from the lingo client's output a line of
+// JSON at a time (Core.cs). See ../lingo-client/lingos/windows/windows.c, the hand:
 //   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r}   his pointer glides there along that curve,
 //                                                               the real mouse with it when r
 //   {"show":"press","button":"left","times":1}                  it clicks
@@ -7,7 +7,6 @@
 //   {"show":"clear"}                                            the ring goes
 //   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
 //   {"show":"unpanel"}                                          his panel goes
-//   {"sent":{...}}                                              a message it sent to Onsay, for the request log
 // Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept.
 //
 // 1. Line(text)    one line from the lingo client, on any thread
@@ -30,7 +29,6 @@ static class Overlay
     {
         JsonElement m;
         try { m = JsonDocument.Parse(text).RootElement; } catch (JsonException) { return; }
-        if (m.TryGetProperty("sent", out var sent)) { Requests.Keep(sent.GetRawText()); return; }
         Application.Current?.Dispatcher.BeginInvoke(() => Handle(m));
     }
 

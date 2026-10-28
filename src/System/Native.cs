@@ -9,7 +9,6 @@
 // 7. Bare(window)               borderless, transparent, always on top, off screen and out of the taskbar
 // 8. ClickThrough(window)       never clicked or activated, for a window that is only a picture. Returns its handle
 // 9. Open(target)               a file, folder or link in its default app
-// 10. InFront()               the app and title of the window in front that isn't one of his, like ("chrome", "Inbox")
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -83,12 +82,6 @@ static class Native
     [DllImport("user32.dll")] static extern IntPtr CreateCursor(IntPtr instance, int hotX, int hotY, int w, int h, byte[] and, byte[] xor);
     [DllImport("user32.dll")] static extern bool SetSystemCursor(IntPtr cursor, uint id);
     [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint action, uint param, IntPtr value, uint flags);
-    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hwnd, uint cmd);
-    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
-    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int most);
-    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 
     ////////// FUNCTIONS //////////
 
@@ -152,18 +145,4 @@ static class Native
 
     // 9.
     public static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-
-    /* 10. Down the windows from the one in front, past his own, like the chat, to the first shown with a title: the one the
-           person was in. Its app is its program's name, as the core's window.list gives it. */
-    public static (string app, string title) InFront()
-    {
-        var title = new System.Text.StringBuilder(512);
-        for (var h = GetForegroundWindow(); h != IntPtr.Zero; h = GetWindow(h, 2))   // GW_HWNDNEXT
-        {
-            GetWindowThreadProcessId(h, out var pid);
-            if (pid == Environment.ProcessId || !IsWindowVisible(h) || IsIconic(h) || GetWindowText(h, title, title.Capacity) == 0) continue;
-            try { return (Process.GetProcessById((int)pid).ProcessName, title.ToString()); } catch (ArgumentException) { return ("", title.ToString()); }
-        }
-        return ("", "");
-    }
 }

@@ -1,26 +1,27 @@
-// ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. The
-// chat lives only here, in this window: each message is run on the server as lingo(words), the chat before it given with
-// it, and nothing of it is kept there.
-// He is its close button (his back has an X while it is open), and Esc closes it too.
+// ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. Each
+// chat is one session of the onsay lingo on this computer: every message goes to its /onsay, which asks Onsay and keeps
+// the session here. He is its close button (his back has an X while it is open), and Esc closes it too.
 //
 // 1.  Open(body, monitor, scale, focus)   opens, or follows him, next to his body rect in pixels, growing out of him
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
-// 3.  Stop()                              Stop, or Alt+Shift+O from any thread: stops his turn and the lingo client at once
+// 3.  Stop()                              Stop, or Alt+Shift+O from any thread: the lingo client starts again, which
+//                                         ends whatever it was doing
 // 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
 //                                         Settings, Account, and signing out from there
-// 5.  Page()                              shows the page that fits: sign in, home or chat
-// 6.  Send()                              your message goes to the server with an id, and its reply comes back with it
-//     Heard(m), Replied(...)              what the server says, drawn here as it happens, and his reply
+// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, home or chat
+// 6.  Send(), Ask(text)                   your message to /onsay in this chat's session, and his answer or his questions
+//     Replied(...)                        his answer, with how it ended and how long it took
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
-// 8.  Tell(text, bad)                     a line across the top, for what happens outside the chat
+// 8.  Tell(text)                          a line across the top, like "Copied the chat."
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
 //                                         of the conversation
-// 10. Steps(), AddStep(list, done)        a message's steps on other computers, folded under his reply, each opening to
-//                                         its IN and OUT
-// 11. Clear()                             a new chat: the conversation here forgotten, and home again
+// 10. Questions(list)                     his questions back, each picked or typed, answered together with one Send
+// 11. Clear()                             a new chat: a new session, and home again
 // 12. Menu()                              the header's menu: Copy chat and Settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
 //                                         Note, Switch, Selectable and the Thin scrollbar
+using System.Net.Http;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,7 +34,6 @@ using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Onsay.Character;
 using Ellipse = System.Windows.Shapes.Ellipse;
-using Run = System.Windows.Documents.Run;
 
 namespace Onsay.Desktop;
 
@@ -42,9 +42,8 @@ sealed class ChatWindow : Window
     ////////// SIZES AND ICONS //////////
 
     public const double Shadow = 16;   // transparent room around the card for its shadow, in DIPs
-    const int DetailMax = 1500;        // characters of a step's IN or OUT shown, the rest is trimmed
     // Glyphs from Icons.
-    const string NewIcon = "", MoreIcon = "", SendIcon = "", ClosedIcon = "", OpenIcon = "";
+    const string NewIcon = "", MoreIcon = "", SendIcon = "";
 
     ////////// STATE //////////
 
@@ -62,8 +61,8 @@ sealed class ChatWindow : Window
     readonly Ellipse readyDot = new() { Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0) };
 
     // The banner across the top, the bar while he works, the box, and the line at the bottom.
-    readonly Border banner = new() { Visibility = Visibility.Collapsed, Padding = new Thickness(14, 8, 14, 8) };
-    readonly TextBlock bannerText = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap };
+    readonly Border banner = new() { Visibility = Visibility.Collapsed, Padding = new Thickness(14, 8, 14, 8), Background = Butter };
+    readonly TextBlock bannerText = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Foreground = Ink2 };
     readonly DockPanel working = new() { Margin = new Thickness(14, 6, 14, 0), Visibility = Visibility.Collapsed };
     readonly TextBlock workingText = new() { FontSize = 12, Foreground = Ink2, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly TextBlock workingTime = new() { FontSize = 12, FontFamily = Mono, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
@@ -76,29 +75,25 @@ sealed class ChatWindow : Window
     };
     readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 0, 0) };
 
-    readonly HashSet<string> asking = new();     // the ids of the messages sent from here still waiting for their reply
-    string? me;                                  // this computer's instance id, from ready
-    string? called;                              // its name on Onsay, like laptop.brandon, from ready
-    bool online;                                 // whether this computer's lingo client is connected, so he can act here
+    // The onsay lingo's status: {signed_in, signing_in, connected, handle, device, key}. Null until it first answers.
+    JsonObject? status;
+    bool refreshing;
+    string? session;                             // this chat's session in the onsay lingo, from its first answer
+    int chat;                                    // which chat this is, so an answer to one cleared away is dropped
+    bool waiting, stopping;                      // a message is out, and Stop was pressed while it was
     bool greeted, following = true;
     DateTime doingSince;                         // when what he is doing now started, for the bar's timer
-    StepList? turn;                              // the steps of the message in progress, before his next line
     (RichTextBox row, string text)? speaking;
     CancellationTokenSource? signing;            // a sign in waiting on the browser
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    // The chat, oldest first: from "you", "onsay", or a "step" he took. Copy chat gives all of it, and each message goes
-    // with its newest turns that fit, steps left out, as the server reads them (../onsay/server/search/search.js chat).
+    // The chat, oldest first, from "you" or "onsay", for Copy chat.
     readonly List<(string from, string text)> said = new();
-    const int ChatTurns = 40, ChatText = 20_000;
+    // A prompt waits on Onsay, up to 5 minutes in the onsay lingo.
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(6) };
 
-    // One accordion per reply. Head is its clickable line, Body its rows, hidden while it has none.
-    sealed class StepList { public required Border Root; public required TextBlock Head; public required StackPanel Body; public int Count; public double Ms; }
-    // One step on another of the account's computers.
-    sealed record Done(string Title, string In, string Out, double Ms);
-    readonly List<StepList> stepLists = new();
-
-    public bool Busy => asking.Count > 0;           // a message sent from here is being answered
+    public bool Busy => waiting;                    // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
+    bool SignedIn => (bool?)status?["signed_in"] == true;
 
     readonly Grid whole;                            // the card and its shadow, which open and close as one
     readonly ScaleTransform zoom = new(1, 1);
@@ -249,22 +244,19 @@ sealed class ChatWindow : Window
         Resources.MergedDictionaries.Add(Thin);
         new WindowInteropHelper(this).EnsureHandle();
         Page();
-        Online();
-    }
-
-    // Signed in or out: the chat's connection while signed in, and the lingo client started with the settings that fit.
-    void Online()
-    {
-        if (settings.Token is not null) Link.Start(settings, Heard);
         Core.Start(settings);
+        // Whether this computer is signed in and connected, asked again every few seconds while the card shows.
+        var look = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        look.Tick += (_, _) => { if (Showing || status is null) Refresh(); };
+        look.Start();
     }
 
-    // The box's hint, and Send only while something is typed.
+    // The box's hint, and Send only while something is typed and no message is out.
     void ReadyInput()
     {
         hint.Text = Talking ? "Say something" : "Ask for something";
         hint.Visibility = Shown(box.Text.Length == 0);
-        bool any = box.Text.Trim().Length > 0;
+        bool any = box.Text.Trim().Length > 0 && !Busy;
         send.Opacity = any ? 1 : 0.4;
         send.IsHitTestVisible = any;
     }
@@ -284,6 +276,7 @@ sealed class ChatWindow : Window
             Show();
             ShowActivated = true;
             Appear();
+            Refresh();
         }
         Native.Place(hwnd, p);
         if (!focus) return;
@@ -347,22 +340,19 @@ sealed class ChatWindow : Window
         zoom.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(size, time) { EasingFunction = ease });
     }
 
-    // 3. Asks the server to stop every message waiting here, and starts the lingo client afresh so whatever program it is
-    //    running ends now, even if the server never hears.
+    // 3. Whatever the lingo client is running ends as it starts again, the message waiting here with it.
     public void Stop()
     {
+        stopping = true;
         Core.Start(settings);
-        Dispatcher.BeginInvoke(() =>
-        {
-            foreach (var id in asking) Link.Stop(id);
-            if (Busy) Working("Stopping");
-        });
+        Dispatcher.BeginInvoke(() => { if (Busy) Working("Stopping"); });
     }
 
     ////////// 4-5. SIGNING IN, AND THE PAGES //////////
 
-    /* 4. Sign in opens Onsay's page in the browser, and the code that page shows appears here too, so the person knows it
-          is theirs, with Cancel. done runs once signed in. centre lines it up for the chat's own page. */
+    /* 4. Sign in asks the onsay lingo, which gives the address to open and the code that page shows, and finishes on its own
+          once the person presses Connect there. The code shows here too, so they know it is theirs, with Cancel. done runs
+          once signed in. centre lines it up for the chat's own page. */
     public FrameworkElement SignInBox(Action? done = null, bool centre = false)
     {
         var align = centre ? HorizontalAlignment.Center : HorizontalAlignment.Left;
@@ -392,12 +382,25 @@ sealed class ChatWindow : Window
         {
             if (signing is not null) return;
             signing = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            var stop = signing.Token;
             error.Visibility = start.Visibility = Visibility.Collapsed;
             try
             {
-                await Link.Connect(settings, c => Dispatcher.Invoke(() => { code.Text = c; waiting.Visibility = Visibility.Visible; }), signing.Token);
-                Online();
-                Page();
+                var (got, why) = await Task.Run(() => Core.Onsay("sign_in"));
+                if (got is null) throw new Exception(why);
+                if (got["url"] is { } url)
+                {
+                    code.Text = $"{got["code"]}";
+                    waiting.Visibility = Visibility.Visible;
+                    Native.Open($"{url}");
+                    for (JsonNode? now = null; (bool?)now?["signed_in"] != true;)
+                    {
+                        await Task.Delay(2000, stop);
+                        now = (await Task.Run(() => Core.Onsay("status"))).answer;
+                        if (now is not null && (bool?)now["signed_in"] != true && (bool?)now["signing_in"] != true) throw new Exception("signing in didn't finish. Try again.");
+                    }
+                }
+                Refresh();
                 face.React("greet");
                 done?.Invoke();
             }
@@ -414,67 +417,60 @@ sealed class ChatWindow : Window
         return new StackPanel { Children = { start, waiting, error } };
     }
 
-    // 4. The lingo client starts again bare, for this computer alone.
-    public void SignOut()
+    // 4. Why it couldn't, or null. The lingo client runs on, for this computer alone.
+    public string? SignOut()
     {
-        (settings.Token, settings.User) = (null, null);
-        settings.Save();
-        (online, called) = (false, null);
-        Link.Close();
-        Online();
+        var why = Core.Onsay("sign_out").why;
+        status = null;
         Clear();
+        Refresh();
+        return why;
     }
 
-    // 5. Home until something is said here.
+    // 5. A moment it doesn't answer keeps what was known. Not asked while the lingo client isn't running.
+    async void Refresh()
+    {
+        if (refreshing || !Core.Running) return;
+        refreshing = true;
+        if ((await Task.Run(() => Core.Onsay("status"))).answer is JsonObject now) status = now;
+        refreshing = false;
+        Page();
+    }
+
+    // 5. Home until something is said here, and while the onsay lingo hasn't answered yet, getting ready.
     bool Talking => lines.Children.Count > 0;
 
     void Page()
     {
-        bool signedIn = settings.Token is not null, talking = signedIn && Talking;
-        signInPage.Visibility = Shown(!signedIn);
-        homePage.Visibility = Shown(signedIn && !talking);
+        bool known = status is not null, talking = SignedIn && Talking, connected = (bool?)status?["connected"] == true;
+        signInPage.Visibility = Shown(known && !SignedIn);
+        homePage.Visibility = Shown(!known || (SignedIn && !talking));
         chatPage.Visibility = fresh.Visibility = Shown(talking);
-        input.Visibility = footer.Visibility = Shown(signedIn);
-        subtitle.Text = signedIn ? settings.User ?? "" : "Not signed in";
-        if (!signedIn) Working(null);
+        input.Visibility = footer.Visibility = Shown(SignedIn);
+        subtitle.Text = !known ? "" : SignedIn ? $"{status!["handle"]}" : "Not signed in";
+        if (known && !SignedIn) Working(null);
         ReadyInput();
-        readyDot.Fill = online ? Good : Ink4;
-        ready.Text = online ? $"This computer is {called}" : "Getting this computer ready";
+        readyDot.Fill = connected ? Good : Ink4;
+        ready.Text = connected ? $"You're {status!["handle"]}. This computer is {status["device"]}." : SignedIn ? "Connecting to Onsay" : "Getting this computer ready";
     }
 
     ////////// 6. TALKING TO HIM //////////
 
-    // 6. Your message shows once it is on its way. Each runs on its own, so one sent while another works waits for nothing.
-    async void Send()
+    // 6. One message at a time: Send waits while one is out.
+    void Send()
     {
         var text = box.Text.Trim();
-        if (text.Length == 0 || settings.Token is null) return;
-        var id = Guid.NewGuid().ToString("N");
+        if (text.Length == 0 || Busy || !SignedIn) return;
         box.Clear();
-        // The chat before it, its oldest turns dropped first, and what was around it: this computer's time, zone and
-        // language, and the window the person was in.
-        var chat = new JsonArray();
-        for (int i = said.Count - 1, room = ChatText; i >= 0 && chat.Count < ChatTurns; i--)
-        {
-            if (said[i].from == "step") continue;
-            if ((room -= said[i].text.Length) < 0) break;
-            chat.Insert(0, new JsonObject { ["from"] = said[i].from, ["text"] = said[i].text });
-        }
-        var (now, zone, (app, window)) = (DateTimeOffset.Now, TimeZoneInfo.Local, Native.InFront());
-        var context = new JsonObject
-        {
-            ["os"] = "windows", ["time"] = now.ToString("yyyy-MM-dd'T'HH:mm:sszzz"), ["zone"] = zone.IsDaylightSavingTime(now) ? zone.DaylightName : zone.StandardName,
-            ["language"] = System.Globalization.CultureInfo.CurrentUICulture.Name, ["app"] = app, ["window"] = window,
-        };
-        if (!await Link.Say(id, text, chat, context))
-        {
-            box.Text = text;
-            face.React("stuck");
-            Tell("I can't reach my server right now. I'll keep trying, so send it again in a moment.", bad: true);
-            return;
-        }
-        asking.Add(id);
-        turn = null;
+        Ask(text);
+    }
+
+    /* 6. Shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in this chat's session, a new
+          one for the first. Its answer is his reply, or questions back. */
+    async void Ask(string text)
+    {
+        int mine = chat;
+        (waiting, stopping) = (true, false);
         Yours(text);
         said.Add(("you", text));
         Page();
@@ -482,58 +478,46 @@ sealed class ChatWindow : Window
         chatPage.ScrollToEnd();
         Working("Thinking");
         face.React("thinking");
-    }
-
-    // Everything the server sends, on this window's thread. Only what answers a message sent from here is drawn.
-    void Heard(JsonObject m)
-    {
-        switch ($"{m["type"]}")
+        var started = DateTime.Now;
+        JsonObject? answer = null;
+        int code = 0;
+        try
         {
-            case "ready":
-                (me, online) = ($"{m["instance"]}", (bool?)m["online"] == true);
-                if ($"{m["name"]}" is { Length: > 0 } name) called = name;
-                Page();
-                return;
-            case "instance":
-                if ($"{m["id"]}" == me) { online = (bool?)m["online"] == true; Page(); }
-                return;
-            // A reply can't come back on a connection that dropped, so what was waiting is said to be lost.
-            case "offline":
-                if (!Busy) return;
-                asking.Clear();
-                turn = null;
-                Working(null);
-                Tell("I lost my connection to the server, so that may not have finished. Ask again in a moment.", bad: true);
-                return;
-            case "error": Tell($"My server couldn't do that: {m["error"]}", bad: true); return;
-            case "signedout":
-                (online, called) = (false, null);
-                Online();
-                Clear();
-                Tell("This computer was signed out of Onsay.", bad: true);
-                return;
-            case "step" when asking.Contains($"{m["id"]}"):
-                AddStep(turn ??= Steps(), new Done($"{m["title"]}", $"{m["in"]}", $"{m["out"]}", (double?)m["ms"] ?? 0));
-                return;
-            case "reply" when asking.Remove($"{m["id"]}"):
-                _ = Replied($"{m["ended"]}", $"{m["text"]}", (double?)m["ms"] ?? 0);
-                return;
+            var key = (await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }))).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"];
+            var body = new JsonObject { ["prompt"] = text, ["session"] = session };
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{Core.Url}/onsay") { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+            req.Headers.Authorization = new("Bearer", $"{key}");
+            using var res = await Http.SendAsync(req);
+            code = (int)res.StatusCode;
+            answer = JsonNode.Parse(await res.Content.ReadAsStringAsync()) as JsonObject;
+        }
+        catch (Exception) { }
+        if (mine != chat) return;
+        waiting = false;
+        Working(null);
+        var ms = (DateTime.Now - started).TotalMilliseconds;
+        if (stopping) await Replied("Stopped.", "Stopped", ms);
+        else if (code != 200)
+            await Replied(code == 0 ? "Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."
+                : $"{answer?["error"] ?? "Something went wrong there. Try again in a moment."}", "Failed", ms);
+        else
+        {
+            session = $"{answer!["session"]}";
+            if (answer["questions"] is JsonArray questions) Questions(questions);
+            else await Replied($"{answer["text"]}", "Done", ms);
         }
     }
 
-    // His reply, with how long it took. ended: answered, stopped or failed.
-    async Task Replied(string ended, string text, double ms)
+    // 6. His reply, and under it how it ended, Done, Stopped or Failed, how long it took, and Copy.
+    async Task Replied(string text, string ended, double ms)
     {
-        turn = null;
-        if (!Busy) Working(null);
         face.Mood("calm");
-        await Say(text, error: ended == "failed");
-        // Under it, how it ended and how long it took, and Copy for the whole reply as he wrote it.
+        await Say(text, error: ended == "Failed");
         var under = new DockPanel { Margin = new Thickness(0, -8, 0, 12) };
         if (text.Trim().Length > 0) under.Children.Add(Right(Markdown.Copy(text, "Copy")));
-        under.Children.Add(new TextBlock { Text = $"{(ended == "answered" ? "Done" : ended == "stopped" ? "Stopped" : "Failed")} in {Took(ms)}", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center });
+        under.Children.Add(new TextBlock { Text = $"{ended} in {Took(ms)}", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center });
         lines.Children.Add(under);
-        face.React(ended == "answered" ? "answered" : ended == "stopped" ? "no" : "stuck");
+        face.React(ended == "Done" ? "answered" : ended == "Stopped" ? "no" : "stuck");
     }
 
     ////////// 7-8. THE BAR AND THE BANNER //////////
@@ -556,14 +540,11 @@ sealed class ChatWindow : Window
     }
 
     // 8. It goes by itself after a few seconds.
-    public async void Tell(string text, bool bad = false)
+    async void Tell(string text)
     {
-        if (!Showing) setOpen(true);
-        banner.Background = bad ? BadSoft : Butter;
-        bannerText.Foreground = bad ? Bad : Ink2;
         bannerText.Text = text;
         banner.Visibility = Visibility.Visible;
-        await Task.Delay(TimeSpan.FromSeconds(bad ? 9 : 5));
+        await Task.Delay(TimeSpan.FromSeconds(5));
         if (bannerText.Text == text) banner.Visibility = Visibility.Collapsed;
     }
 
@@ -636,107 +617,67 @@ sealed class ChatWindow : Window
         return $"{(int)(s / 60)}m {(int)(s % 60):00}s";
     }
 
-    ////////// 10. STEPS //////////
+    ////////// 10. QUESTIONS BACK //////////
 
-    bool StepsOpen => settings.ShowSteps == true;
-
-    StepList Steps()
+    /* 10. Each question is text, answered by typing, or {question, choices}, answered by picking one. Send lights up once
+           every one is answered, and sends them all as the next message in this session, a line each: the question, then
+           its answer. */
+    void Questions(JsonArray questions)
     {
-        var head = new TextBlock { FontSize = 12, Foreground = Ink3, Cursor = Cursors.Hand };
-        var body = new StackPanel { Margin = new Thickness(0, 6, 0, 0), Visibility = Shown(StepsOpen) };
-        var list = new StepList
+        var asked = questions.Select(q => q is JsonObject o ? (words: $"{o["question"] ?? o["text"]}", choices: o["choices"] as JsonArray) : (words: $"{q}", choices: null)).ToList();
+        var answers = new string[asked.Count];
+        var card = new StackPanel();
+        Border go = null!;
+        void Ready()
         {
-            Head = head, Body = body,
-            Root = new Border
-            {
-                BorderBrush = Rule, BorderThickness = new Thickness(2, 0, 0, 0), Padding = new Thickness(10, 2, 0, 2), Margin = new Thickness(0, 0, 8, 12),
-                Visibility = Visibility.Collapsed, Child = new StackPanel { Children = { head, body } },
-            },
-        };
-        head.MouseLeftButtonUp += (_, _) => ToggleSteps();
-        stepLists.Add(list);
-        lines.Children.Add(list.Root);
-        return list;
-    }
-
-    // 10. One line per step with how long it took, opening to what went in and came out. Copy chat gives it in full.
-    void AddStep(StepList list, Done done)
-    {
-        list.Count++;
-        list.Ms += done.Ms;
-        list.Root.Visibility = Visibility.Visible;
-        Head(list);
-        static string Indent(string text) => string.Join("\n", (text.Trim().Length == 0 ? "(nothing)" : text.Trim()).Split('\n').Select(l => "      " + l.TrimEnd('\r')));
-        said.Add(("step", $"  {done.Title}{(done.Ms > 0 ? $" ({Took(done.Ms)})" : "")}\n    IN:\n{Indent(done.In)}\n    OUT:\n{Indent(done.Out)}"));
-        bool failed = done.Out.StartsWith("error") || done.Out.StartsWith("It did not");
-        var chevron = new TextBlock { Text = ClosedIcon, FontFamily = Icons, FontSize = 9, Foreground = Ink4, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        var line = new DockPanel { LastChildFill = true };
-        line.Children.Add(Right(chevron));
-        line.Children.Add(Right(new TextBlock { Text = done.Ms > 0 ? Took(done.Ms) : "", FontSize = 11, FontFamily = Mono, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) }));
-        line.Children.Add(new TextBlock
-        {
-            FontSize = 12, Foreground = Ink2, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
-            Inlines = { new Run("●  ") { Foreground = failed ? Bad : Accent, FontSize = 8 }, new Run(done.Title) },
-        });
-        var header = new Border { Child = line, Padding = new Thickness(6, 4, 6, 4), CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, Cursor = Cursors.Hand };
-        Hover(header, Page_, Brushes.Transparent);
-
-        var body = new Border
-        {
-            Child = new StackPanel { Children = { Block("IN", done.In), Block("OUT", done.Out) } },
-            Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(10, 6, 10, 8), Margin = new Thickness(4, 2, 0, 6), Visibility = Visibility.Collapsed,
-        };
-        header.MouseLeftButtonUp += (_, _) =>
-        {
-            bool open = body.Visibility != Visibility.Visible;
-            body.Visibility = Shown(open);
-            chevron.Text = open ? OpenIcon : ClosedIcon;
-        };
-        list.Body.Children.Add(new StackPanel { Children = { header, body } });
-    }
-
-    void ToggleSteps()
-    {
-        settings.ShowSteps = !StepsOpen;
-        settings.Save();
-        foreach (var list in stepLists)
-        {
-            list.Body.Visibility = Shown(StepsOpen);
-            Head(list);
+            bool all = answers.All(a => !string.IsNullOrWhiteSpace(a));
+            go.Opacity = all ? 1 : 0.4;
+            go.IsHitTestVisible = all;
         }
-    }
-
-    void Head(StepList list) =>
-        list.Head.Text = $"{(StepsOpen ? "Hide" : "Show")} {list.Count} step{(list.Count == 1 ? "" : "s")}{(list.Ms > 0 ? $" · {Took(list.Ms)}" : "")}";
-
-    static UIElement Block(string label, string text)
-    {
-        text = text.Trim();
-        var shown = Selectable(11, Ink2);
-        shown.FontFamily = Mono;
-        shown.Text = text.Length == 0 ? "(nothing)" : text.Length > DetailMax ? text[..DetailMax].TrimEnd() + "\n(trimmed)" : text;
-        return new StackPanel
+        for (int i = 0; i < asked.Count; i++)
         {
-            Margin = new Thickness(0, 2, 0, 4),
-            Children =
+            int at = i;
+            var label = Label(asked[i].words);
+            label.Margin = new Thickness(0, i == 0 ? 0 : 12, 0, 6);
+            card.Children.Add(label);
+            if (asked[i].choices is { Count: > 0 } choices)
             {
-                new TextBlock { Text = label, FontFamily = Mono, FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Ink3, Margin = new Thickness(0, 0, 0, 2) },
-                shown,
-            },
-        };
+                card.Children.Add(SetupWindow.Chips(choices.Select(c => ($"{c}", $"{c}")).ToArray(), () => answers[at] ?? "", v => { answers[at] = v; Ready(); }));
+                continue;
+            }
+            var typed = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
+            typed.TextChanged += (_, _) => { answers[at] = typed.Text; Ready(); };
+            card.Children.Add(new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card, Child = typed });
+        }
+        go = Button("Send", Kind.Primary, () =>
+        {
+            if (Busy) return;
+            card.IsEnabled = false;
+            go.Visibility = Visibility.Collapsed;
+            Ask(string.Join("\n", asked.Select((q, i) => $"{q.words}{(q.words.TrimEnd().EndsWith('?') || q.words.TrimEnd().EndsWith(':') ? "" : ":")} {answers[i].Trim()}")));
+        });
+        go.Margin = new Thickness(0, 14, 0, 0);
+        card.Children.Add(go);
+        Ready();
+        said.Add(("onsay", string.Join("\n", asked.Select(q => q.words))));
+        lines.Children.Add(new Border
+        {
+            Child = card, Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14, 12, 14, 14), Margin = new Thickness(0, 2, 24, 12),
+        });
+        face.Mood("calm");
+        face.React("answered");
     }
 
     ////////// 11. A NEW CHAT //////////
 
-    // 11. Replies still on their way are dropped when they come.
+    // 11. An answer still on its way is dropped when it comes.
     void Clear()
     {
         lines.Children.Clear();
-        stepLists.Clear();
         said.Clear();
-        asking.Clear();
-        turn = null;
+        (session, waiting) = (null, false);
+        chat++;
         Working(null);
         Page();
     }
@@ -776,7 +717,7 @@ sealed class ChatWindow : Window
                 MinWidth = 220, MaxWidth = 320, Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 }, Child = rows,
             },
         };
-        if (Talking) rows.Children.Add(Row("Copy chat", "The whole chat, every step, as text", () =>
+        if (Talking) rows.Children.Add(Row("Copy chat", "The whole chat, as text", () =>
         {
             menu.IsOpen = false;
             Clipboard.SetText(string.Join("\n\n", said.Select(s => s.from switch { "you" => $"You: {s.text}", "onsay" => $"Onsay: {s.text}", _ => s.text })));
