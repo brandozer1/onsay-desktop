@@ -1,6 +1,8 @@
 // ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. Each
 // chat is one session of the onsay lingo on this computer: every message goes to its /onsay, which asks Onsay and keeps
-// the session here. He is its close button (his back has an X while it is open), and Esc closes it too.
+// the session here. He is its close button (his back has an X while it is open), and Esc closes it too. Let me choose,
+// at the bottom, asks for every pick he makes instead of making it (decision mode), and while he works his steps show
+// as they happen, folded under one line once he answers.
 //
 // 1.  Open(body, monitor, scale, focus)   opens, or follows him, next to his body rect in pixels, growing out of him
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
@@ -10,13 +12,15 @@
 //                                         Settings, Account, and signing out from there
 // 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, Onsay turned
 //                                         off, home or chat
-// 6.  Send(), Ask(text)                   your message to /onsay in this chat's session, and his answer or his questions
+// 6.  Send(), Ask(text)                   your message to /onsay in this chat's session, followed as it runs, and his
+//                                         answer or his questions
 //     Replied(...)                        his answer, with how it ended and how long it took
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
 // 8.  Tell(text)                          a line across the top, like "Copied the chat."
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
 //                                         of the conversation
-// 10. Questions(list)                     his questions back, each picked or typed, answered together with one Send
+// 10. Questions(list, send)               his questions back, each picked or typed, answered together with one Send
+//     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
 // 11. Clear()                             a new chat: a new session, and home again
 // 12. Menu()                              the header's menu: Copy chat, and Apps and settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
@@ -90,6 +94,9 @@ sealed class ChatWindow : Window
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     // The chat, oldest first, from "you" or "onsay", for Copy chat.
     readonly List<(string from, string text)> said = new();
+    // Each message's steps: its block in the chat, the line it folds under, its lines, how many and how long it took.
+    sealed class StepList { public required Border Root; public required TextBlock Head; public required StackPanel Body; public int Count; public double Ms; }
+    readonly List<StepList> stepLists = new();
     // A prompt waits on Onsay, up to 5 minutes in the onsay lingo.
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(6) };
 
@@ -211,8 +218,24 @@ sealed class ChatWindow : Window
         box.GotKeyboardFocus += (_, _) => field.BorderBrush = Accent;
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
-        // The bottom line: what he may do here, and the stop key, written the way a keyboard shortcut is.
+        // The bottom line: what he may do here, Let me choose, and the stop key, written the way a keyboard shortcut is.
         var apps = Button("Apps", Kind.Quiet, () => SettingsWindow.Open(settings, this), "Turn apps on or off, and see what each may do");
+        var knob = new Ellipse { Width = 12, Height = 12, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
+        var track = new Border { Width = 30, Height = 16, CornerRadius = new CornerRadius(8), Child = knob, Margin = new Thickness(0, 0, 6, 0) };
+        void Choosing()
+        {
+            bool on = settings.LetMeChoose == true;
+            track.Background = on ? Accent : Edge_;
+            ((TranslateTransform)knob.RenderTransform).X = on ? 14 : 0;
+        }
+        var choose = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), Cursor = Cursors.Hand, Background = Brushes.Transparent,
+            ToolTip = "On: I show you the ways I found, and you pick what I do",
+            Children = { track, new TextBlock { Text = "Let me choose", FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center } },
+        };
+        choose.MouseLeftButtonUp += (_, _) => { settings.LetMeChoose = settings.LetMeChoose != true; settings.Save(); Choosing(); };
+        Choosing();
         var stopKey = new StackPanel
         {
             Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Stops him from any app, at any time",
@@ -226,7 +249,7 @@ sealed class ChatWindow : Window
                 },
             },
         };
-        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), Children = { Right(stopKey), apps } };
+        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, choose } };
 
         // Everything stacked: the pages share the one row that grows.
         var pages = new Grid { Children = { signInPage, offPage, homePage, chatPage } };
@@ -484,8 +507,11 @@ sealed class ChatWindow : Window
         Ask(text);
     }
 
-    /* 6. Shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in this chat's session, a new
-          one for the first. Its answer is his reply, or questions back. */
+    /* 6. Shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in this chat's session, made
+          here for the first in the onsay lingo's own way so it can be followed from the start, and with Let me choose on,
+          in decision mode. While it runs, what it is doing is asked of the session every moment: each new step is a line,
+          the newest one on the bar, and what it asks you is a card, answered on the same card. Its answer is his reply,
+          or questions back. */
     async void Ask(string text)
     {
         int mine = chat;
@@ -495,26 +521,66 @@ sealed class ChatWindow : Window
         Page();
         following = true;
         chatPage.ScrollToEnd();
-        Working("Thinking");
+        Working("Sending your message");
         face.React("thinking");
         var started = DateTime.Now;
         JsonObject? answer = null;
         int code = 0;
+        session ??= $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Random.Shared.Next(0x1000000):x6}";
+        var steps = Steps();
+        Border? card = null;
+        using var done = new CancellationTokenSource();
         try
         {
-            var key = (await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }))).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"];
+            var key = $"{(await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }))).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
+            HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
+            {
+                var req = new HttpRequestMessage(method, $"{Core.Url}/onsay{path}") { Content = body is null ? null : new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+                req.Headers.Authorization = new("Bearer", key);
+                return req;
+            }
+            async void Follow()
+            {
+                string? asked = null;
+                while (!done.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(400, done.Token);
+                        using var look = To(HttpMethod.Get, $"/sessions/{session}/live");
+                        using var res = await Http.SendAsync(look, done.Token);
+                        if (JsonNode.Parse(await res.Content.ReadAsStringAsync(done.Token)) is not JsonObject now || mine != chat) continue;
+                        var got = now["steps"] as JsonArray ?? new();
+                        for (int i = steps.Count; i < got.Count; i++) AddStep(steps, $"{got[i]?["text"]}", (int?)got[i]?["depth"] ?? 0);
+                        if (got.Count > 0) Working($"{got[^1]?["text"]}");
+                        if (now["questions"] is not JsonArray q) asked = null;
+                        else if (q.ToJsonString() != asked)
+                        {
+                            asked = q.ToJsonString();
+                            card = Questions(q, answers => _ = Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/answers", new JsonObject { ["answers"] = new JsonArray(answers.Select(a => (JsonNode?)a).ToArray()) })));
+                        }
+                    }
+                    catch (Exception) { }
+                }
+            }
+            Follow();
             var body = new JsonObject { ["prompt"] = text, ["session"] = session };
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"{Core.Url}/onsay") { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
-            req.Headers.Authorization = new("Bearer", $"{key}");
-            using var res = await Http.SendAsync(req);
+            if (settings.LetMeChoose == true) body["mode"] = "decision";
+            using var ask = To(HttpMethod.Post, "", body);
+            using var res = await Http.SendAsync(ask);
             code = (int)res.StatusCode;
             answer = JsonNode.Parse(await res.Content.ReadAsStringAsync()) as JsonObject;
         }
         catch (Exception) { }
+        done.Cancel();
         if (mine != chat) return;
         waiting = false;
         Working(null);
+        if (card is not null) card.IsEnabled = false;
+        // The answer has every step, for those that came while this computer was too busy to say.
+        if (answer?["steps"] is JsonArray all) for (int i = steps.Count; i < all.Count; i++) AddStep(steps, $"{all[i]?["text"]}", (int?)all[i]?["depth"] ?? 0);
         var ms = (DateTime.Now - started).TotalMilliseconds;
+        Fold(steps, ms);
         if (stopping) await Replied("Stopped.", "Stopped", ms);
         else if (code != 200)
             await Replied(code == 0 ? "Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."
@@ -641,8 +707,9 @@ sealed class ChatWindow : Window
 
     /* 10. Each question is text, answered by typing, or {question, choices}, answered by picking one. Send lights up once
            every one is answered, and sends them all as the next message in this session, a line each: the question, then
-           its answer. */
-    void Questions(JsonArray questions)
+           its answer. Or, asked while a message runs, to send, its answers in order. Once sent, the card keeps only each
+           question and its answer. Gives the card. */
+    Border Questions(JsonArray questions, Action<string[]>? send = null)
     {
         var asked = questions.Select(q => q is JsonObject o ? (words: $"{o["question"] ?? o["text"]}", choices: o["choices"] as JsonArray) : (words: $"{q}", choices: null)).ToList();
         var answers = new string[asked.Count];
@@ -671,22 +738,77 @@ sealed class ChatWindow : Window
         }
         go = Button("Send", Kind.Primary, () =>
         {
-            if (Busy) return;
-            card.IsEnabled = false;
-            go.Visibility = Visibility.Collapsed;
-            Ask(string.Join("\n", asked.Select((q, i) => $"{q.words}{(q.words.TrimEnd().EndsWith('?') || q.words.TrimEnd().EndsWith(':') ? "" : ":")} {answers[i].Trim()}")));
+            if (send is null && Busy) return;
+            var told = asked.Select((q, i) => $"{q.words}{(q.words.TrimEnd().EndsWith('?') || q.words.TrimEnd().EndsWith(':') ? "" : ":")} {answers[i].Trim()}").ToList();
+            card.Children.Clear();
+            foreach (var line in told) card.Children.Add(new TextBlock { Text = line, FontSize = 13, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 1) });
+            if (send is not null) send(answers.Select(a => a.Trim()).ToArray());
+            else Ask(string.Join("\n", told));
         });
         go.Margin = new Thickness(0, 14, 0, 0);
         card.Children.Add(go);
         Ready();
         said.Add(("onsay", string.Join("\n", asked.Select(q => q.words))));
-        lines.Children.Add(new Border
+        var shown = new Border
         {
             Child = card, Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
             Padding = new Thickness(14, 12, 14, 14), Margin = new Thickness(0, 2, 24, 12),
-        });
+        };
+        lines.Children.Add(shown);
         face.Mood("calm");
         face.React("answered");
+        return shown;
+    }
+
+    ////////// 10. STEPS //////////
+
+    bool StepsOpen => settings.ShowSteps == true;
+
+    // 10. Open while the message runs, under a quiet rule on its left, and shown only once it has a step.
+    StepList Steps()
+    {
+        var head = new TextBlock { FontSize = 12, Foreground = Ink3, Cursor = Cursors.Hand, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 0, 0, 2) };
+        var body = new StackPanel();
+        var list = new StepList
+        {
+            Head = head, Body = body,
+            Root = new Border
+            {
+                BorderBrush = Rule, BorderThickness = new Thickness(2, 0, 0, 0), Padding = new Thickness(10, 2, 0, 2), Margin = new Thickness(0, 0, 8, 12),
+                Visibility = Visibility.Collapsed, Child = new StackPanel { Children = { head, body } },
+            },
+        };
+        head.MouseLeftButtonUp += (_, _) =>
+        {
+            settings.ShowSteps = !StepsOpen;
+            settings.Save();
+            foreach (var l in stepLists) if (l.Ms > 0) Fold(l, l.Ms);
+        };
+        stepLists.Add(list);
+        lines.Children.Add(list.Root);
+        return list;
+    }
+
+    // 10. One line, a dot then what he is doing, each level of what it asked a step further in.
+    void AddStep(StepList list, string text, int depth)
+    {
+        list.Count++;
+        list.Root.Visibility = Visibility.Visible;
+        list.Body.Children.Add(new TextBlock
+        {
+            FontSize = 12, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Math.Min(depth, 4) * 14, 2, 0, 2),
+            Inlines = { new System.Windows.Documents.Run("●  ") { Foreground = depth > 0 ? Ink4 : Accent, FontSize = 8 }, new System.Windows.Documents.Run(text) },
+        });
+    }
+
+    // 10. Once answered it folds under one line, ▸ 4 steps · 3.1s, or stays open under ▾, as he was last told.
+    void Fold(StepList list, double ms)
+    {
+        list.Ms = ms;
+        if (list.Count == 0) { lines.Children.Remove(list.Root); stepLists.Remove(list); return; }
+        list.Head.Visibility = Visibility.Visible;
+        list.Head.Text = $"{(StepsOpen ? "▾" : "▸")} {list.Count} step{(list.Count == 1 ? "" : "s")} · {Took(ms)}";
+        list.Body.Visibility = Shown(StepsOpen);
     }
 
     ////////// 11. A NEW CHAT //////////
@@ -696,6 +818,7 @@ sealed class ChatWindow : Window
     {
         lines.Children.Clear();
         said.Clear();
+        stepLists.Clear();
         (session, waiting) = (null, false);
         chat++;
         Working(null);

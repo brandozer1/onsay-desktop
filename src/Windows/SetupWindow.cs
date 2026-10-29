@@ -313,7 +313,7 @@ sealed class SetupWindow : Window
             var c = new Border
             {
                 Tag = value, CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), Padding = new Thickness(14, 6, 14, 7), Margin = new Thickness(0, 0, 8, 8), Cursor = Cursors.Hand,
-                Child = new TextBlock { Text = name, FontSize = 13, FontWeight = FontWeights.SemiBold },
+                Child = new TextBlock { Text = name, FontSize = 13, FontWeight = name.Length > 24 ? FontWeights.Normal : FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap },
             };
             c.MouseLeftButtonUp += (_, _) => { pick(value); Draw(); };
             row.Children.Add(c);

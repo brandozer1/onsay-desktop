@@ -34,9 +34,22 @@ While something has the whole screen he steps aside. Right click him for Open ch
 Quit.
 
 **Each chat is a session of the onsay lingo.** A message goes to `/onsay` on the lingo client with its prompt key, read
-from the onsay lingo's settings, and the session its first answer gave. The onsay lingo asks Onsay and keeps the session
-on this computer. New chat starts a new one. One message at a time; Stop, or the stop key, starts the lingo client again,
+from the onsay lingo's settings, in a session the app names when the chat starts, the way the onsay lingo names one. The
+onsay lingo keeps the session on this computer and sends the whole of it to Onsay with every message, so he remembers
+the chat. New chat starts a new one. One message at a time; Stop, or the stop key, starts the lingo client again,
 which ends whatever it was doing.
+
+**What he is doing shows as he does it.** While a message runs the app asks `/onsay/sessions/<session>/live` every
+moment, the way it asks for the "Allow" questions: each step is a line in plain words under your message, like
+"Understanding what you asked", "Found 8 ways to do it", "Picked: Move the mouse pointer" and "Running it on your
+laptop", what a step asked indented under it, and the newest on the bar. Once he answers they fold under one line,
+"▸ 4 steps · 3.1s"; a click opens or folds them all, and he remembers which (`ShowSteps` in `desktop.json`).
+
+**Let me choose**, a switch under the box, has him ask before every pick he makes (`LetMeChoose` in `desktop.json`,
+sent as `mode: "decision"`): each time he would choose a way, for your message or for anything it asks on the way, a
+card asks "Which should I do on your laptop?" with each way in a few words and None of these, which stops him. A value
+he needs that nobody gave is asked for on the next card. Your answers go to `/onsay/sessions/<session>/answers`, and the
+card keeps only each question and its answer.
 
 **Questions back** show in the chat together: a question as text gets a box to type in, `{question, choices}` a button
 for each choice. Send, once every one is answered, sends them as the next message in the same session, a line each, like
