@@ -1,6 +1,6 @@
 // Core.cs - runs the lingo client, onsay-core.exe: a small program that answers web requests on this computer, each
-// lingo at its own route, and is his hands here. Its onsay lingo connects it to Onsay: signing in, and the chat's
-// prompts at /onsay.
+// lingo at its own route, and is his hands here. Its onsay lingo connects it to Onsay: signing in, and /onsay, where it
+// works each message of the chat through with Onsay.
 //
 // 1. Start(settings)          writes core.json, puts the lingos this app ships in the lingos folder and starts the lingo
 //                             client with them, ending the one running first: on startup and the stop key. The first

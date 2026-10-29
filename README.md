@@ -9,8 +9,8 @@ It is two things:
 - **The lingo client**, `onsay-core.exe`, from [lingo-client](https://github.com/brandozer1/lingo-client): a small
   program that answers web requests on port 6969, on this computer alone until its policy shares something. Each running
   lingo in its lingos folder is a program at its route. Its **onsay lingo** connects it to Onsay: signing in, the
-  connection, and `/onsay`, where prompts come in.
-- **The app around it**: his character on the taskbar, the chat, setting him up, and his window: Apps, Devices, People,
+  connection, and `/onsay`, where it works each message through with Onsay, a step at a time.
+- **The app around it**: his character on the taskbar, the chat, setting him up, and Apps and settings: Apps, Devices, People,
   Activity, Settings and Advanced. On screen a lingo is an app.
 
 ## Setting him up
@@ -33,11 +33,14 @@ He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O s
 While something has the whole screen he steps aside. Right click him for Open chat, Apps, Settings, Put him back and
 Quit.
 
-**Each chat is a session of the onsay lingo.** A message goes to `/onsay` on the lingo client with its prompt key, read
-from the onsay lingo's settings, in a session the app names when the chat starts, the way the onsay lingo names one. The
-onsay lingo keeps the session on this computer, the agent's tool calls and what they gave included, and sends the whole
-of it to Onsay with every message, so he remembers the chat and what he did in it. New chat starts a new one. One message at a time; Stop, or the stop key, starts the lingo client again,
-which ends whatever it was doing.
+**The chat only draws; the onsay lingo does the work.** Each chat is a session of the onsay lingo. A message goes to
+`/onsay` on the lingo client with its prompt key, read from the onsay lingo's settings, in a session the app names when
+the chat starts, the way the onsay lingo names one, with `mode` for Let me choose. The onsay lingo works it through as
+the agent loop: Onsay decides each step from the whole session, a call or the reply, and the onsay lingo runs each call
+on this computer or through Onsay, until the reply (lingo-client `lingos/onsay/README.md`). It keeps the session, every
+call and what it gave included, so he remembers the chat and what he did in it. The app draws what comes back and what
+the lingos ask; Copy chat reads the session. New chat starts a new one. One message at a time; Stop, or the stop key,
+starts the lingo client again, which ends whatever it was doing.
 
 **What he is doing shows as he does it.** While a message runs the app asks `/onsay/sessions/<session>/live` every
 moment, the way it asks for the "Allow" questions: each step is a line in plain words under your message, like
@@ -45,11 +48,10 @@ moment, the way it asks for the "Allow" questions: each step is a line in plain 
 laptop", what a step asked indented under it, and the newest on the bar. Once he answers they fold under one line,
 "▸ 4 steps · 3.1s"; a click opens or folds them all, and he remembers which (`ShowSteps` in `desktop.json`).
 
-**Let me choose**, a switch under the box, has him ask before every pick he makes (`LetMeChoose` in `desktop.json`,
-sent as `mode: "decision"`): each time he would choose a way, for your message or for anything it asks on the way, a
-card asks "Which should I do on your laptop?" with each way in a few words and None of these, which stops him. A value
-he needs that nobody gave is asked for on the next card. Your answers go to `/onsay/sessions/<session>/answers`, and the
-card keeps only each question and its answer.
+**Let me choose**, a switch under the box, has him ask before every step he takes (`LetMeChoose` in `desktop.json`,
+sent as `mode: "decision"`): before each call, a card asks "Which should I do?" with each way, what it does and where,
+and None of these, which stops him. A value a call needs that nobody gave is asked for on a card too, with or without
+it. Your answers go to `/onsay/sessions/<session>/answers`, and the card keeps only each question and its answer.
 
 **Questions back** show in the chat together: a question as text gets a box to type in, `{question, choices}` a button
 for each choice. Send, once every one is answered, sends them as the next message in the same session, a line each, like
@@ -71,7 +73,7 @@ another of your devices it says so: "Your desktop wants Onsay to run a program h
 lingo client for the questions every second (`/.lingo/asks`) and answers through `/.lingo/answer`. With the app closed,
 the lingo client refuses instead.
 
-## His window
+## Apps and settings
 
 | Page | What it has |
 |------|-------------|
@@ -129,7 +131,7 @@ next quits (`src/System/Updates.cs`).
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), his window, Apps to Advanced (`SettingsWindow`), a lingo asking first (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), a lingo asking first (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
 | `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the windows lingo asks to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 

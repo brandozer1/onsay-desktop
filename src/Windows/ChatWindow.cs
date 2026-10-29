@@ -1,8 +1,9 @@
-// ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. Each
-// chat is one session of the onsay lingo on this computer: every message goes to its /onsay, which asks Onsay and keeps
-// the session here. He is its close button (his back has an X while it is open), and Esc closes it too. Let me choose,
-// at the bottom, asks for every pick he makes instead of making it (decision mode), and while he works his steps show
-// as they happen, folded under one line once he answers.
+// ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. It
+// only draws: each chat is one session of the onsay lingo on this computer, every message goes to its /onsay, which
+// works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask is
+// shown here. He is its close button (his back has an X while it is open), and Esc closes it too. Let me choose, at the
+// bottom, sends decision mode, so each step is a card of ways to pick from, and while he works his steps show as they
+// happen, folded under one line once he answers.
 //
 // 1.  Open(body, monitor, scale, focus)   opens, or follows him, next to his body rect in pixels, growing out of him
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
@@ -14,6 +15,7 @@
 //                                         off, home or chat
 // 6.  Send(), Ask(text)                   your message to /onsay in this chat's session, followed as it runs, and his
 //                                         answer or his questions
+//     To(method, path, body)              a request to /onsay, with its prompt key
 //     Replied(...)                        his answer, with how it ended and how long it took
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
 // 8.  Tell(text)                          a line across the top, like "Copied the chat."
@@ -24,7 +26,7 @@
 //                                         shows (chat.step)
 //     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
 // 11. Clear()                             a new chat: a new session, and home again
-// 12. Menu()                              the header's menu: Copy chat, and Apps and settings
+// 12. Menu()                              the header's menu: Copy chat, from the session, and Apps and settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
 //                                         Note, Switch, Selectable and the Thin scrollbar
 using System.Net.Http;
@@ -86,7 +88,8 @@ sealed class ChatWindow : Window
     // first answers.
     JsonObject? status;
     bool refreshing;
-    string? session;                             // this chat's session in the onsay lingo, from its first answer
+    string? session;                             // this chat's session in the onsay lingo, named here as the onsay lingo names one
+    string? promptKey;                           // the onsay lingo's prompt key, read again for each message
     int chat;                                    // which chat this is, so an answer to one cleared away is dropped
     bool waiting, stopping;                      // a message is out, and Stop was pressed while it was
     bool greeted, following = true;
@@ -94,8 +97,6 @@ sealed class ChatWindow : Window
     (RichTextBox row, string text)? speaking;
     CancellationTokenSource? signing;            // a sign in waiting on the browser
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    // The chat, oldest first, from "you" or "onsay", for Copy chat.
-    readonly List<(string from, string text)> said = new();
     // Each message's steps: its block in the chat, the line it folds under, its lines, how many and how long it took.
     sealed class StepList { public required Border Root; public required TextBlock Head; public required StackPanel Body; public int Count; public double Ms; }
     readonly List<StepList> stepLists = new();
@@ -521,7 +522,6 @@ sealed class ChatWindow : Window
         int mine = chat;
         (waiting, stopping) = (true, false);
         Yours(text);
-        said.Add(("you", text));
         Page();
         following = true;
         chatPage.ScrollToEnd();
@@ -537,13 +537,7 @@ sealed class ChatWindow : Window
         using var done = new CancellationTokenSource();
         try
         {
-            var key = $"{(await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }))).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
-            HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
-            {
-                var req = new HttpRequestMessage(method, $"{Core.Url}/onsay{path}") { Content = body is null ? null : new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
-                req.Headers.Authorization = new("Bearer", key);
-                return req;
-            }
+            promptKey = $"{(await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }))).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
             async void Follow()
             {
                 string? asked = null;
@@ -599,6 +593,14 @@ sealed class ChatWindow : Window
         }
     }
 
+    // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.
+    HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
+    {
+        var req = new HttpRequestMessage(method, $"{Core.Url}/onsay{path}") { Content = body is null ? null : new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+        req.Headers.Authorization = new("Bearer", promptKey);
+        return req;
+    }
+
     // 6. His reply, and under it how it ended, Done, Stopped or Failed, how long it took, and Copy.
     async Task Replied(string text, string ended, double ms)
     {
@@ -648,7 +650,6 @@ sealed class ChatWindow : Window
     {
         var row = His();
         if (error) row.Foreground = Bad;
-        said.Add(("onsay", text));
         speaking = (row, text);
         var drawn = DateTime.MinValue;
         if (Showing) await face.Speak(text, soFar =>
@@ -753,7 +754,6 @@ sealed class ChatWindow : Window
         go.Margin = new Thickness(0, 14, 0, 0);
         card.Children.Add(go);
         Ready();
-        said.Add(("onsay", string.Join("\n", asked.Select(q => q.words))));
         var shown = new Border
         {
             Child = card, Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
@@ -852,7 +852,6 @@ sealed class ChatWindow : Window
     void Clear()
     {
         lines.Children.Clear();
-        said.Clear();
         stepLists.Clear();
         lingoCards.Clear();
         (session, waiting) = (null, false);
@@ -896,11 +895,19 @@ sealed class ChatWindow : Window
                 MinWidth = 220, MaxWidth = 320, Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 }, Child = rows,
             },
         };
-        if (Talking) rows.Children.Add(Row("Copy chat", "The whole chat, as text", () =>
+        // The chat as the onsay lingo keeps it in its session: each message, then his reply or his questions.
+        if (Talking && session is not null) rows.Children.Add(Row("Copy chat", "The whole chat, as text", async () =>
         {
             menu.IsOpen = false;
-            Clipboard.SetText(string.Join("\n\n", said.Select(s => s.from switch { "you" => $"You: {s.text}", "onsay" => $"Onsay: {s.text}", _ => s.text })));
-            Tell("Copied the chat.");
+            try
+            {
+                using var res = await Http.SendAsync(To(HttpMethod.Get, $"/sessions/{session}"));
+                var turns = JsonNode.Parse(await res.Content.ReadAsStringAsync())?["turns"] as JsonArray ?? new();
+                Clipboard.SetText(string.Join("\n\n", turns.Select(t => $"You: {t?["prompt"]}\n\nOnsay: " +
+                    (t?["questions"] is JsonArray q ? string.Join("\n", q.Select(x => x is JsonObject o ? $"{o["question"]}" : $"{x}")) : $"{t?["text"]}"))));
+                Tell("Copied the chat.");
+            }
+            catch (Exception) { Tell("The chat couldn't be copied. Try again in a moment."); }
         }));
         rows.Children.Add(Row("Apps and settings", "Your apps, devices, people, activity and account", () => { menu.IsOpen = false; SettingsWindow.Open(settings, this); }));
         menu.IsOpen = true;
