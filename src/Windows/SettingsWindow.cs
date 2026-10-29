@@ -1,17 +1,17 @@
-// SettingsWindow.cs - Onsay's window, from his right click menu or the chat's: a list of pages down the left, the page on
-// the right. One window at a time, above his chat, and every change takes effect as it is made. Every word on it is the
+// SettingsWindow.cs - Apps and settings, from his right click menu or the chat's: a list of pages down the left, the page
+// on the right. One window at a time, above his chat, and every change takes effect as it is made. Every word on it is the
 // person's: a lingo is an app, an access rule is sharing, a grant is allowing.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
-// 2. Apps        every app on this computer: on or off, what it can do, who can use it, Share, and its own settings
+// 2. Apps        a row for each app with its switch, the helpers folded under one row. A row opens what it can do, who
+//                can use it, Share and its own settings
 //    Fields      an app's own settings, as its openapi.json declares them
 // 3. Devices     the computers on the account, online or not
 // 4. People      who each app is shared with, and Stop sharing
-// 5. Activity    what reached this computer and what apps were allowed or refused, newest first
+// 5. Activity    what reached this computer and what apps were allowed or refused, by day, newest first
 // 6. Settings    the account, starting with Windows, his look, updates and removing Onsay
-// 7. Advanced    the most any app may do, who can reach this computer, the account's rules, keys, folders, the program
-//                that runs the apps, and everything sent to Onsay
-// 8. Off, Item   the line when Onsay is turned off here, and a row of a list
+// 7. Advanced    the most any app may do, who can reach this computer, the account, folders, and the logs to read
+// 8. Pieces      Off, the line when Onsay is turned off here; Section, a heading; Item, a row; Lines, a log's lines
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -31,7 +31,7 @@ sealed class SettingsWindow : Window
     readonly Settings settings;
     readonly ChatWindow chat;
     readonly StackPanel nav = new() { Margin = new Thickness(10, 14, 10, 10) };
-    readonly ScrollViewer page = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(26, 22, 26, 22) };
+    readonly ScrollViewer page = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(28, 22, 28, 28) };
     readonly List<(string Name, Func<UIElement> Build, Border Row)> pages = new();
 
     // 1.
@@ -65,7 +65,7 @@ sealed class SettingsWindow : Window
         Add("Settings", General);
         nav.Children.Add(new Border { Height = 1, Background = Rule, Margin = new Thickness(4, 10, 4, 10) });
         Add("Advanced", Advanced);
-        var side = new Border { Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 1, 0), Width = 180, Child = nav };
+        var side = new Border { Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 1, 0), Width = 150, Child = nav };
         DockPanel.SetDock(side, System.Windows.Controls.Dock.Left);
         Content = new DockPanel { Children = { side, page } };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
@@ -99,67 +99,121 @@ sealed class SettingsWindow : Window
         page.ScrollToTop();
     }
 
-    static StackPanel Page(string title, string about) => new()
+    // A page: its title, with a button at its end when given, and one line on what it is for.
+    static StackPanel Page(string title, string about, UIElement? end = null)
     {
-        MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Left,
-        Children = { new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(0, 0, 0, 10) }, Paragraph(about) },
-    };
+        var head = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+        if (end is not null) { DockPanel.SetDock(end, System.Windows.Controls.Dock.Right); head.Children.Add(end); }
+        head.Children.Add(new TextBlock { Text = title, FontSize = 22, FontWeight = FontWeights.SemiBold, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center });
+        var line = Paragraph(about);
+        line.Margin = new Thickness(0, 0, 0, 10);
+        return new StackPanel { MaxWidth = 600, HorizontalAlignment = HorizontalAlignment.Left, Children = { head, line } };
+    }
 
     const string Helper = "Onsay's helper on this computer isn't answering right now. Try again in a moment.";
 
     ////////// 2. APPS //////////
 
-    // 2. Each app: its switch, then Details and Share, which open what it can do and who can use it under it.
+    // The ones Onsay leads with, then the rest by name, and the small tools other apps build on, folded under Helpers.
+    static readonly string[] Lead = { "windows", "agent", "onsay", "native" };
+    static readonly string[] Helpers = { "encode", "json", "list", "math", "request", "text", "time", "url" };
+
+    // 2. Each app is a row: its name, the start of what it is, and its switch. A click on the row opens the rest under it.
     UIElement Apps()
     {
-        var p = Page("Apps", "Apps are how Onsay does things on this computer. Turn one off and nothing can use it, not even him.");
+        var p = Page("Apps", "What Onsay can use on this computer. Turn one off and nothing can use it, not even him.");
         var lingos = Core.Lingos();
         if (lingos is null) { p.Children.Add(Paragraph(Helper)); return p; }
-        if (lingos.Count == 0) p.Children.Add(Paragraph("No apps yet. To add one, put it in the apps folder, under Advanced."));
-        foreach (var l in lingos)
+        if (lingos.Count == 0) { p.Children.Add(Paragraph("No apps yet. To add one, open Advanced, press Open next to Apps folder, and put its file there.")); return p; }
+        var main = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var helpers = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(16, 0, 0, 0) };
+        var rows = new List<(Core.Lingo l, Border row, Border more)>();
+        foreach (var l in lingos.OrderBy(l => Array.IndexOf(Lead, l.Name) is var i and >= 0 ? i : Lead.Length).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
         {
-            if (l.Error is not null)
+            var into = new StackPanel();
+            var more = new Border { Visibility = Visibility.Collapsed, Background = Page_, CornerRadius = new CornerRadius(8), Padding = new Thickness(16, 2, 16, 14), Margin = new Thickness(0, 6, 0, 10), Child = into };
+            void Open(Action fill)
             {
-                p.Children.Add(Label(Core.Title(l.Name)));
-                var why = Paragraph($"It can't run because of a problem in it: {l.Error}");
-                why.Foreground = Bad;
-                p.Children.Add(why);
-                continue;
+                more.Visibility = Shown(more.Visibility != Visibility.Visible);
+                if (more.Visibility == Visibility.Visible) fill();
             }
-            // Its first sentence, so the list reads at a glance.
-            var first = l.About.Split(". ")[0].TrimEnd('.');
             var said = Note("");
-            (said.Margin, said.Visibility) = (new Thickness(0, 6, 12, 0), Visibility.Collapsed);
-            var more = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, -56, 0) };
-            void Open(bool sharing)
+            said.Margin = new Thickness(0, 6, 0, 4);
+            Border row;
+            if (l.Error is not null)
+                row = Item(Core.Title(l.Name), "It can't run because of a problem in it. Open it to see what.", null, () => Open(() =>
+                {
+                    into.Children.Clear();
+                    var why = Paragraph(l.Error);
+                    why.Foreground = Bad;
+                    into.Children.Add(why);
+                    into.Children.Add(Note("Whoever made it can fix it. Until then, nothing can use it."));
+                }));
+            else
             {
-                more.Visibility = sharing || more.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
-                if (more.Visibility == Visibility.Visible) Details(more, l, sharing);
+                // The start of its first sentence, so the list reads at a glance: up to its colon, or a comma that fits.
+                var first = l.About.Split(". ")[0].Trim().TrimEnd('.');
+                if (first.Length > 70) first = first.IndexOf(':') is var colon and >= 20 ? first[..colon] : first.LastIndexOf(", ", 70) is var comma and > 0 ? first[..comma] : first;
+                row = Item(Core.Title(l.Name), first.Length > 0 ? first : null, Toggle(l.Running, on =>
+                {
+                    said.Text = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why
+                        ?? (l.Name == "onsay" && !on ? "Off. He can't answer you in the chat, and your other devices can't reach this computer, until you turn it on again." : "");
+                }), () => Open(() => Details(into, l)));
             }
-            var share = Button("Share", Kind.Quiet, () => Open(true));
-            share.Margin = new Thickness(8, 0, 0, 0);
-            var below = new StackPanel { Children = { said, new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), Children = { Button("Details", Kind.Quiet, () => Open(false)), share } }, more } };
-            p.Children.Add(Switch(Core.Title(l.Name), first.Length > 0 ? first + "." : null, l.Running, on =>
-            {
-                said.Text = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why
-                    ?? (l.Name == "onsay" && !on ? "Off. He can't answer you in the chat, and your other devices can't reach this computer, until you turn it on again." : "");
-                said.Visibility = said.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-            }, below));
+            var list = Helpers.Contains(l.Name) ? helpers : main;
+            list.Children.Add(row);
+            list.Children.Add(said);
+            list.Children.Add(more);
+            rows.Add((l, row, more));
         }
+        var tools = lingos.Where(l => Helpers.Contains(l.Name)).Select(l => Core.Title(l.Name)).ToList();
+        if (tools.Count > 0)
+        {
+            var chevron = new TextBlock { Text = "", FontFamily = Icons, FontSize = 12, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center };
+            main.Children.Add(Item("Helpers", $"Small tools other apps use: {string.Join(", ", tools.Take(3))}{(tools.Count > 3 ? $" and {tools.Count - 3} more" : "")}", chevron, () =>
+            {
+                helpers.Visibility = Shown(helpers.Visibility != Visibility.Visible);
+                chevron.Text = helpers.Visibility == Visibility.Visible ? "" : "";
+            }));
+            main.Children.Add(helpers);
+        }
+        // A search box once the list is long enough to need one.
+        if (lingos.Count - tools.Count > 8)
+        {
+            var box = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
+            var hint = new TextBlock { Text = "Search apps", FontSize = 13, Foreground = Ink4, IsHitTestVisible = false, Margin = new Thickness(2, 0, 0, 0) };
+            box.TextChanged += (_, _) =>
+            {
+                hint.Visibility = Shown(box.Text.Length == 0);
+                if (box.Text.Length > 0) helpers.Visibility = Visibility.Visible;
+                foreach (var (l, row, more) in rows)
+                {
+                    row.Visibility = Shown(l.Name.Contains(box.Text, StringComparison.OrdinalIgnoreCase) || l.About.Contains(box.Text, StringComparison.OrdinalIgnoreCase));
+                    if (row.Visibility != Visibility.Visible) more.Visibility = Visibility.Collapsed;
+                }
+            };
+            p.Children.Add(new Border
+            {
+                BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 5, 8, 5), Margin = new Thickness(0, 8, 0, 0),
+                Width = 240, HorizontalAlignment = HorizontalAlignment.Left, Child = new Grid { Children = { hint, box } },
+            });
+        }
+        p.Children.Add(main);
         return p;
     }
 
-    /* 2. What it can do: each thing that matters it says it needs, allowed without asking or asked first, as a switch, and
-          what it was allowed for one folder. Who can use it: you, then each rule that lets someone in, with Stop sharing on
-          those set here. A change builds it again, so it always shows what is true. */
-    void Details(StackPanel into, Core.Lingo l, bool sharing)
+    /* 2. An app opened: what it can do (each thing that matters it says it needs, allowed without
+          asking or asked first, and what it was allowed for one folder), who can use it (you, then each rule that lets
+          someone in, with Stop sharing on those set here), Share and its own settings. A change builds it again, so it
+          always shows what is true. */
+    void Details(StackPanel into, Core.Lingo l)
     {
         into.Children.Clear();
         var (policy, why) = Core.Control("policy");
         if (policy is null) { into.Children.Add(Paragraph(why ?? Helper)); return; }
         var said = Note("");
         said.Foreground = Bad;
-        void Did(string? problem) { if (problem is null) Details(into, l, false); else said.Text = problem; }
+        void Did(string? problem) { if (problem is null) Details(into, l); else said.Text = problem; }
         static List<string> Texts(JsonNode? list) => (list as JsonArray)?.Select(n => $"{n}").ToList() ?? new();
         var ceiling = Texts(policy["ceiling"]);
         var granted = Texts(policy["grants"]?[l.Name]);
@@ -171,20 +225,20 @@ sealed class SettingsWindow : Window
         {
             if (!ceiling.Contains(need)) { into.Children.Add(Item(words, "Turned off for every app, under Advanced.")); continue; }
             bool on = granted.Contains(need);
-            var inside = need.StartsWith("files") ? "In its own folder it never asks. " : "";
-            into.Children.Add(Switch(words, inside + (on ? "Allowed without asking." : "Asks you first."), on, yes =>
+            into.Children.Add(Item(words, on ? "Allowed without asking." : need.StartsWith("files") ? "Asks you first, except in its own folder." : "Asks you first.", Toggle(on, yes =>
                 Did(Core.Control(yes ? "grant" : "ungrant", new() { ["lingo"] = l.Name, ["need"] = need }).why is { } problem
-                    ? here.Contains(need) || yes ? problem : "That was allowed from your account on onsay.dev, so it changes there." : null)));
+                    ? here.Contains(need) || yes ? problem : "That was allowed from your account on onsay.dev, so it changes there." : null))));
         }
         foreach (var g in granted.Where(g => g.Contains(' ')))
         {
             var (need, path) = (g[..g.IndexOf(' ')], g[(g.IndexOf(' ') + 1)..]);
-            into.Children.Add(Switch($"{(need == "files.read" ? "Read" : "Change")} files in {path}", "Allowed without asking.", true, _ =>
+            into.Children.Add(Item($"{(need == "files.read" ? "Read" : "Change")} files in {path}", "Allowed without asking.", Toggle(true, _ =>
                 Did(Core.Control("ungrant", new() { ["lingo"] = l.Name, ["need"] = g }).why is { } problem
-                    ? here.Contains(g) ? problem : "That was allowed from your account on onsay.dev, so it changes there." : null)));
+                    ? here.Contains(g) ? problem : "That was allowed from your account on onsay.dev, so it changes there." : null))));
         }
-        if (l.Needs.Contains("net")) into.Children.Add(Note(ceiling.Contains("net") ? "It can reach the internet." : "It can't reach the internet: that is turned off for every app, under Advanced."));
-        else if (asks.Count == 0) into.Children.Add(Note("It needs nothing from this computer: not your screen, your files or your programs."));
+        var reach = l.Needs.Contains("net") ? ceiling.Contains("net") ? "It can reach the internet." : "It can't reach the internet: that is turned off for every app, under Advanced."
+            : asks.Count == 0 ? "It needs nothing from this computer: not your screen, your files or your programs." : null;
+        if (reach is not null) { var n = Note(reach); n.Margin = new Thickness(0, 8, 0, 0); into.Children.Add(n); }
 
         into.Children.Add(Label("Who can use it"));
         into.Children.Add(Item("You, on this computer", "Always."));
@@ -202,20 +256,33 @@ sealed class SettingsWindow : Window
             into.Children.Add(Item(title, $"{what}{(built ? " Built in." : mine ? "" : " Shared from your account on onsay.dev.")}", stop));
         }
 
-        // Share: their Onsay name, and all of it or one part, picked.
-        var form = new StackPanel { Visibility = sharing ? Visibility.Visible : Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
-        var open = Button("Share", Kind.Quiet, () => { form.Visibility = Visibility.Visible; });
-        open.Margin = new Thickness(0, 10, 0, 0);
-        open.Visibility = sharing ? Visibility.Collapsed : Visibility.Visible;
+        // Share: their Onsay name, and all of it or one part, picked. Its settings: as the app declares them.
+        var form = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 14, 0, 0) };
+        var fields = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 0) };
+        var buttons = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
         var name = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
-        form.Children.Add(Label($"Share {Core.Title(l.Name)} with someone"));
+        buttons.Children.Add(Button("Share with someone", Kind.Quiet, () =>
+        {
+            form.Visibility = Shown(form.Visibility != Visibility.Visible);
+            if (form.Visibility == Visibility.Visible) name.Focus();
+        }));
+        if (l.Name != "onsay")   // its settings are signing in and the chat key, under Settings and Advanced
+        {
+            var change = Button("Its settings", Kind.Quiet, () =>
+            {
+                if (fields.Children.Count == 0) Fields(fields, l.Name);
+                fields.Visibility = Shown(fields.Visibility != Visibility.Visible);
+            });
+            change.Margin = new Thickness(8, 0, 0, 0);
+            buttons.Children.Add(change);
+        }
+        form.Children.Add(Label($"Share {Core.Title(l.Name)}"));
         form.Children.Add(Note("Their Onsay name, the one they signed up with, like james. They can use it from their own devices, and nothing else here."));
         form.Children.Add(new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card, Child = name });
         var part = "";
         if (l.Parts.Length > 1)
         {
-            var pick = Label("What they can use");
-            form.Children.Add(pick);
+            form.Children.Add(Label("What they can use"));
             form.Children.Add(SetupWindow.Chips(new[] { ("", "All of it") }.Concat(l.Parts.Select(x => (x, Core.Title(x.Trim('/'))))).ToArray(), () => part, v => part = v));
         }
         var go = Button("Share", Kind.Primary, () =>
@@ -226,23 +293,11 @@ sealed class SettingsWindow : Window
             if (part.Length > 0) values["route"] = part;
             Did(Core.Control("share", values).why);
         });
-        var cancel = Button("Cancel", Kind.Quiet, () => { form.Visibility = Visibility.Collapsed; open.Visibility = Visibility.Visible; });
-        cancel.Margin = new Thickness(8, 0, 0, 0);
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), Children = { go, cancel } });
-        into.Children.Add(open);
-        into.Children.Add(form);
+        go.Margin = new Thickness(0, 12, 0, 0);
+        form.Children.Add(go);
+        into.Children.Add(buttons);
         into.Children.Add(said);
-        if (sharing) Dispatcher.BeginInvoke(() => name.Focus());
-
-        if (l.Name == "onsay") return;   // its settings are signing in and the chat key, under Settings and Advanced
-        var fields = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 0) };
-        var change = Button("Change its settings", Kind.Quiet, () =>
-        {
-            if (fields.Children.Count == 0) Fields(fields, l.Name);
-            fields.Visibility = fields.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
-        });
-        change.Margin = new Thickness(0, 14, 0, 0);
-        into.Children.Add(change);
+        into.Children.Add(form);
         into.Children.Add(fields);
     }
 
@@ -253,7 +308,7 @@ sealed class SettingsWindow : Window
     {
         var (got, why) = Core.Control("settings", new() { ["lingo"] = lingo });
         if (got is not JsonArray fields) { form.Children.Add(Paragraph(why ?? "")); return; }
-        if (fields.Count == 0) { form.Children.Add(Paragraph("This app has no settings.")); return; }
+        if (fields.Count == 0) { var none = Note("This app has no settings."); none.Margin = new Thickness(0, 12, 0, 0); form.Children.Add(none); return; }
         var read = new List<(string name, bool secret, string? value, Func<string> now)>();
         foreach (var f in fields)
         {
@@ -295,7 +350,7 @@ sealed class SettingsWindow : Window
             p.Children.Add(chat.SignInBox(() => Go("Devices")));
             return p;
         }
-        var list = new StackPanel { Children = { Note("Looking up your devices...") } };
+        var list = new StackPanel { Margin = new Thickness(0, 8, 0, 0), Children = { Note("Looking up your devices...") } };
         p.Children.Add(list);
         async void Load()
         {
@@ -328,9 +383,7 @@ sealed class SettingsWindow : Window
             .GroupBy(r => $"{r["who"]}");
         foreach (var person in people)
         {
-            var name = Label(person.Key);
-            name.FontSize = 15;
-            p.Children.Add(name);
+            p.Children.Add(Section(person.Key));
             foreach (var rule in person)
             {
                 var lingos = rule["lingos"] is JsonArray list ? string.Join(", ", list.Select(x => Core.Title($"{x}"))) : $"{rule["lingos"]}" is "*" ? "Every app" : Core.Title($"{rule["lingos"]}");
@@ -346,7 +399,7 @@ sealed class SettingsWindow : Window
         }
         if (!people.Any())
         {
-            p.Children.Add(Paragraph("You haven't shared anything yet. To share an app, press Share on it in Apps."));
+            p.Children.Add(Paragraph("You haven't shared anything yet. To share an app, open it in Apps and press Share with someone."));
             p.Children.Add(Button("Go to Apps", Kind.Quiet, () => Go("Apps")));
         }
         return p;
@@ -376,24 +429,16 @@ sealed class SettingsWindow : Window
     };
 
     /* 5. The lingo client writes every decision but the routine to decisions.log, a line each, oldest first: each request from
-          anyone but this computer, let in or not, and each thing an app was allowed or refused. The newest 300. */
+          anyone but this computer, let in or not, and each thing an app was allowed or refused. The newest 300, a row
+          each under its day, the time on the left. */
     UIElement Activity()
     {
-        var p = Page("Activity", "What reached this computer from your other devices and from people you share with, and what your apps were allowed to do. Newest first.");
-        p.Children.Add(Button("Refresh", Kind.Quiet, () => Go("Activity")));
+        var p = Page("Activity", "What your other devices, people you share with and your apps did on this computer.", Button("Refresh", Kind.Quiet, () => Go("Activity")));
         var handle = Core.Onsay("status").answer?["handle"] is { } h ? $"{h}" : null;
         var (policy, _) = Core.Control("policy");
         var local = policy?["local"]?["overrides"]?["access"] as JsonArray;
-        var lines = new List<string>();
-        try
-        {
-            using var read = new StreamReader(new FileStream(Path.Combine(Core.Home, "decisions.log"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
-            for (string? line; (line = read.ReadLine()) is not null;) lines.Add(line);
-        }
-        catch (IOException) { }   // nothing yet
-        var list = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-        p.Children.Add(list);
-        foreach (var line in Enumerable.Reverse(lines).Take(300))
+        DateTime? day = DateTime.MaxValue;
+        foreach (var line in Enumerable.Reverse(Lines(Path.Combine(Core.Home, "decisions.log"))).Take(300))
         {
             JsonNode? d;
             try { d = JsonNode.Parse(line); } catch (JsonException) { continue; }
@@ -410,14 +455,33 @@ sealed class SettingsWindow : Window
                 title = allowed ? $"{app} {did}" : $"{app} wasn't allowed to {wants}";
                 if (caller != "this computer") title += $", asked for by {(who.StartsWith("Your") || who.StartsWith("A ") || who == "Anyone" ? char.ToLower(who[0]) + who[1..] : who)}";
             }
-            var at = DateTime.TryParse($"{d?["at"]}", out var t) ? $" {t.ToLocalTime():g}" : "";
+            DateTime? at = DateTime.TryParse($"{d?["at"]}", out var t) ? t.ToLocalTime() : null;
+            if (at?.Date != day)
+            {
+                day = at?.Date;
+                var today = DateTime.Today;
+                p.Children.Add(Section(day is not { } date ? "Earlier" : date == today ? "Today" : date == today.AddDays(-1) ? "Yesterday" : $"{date:dddd d MMMM}"));
+            }
             // Someone's own device let in by sharing set here can be stopped from here.
             var shared = caller.Split('.') is [_, var them] && them != handle && allowed && why == $"rule: {them}"
                 ? local?.OfType<JsonObject>().FirstOrDefault(r => $"{r["who"]}" == them && ($"{r["lingos"]}" == $"{d?["lingo"]}" || $"{r["lingos"]}" == "*")) : null;
-            var stop = shared is null ? null : Button("Stop sharing", Kind.Quiet, () => { Core.Control("unshare", new() { ["lingo"] = $"{shared["lingos"]}", ["who"] = $"{shared["who"]}" }); Go("Activity"); });
-            list.Children.Add(Item(title + ".", Because(why) + at, stop));
+            var sentence = new TextBlock { FontSize = 13, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
+            sentence.Inlines.Add(new Run(title + ". "));
+            sentence.Inlines.Add(new Run(Because(why)) { Foreground = Ink3 });
+            var time = new TextBlock { Text = at?.ToString("t") ?? "", Width = 76, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 1, 0, 0) };
+            DockPanel.SetDock(time, System.Windows.Controls.Dock.Left);
+            var row = new DockPanel { Children = { time } };
+            if (shared is not null)
+            {
+                var stop = Button("Stop sharing", Kind.Quiet, () => { Core.Control("unshare", new() { ["lingo"] = $"{shared["lingos"]}", ["who"] = $"{shared["who"]}" }); Go("Activity"); });
+                stop.Margin = new Thickness(12, 0, 0, 0);
+                DockPanel.SetDock(stop, System.Windows.Controls.Dock.Right);
+                row.Children.Add(stop);
+            }
+            row.Children.Add(sentence);
+            p.Children.Add(new Border { BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 9, 0, 9), Child = row });
         }
-        if (list.Children.Count == 0) list.Children.Add(Paragraph("Nothing yet. When another of your devices or someone you share with uses an app here, or an app asks to do something that matters, it shows here."));
+        if (day == DateTime.MaxValue) p.Children.Add(Paragraph("Nothing yet. When another of your devices or someone you share with uses an app here, or an app asks to do something that matters, it shows here."));
         return p;
     }
 
@@ -428,7 +492,7 @@ sealed class SettingsWindow : Window
         var p = Page("Settings", "Your account, how he looks, and Onsay on this computer.");
 
         // 6. As the onsay lingo says: who this computer is signed in as, and its name on Onsay.
-        p.Children.Add(Label("Your account"));
+        p.Children.Add(Section("Your account"));
         var (status, why) = Core.Onsay("status");
         if (status is null) p.Children.Add(Paragraph(why ?? Helper));
         else
@@ -441,46 +505,41 @@ sealed class SettingsWindow : Window
             }
             else
             {
-                p.Children.Add(Paragraph(status["handle"] is { } handle ? $"You're {handle}. This computer is {status["device"]}."
-                    : "This computer is signed in to Onsay, and connects when Onsay is on."));
                 var said = Note("");
-                p.Children.Add(Button("Sign out", Kind.Quiet, () => { if (chat.SignOut() is { } problem) said.Text = problem; else Go("Settings"); }));
+                p.Children.Add(Item(status["handle"] is { } handle ? $"Signed in as {handle}" : "Signed in", status["device"] is { } device ? $"This computer is {device}." : "It connects when Onsay is on.",
+                    Button("Sign out", Kind.Quiet, () => { if (chat.SignOut() is { } problem) said.Text = problem; else Go("Settings"); })));
                 p.Children.Add(said);
             }
         }
 
-        p.Children.Add(Label("This computer"));
-        p.Children.Add(Switch("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Startup.IsOn, Startup.Set));
+        p.Children.Add(Section("On this computer"));
+        p.Children.Add(Item("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Toggle(Startup.IsOn, Startup.Set)));
 
         // 6. The same picker as setting him up, with him beside it. He on the taskbar changes too.
-        p.Children.Add(Label("His look"));
-        var preview = new Character.OnsayView { Width = 96, Height = 96, Margin = new Thickness(0, 0, 28, 0), VerticalAlignment = VerticalAlignment.Top };
+        p.Children.Add(Section("His look"));
+        var preview = new Character.OnsayView { Width = 80, Height = 80, Margin = new Thickness(0, 12, 28, 0), VerticalAlignment = VerticalAlignment.Top };
         DockPanel.SetDock(preview, System.Windows.Controls.Dock.Left);
         p.Children.Add(new DockPanel { Children = { preview, SetupWindow.LookPicker(settings, () => preview.React("yes")) } });
 
-        p.Children.Add(Label("About Onsay"));
+        p.Children.Add(Section("Updates"));
         if (!Updates.Installed)
         {
-            p.Children.Add(Paragraph("This copy was built on this computer, so it does not update itself."));
+            p.Children.Add(Item("Built on this computer", "This copy doesn't update itself."));
             return p;
         }
-        p.Children.Add(Paragraph($"Version {Updates.Version}. Onsay keeps itself up to date on its own: a newer version is downloaded quietly and goes in the next time you quit."));
         var checking = Note("");
-        checking.Visibility = Visibility.Collapsed;
-        p.Children.Add(Button("Check for updates now", Kind.Quiet, async () =>
+        p.Children.Add(Item($"Version {Updates.Version}", "A newer version downloads quietly and goes in the next time you quit.", Button("Check now", Kind.Quiet, async () =>
         {
             checking.Text = "Checking...";
-            checking.Visibility = Visibility.Visible;
             checking.Text = await Updates.CheckNow();
-        }));
+        })));
         p.Children.Add(checking);
-        p.Children.Add(Label("Remove Onsay"));
-        p.Children.Add(Paragraph("Takes Onsay off this computer: the app, its shortcuts and its startup."));
-        p.Children.Add(Button("Uninstall Onsay", Kind.Danger, () =>
+        p.Children.Add(Section("Remove Onsay"));
+        p.Children.Add(Item("Uninstall Onsay", "Takes the app, its shortcuts and its startup off this computer.", Button("Uninstall", Kind.Danger, () =>
         {
             Updates.Uninstall();
             Application.Current.Shutdown();
-        }));
+        })));
         return p;
     }
 
@@ -499,34 +558,62 @@ sealed class SettingsWindow : Window
         ["api"] = "A question to Onsay: signing in, your account's rules, your devices, or checking another of your devices",
     };
 
-    /* 7. Everything underneath, in plain labels: the ceiling, the access rules and blocks in force, the account's policy,
-          this device's key and the prompt key, the folders, the lingo client's own files, and sent.log, which the onsay
-          lingo keeps in the lingo client's home, a line each, oldest first, shown newest first, the newest 500. */
+    /* 7. Everything underneath, a row each in plain labels: the ceiling, the access rules and blocks in force, the account's
+          rules, this device's key and the prompt key, the folders, and the logs, each read in place: sent.log, which the
+          onsay lingo keeps in the lingo client's home, decisions.log beside it, and the lingo client's own core.log. */
     UIElement Advanced()
     {
         var p = Page("Advanced", "How Onsay works underneath, for anyone who wants to look. Nothing here needs changing for him to work.");
         var (policy, why) = Core.Control("policy");
         var status = Core.Onsay("status").answer;
+        void Hint(string text) { var n = Note(text); (n.Margin, n.Foreground) = (new Thickness(0, 0, 0, 4), Ink2); p.Children.Add(n); }
 
-        p.Children.Add(Label("The most any app may do here"));
-        p.Children.Add(Note("Anything off, no app on this computer can do, whatever it says or is allowed. What is on, an app still asks you first for anything that matters."));
+        // A row with View, which opens the text read under it, newest first, with Copy and Open the file.
+        void Log(string title, string under, Func<string> read, string? file = null)
+        {
+            var box = new Border { Visibility = Visibility.Collapsed, Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 6, 0, 10) };
+            Border view = null!;
+            view = Button("View", Kind.Quiet, () =>
+            {
+                box.Visibility = Shown(box.Visibility != Visibility.Visible);
+                ((TextBlock)view.Child).Text = box.Visibility == Visibility.Visible ? "Hide" : "View";
+                if (box.Visibility != Visibility.Visible) return;
+                var text = Selectable(11.5, Ink2);
+                (text.FontFamily, text.Text) = (Mono, read() is { Length: > 0 } got ? got : "Nothing yet.");
+                var copy = Button("Copy", Kind.Quiet, () => Clipboard.SetText(text.Text));
+                var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 12, 12), Children = { copy } };
+                if (file is not null && File.Exists(file))
+                {
+                    var openFile = Button("Open the file", Kind.Quiet, () => Native.Open(file));
+                    openFile.Margin = new Thickness(8, 0, 0, 0);
+                    bar.Children.Add(openFile);
+                }
+                box.Child = new StackPanel { Children = { new ScrollViewer { MaxHeight = 320, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(12, 10, 12, 10), Content = text }, bar } };
+            });
+            p.Children.Add(Item(title, under, view));
+            p.Children.Add(box);
+        }
+
+        p.Children.Add(Section("What any app may do here"));
+        Hint("Anything off, no app here can do, whatever it says or is allowed. Anything on, an app still asks you first.");
         if (policy?["ceiling"] is JsonArray ceiling)
         {
             var on = ceiling.Select(n => $"{n}").ToList();
             var said = Note("");
+            said.Foreground = Bad;
             foreach (var (name, words, _, _) in Core.Needs)
-                p.Children.Add(Switch(words, null, on.Contains(name), yes =>
+                p.Children.Add(Item(words, null, Toggle(on.Contains(name), yes =>
                 {
                     on.Remove(name);
                     if (yes) on.Add(name);
                     said.Text = Core.Control("ceiling", new() { ["needs"] = new JsonArray(on.Select(n => (JsonNode)n).ToArray()) }).why ?? "";
-                }));
+                })));
             p.Children.Add(said);
         }
         else p.Children.Add(Paragraph(why ?? Helper));
 
-        p.Children.Add(Label("Who can reach this computer"));
-        p.Children.Add(Note("Anyone not listed gets nothing, as if this computer weren't there. You, on this computer, always can."));
+        p.Children.Add(Section("Who can reach this computer"));
+        Hint("Anyone not listed gets nothing, as if this computer weren't there. You, on this computer, always can.");
         var local = policy?["local"]?["overrides"]?["access"] as JsonArray;
         foreach (var rule in (policy?["access"] as JsonArray ?? new()).OfType<JsonObject>())
         {
@@ -537,86 +624,44 @@ sealed class SettingsWindow : Window
         }
         foreach (var blocked in policy?["block"] as JsonArray ?? new()) p.Children.Add(Item($"A computer at {blocked}", "Blocked from everything."));
         var rules = Path.Combine(Core.Home, "policy.json");
-        if (File.Exists(rules)) p.Children.Add(Button("Open this computer's rules file", Kind.Quiet, () => Native.Open(rules)));
-
-        p.Children.Add(Label("Your account's rules"));
-        p.Children.Add(Paragraph(policy?["account"]?["version"] is { } version ? $"Version {version}, from Onsay and checked here. This computer's own rules come first, and nothing from Onsay goes past the switches above."
-            : "None yet. This computer uses its own rules until your account has some."));
+        if (File.Exists(rules)) p.Children.Add(Item("This computer's own rules", "Kept in a file in Onsay's folder.", Button("Open", Kind.Quiet, () => Native.Open(rules))));
         if (policy is not null)
-        {
-            var all = Selectable(11.5, Ink2);
-            all.Text = policy.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            (all.Background, all.FontFamily, all.Padding, all.Margin) = (Page_, Mono, new Thickness(8), new Thickness(0, 4, 0, 0));
-            p.Children.Add(new Expander { Header = "The rules in force here, in full", Content = all, Foreground = Ink, Margin = new Thickness(0, 4, 0, 0) });
-        }
+            Log("Every rule in force here", policy["account"]?["version"] is { } version ? $"Your account's rules are version {version}. This computer's own come first."
+                : "Your account has no rules yet, so this computer uses its own.", () => policy.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 
-        p.Children.Add(Label("Keys"));
-        if (status?["key"] is { } key)
-        {
-            p.Children.Add(Note("This computer's key. Onsay vouches for it, so your other devices know a request really came from here. It never leaves this computer."));
-            var shown = Selectable(12, Ink2);
-            shown.Text = $"{key}";
-            shown.FontFamily = Mono;
-            p.Children.Add(shown);
-        }
-        else p.Children.Add(Note("This computer gets its key when it signs in."));
+        p.Children.Add(Section("Keys"));
         var copied = Note("");
-        var chatKey = Button("Copy the chat key", Kind.Quiet, () =>
+        p.Children.Add(Item("This computer's key", status?["key"] is null ? "It gets one when it signs in." : "Proves a request really came from here. It never leaves this computer.",
+            status?["key"] is { } key ? Button("Copy", Kind.Quiet, () => { Clipboard.SetText($"{key}"); copied.Text = "Copied this computer's key."; }) : null));
+        p.Children.Add(Item("Chat key", "Lets another program send him a message. Keep it private.", Button("Copy", Kind.Quiet, () =>
         {
             var value = Core.Control("settings", new() { ["lingo"] = "onsay" }).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"];
             if (value is null) { copied.Text = "There's no chat key yet. Onsay makes one the first time it is on."; return; }
             Clipboard.SetText($"{value}");
-            copied.Text = "Copied. Keep it private.";
-        });
-        chatKey.Margin = new Thickness(0, 10, 0, 4);
-        p.Children.Add(chatKey);
-        p.Children.Add(Note($"Another program can send him a message at {Core.Url}/onsay with the chat key."));
+            copied.Text = $"Copied the chat key. A program sends him a message at {Core.Url}/onsay with it.";
+        })));
         p.Children.Add(copied);
 
-        p.Children.Add(Label("Folders"));
-        var apps = Button("Open the apps folder", Kind.Quiet, () => Native.Open(Core.LingosFolder));
-        apps.Margin = new Thickness(8, 0, 0, 0);
-        p.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { Button("Open Onsay's folder", Kind.Quiet, () => Native.Open(Settings.Folder)), apps } });
-        p.Children.Add(Note("To add an app, put its .lingo file in the apps folder. It shows in Apps, off until you turn it on."));
+        p.Children.Add(Section("Folders"));
+        p.Children.Add(Item("Onsay's folder", "Everything he keeps on this computer.", Button("Open", Kind.Quiet, () => Native.Open(Settings.Folder))));
+        p.Children.Add(Item("Apps folder", "To add an app, put its file here. It shows in Apps, off until you turn it on.", Button("Open", Kind.Quiet, () => Native.Open(Core.LingosFolder))));
+        p.Children.Add(Item("The program that runs your apps", $"It answers at {Core.Url}, for this computer alone.", Button("Open its settings", Kind.Quiet, () => Native.Open(Core.Config))));
 
-        p.Children.Add(Label("The program that runs your apps"));
-        p.Children.Add(Paragraph($"It answers at {Core.Url}, for this computer alone until you share something. Its settings file names its folder and, when you write one there, its port."));
-        var log = Button("Open its log", Kind.Quiet, () => { if (File.Exists(Core.Log)) Native.Open(Core.Log); });
-        log.Margin = new Thickness(8, 0, 0, 0);
-        p.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { Button("Open its settings file", Kind.Quiet, () => Native.Open(Core.Config)), log } });
-
-        p.Children.Add(Label("Everything sent to Onsay"));
-        p.Children.Add(Paragraph("Everything this computer sends Onsay is kept here, newest first, exactly as it went, so you can see for yourself: " +
-            "the things you ask, and what each app asks for and answers as it runs. Your files, passwords and screen stay here unless you ask him to send something."));
-        var path = Path.Combine(Core.Home, "sent.log");
-        var file = Button("Open the log file", Kind.Quiet, () => { if (File.Exists(path)) Native.Open(path); });
-        file.Margin = new Thickness(8, 0, 0, 0);
-        p.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10), Children = { Button("Refresh", Kind.Quiet, () => Go("Advanced")), file } });
-        var lines = new List<string>();
-        try
-        {
-            using var read = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
-            for (string? line; (line = read.ReadLine()) is not null;) lines.Add(line);
-        }
-        catch (IOException) { }   // none sent yet
-        var count = 0;
-        foreach (var line in Enumerable.Reverse(lines))
-        {
-            JsonNode? sent;
-            try { sent = JsonNode.Parse(line); } catch (JsonException) { continue; }
-            if (sent?["message"] is not JsonObject m) continue;
-            if (++count > 500) break;
-            var kind = $"{m["type"]}";
-            var head = new TextBlock { FontSize = 12.5, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
-            head.Inlines.Add(new Run($"{(DateTime.TryParse($"{sent["at"]}", out var at) ? at : default):g}  ") { Foreground = Ink3, FontFamily = Mono });
-            head.Inlines.Add(new Run(Kinds.GetValueOrDefault(kind, kind)));
-            var json = m.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            var body = Selectable(11.5, Ink2);
-            body.Text = json.Length > 20_000 ? json[..20_000] + "\n... (the rest is in the log file)" : json;
-            (body.Background, body.FontFamily, body.Padding, body.Margin) = (Page_, Mono, new Thickness(8), new Thickness(0, 4, 0, 0));
-            p.Children.Add(new Expander { Header = head, Content = body, Margin = new Thickness(0, 0, 0, 6), Foreground = Ink });
-        }
-        if (count == 0) p.Children.Add(Paragraph("Nothing sent yet."));
+        p.Children.Add(Section("Logs"));
+        Hint("Newest first, exactly as written.");
+        var sent = Path.Combine(Core.Home, "sent.log");
+        Log("Everything sent to Onsay", "What you ask, and what each app asks for and answers.", () =>
+            string.Join("\n\n", Enumerable.Reverse(Lines(sent)).Take(300).Select(line =>
+            {
+                JsonNode? s;
+                try { s = JsonNode.Parse(line); } catch (JsonException) { return line; }
+                var json = s?["message"]?.ToJsonString() ?? "";
+                var kind = $"{s?["message"]?["type"]}";
+                return $"{(DateTime.TryParse($"{s?["at"]}", out var at) ? at : default):g}  {Kinds.GetValueOrDefault(kind, kind)}\n{(json.Length > 4000 ? json[..4000] + "\n... (the rest is in the file)" : json)}";
+            })), sent);
+        var decisions = Path.Combine(Core.Home, "decisions.log");
+        Log("Activity, as written", "Every request and every allow or refuse, the way the program writes it down.", () => string.Join("\n", Enumerable.Reverse(Lines(decisions)).Take(500)), decisions);
+        Log("The program's log", "What the program that runs your apps says while it works, and any errors.", () => string.Join("\n", Enumerable.Reverse(Lines(Core.Log)).Take(500)), Core.Log);
         return p;
     }
 
@@ -639,14 +684,41 @@ sealed class SettingsWindow : Window
         };
     }
 
-    // 8. A row of a list: a title, a quieter line under it, and a button or a dot at its end.
-    static Border Item(string title, string? under, UIElement? end = null)
+    // 8. A heading over a few rows.
+    static TextBlock Section(string text)
     {
-        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = title, FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap } } };
-        if (under is not null) words.Children.Add(new TextBlock { Text = under, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 2, 12, 0), TextWrapping = TextWrapping.Wrap });
+        var heading = Label(text);
+        (heading.FontSize, heading.Margin) = (15, new Thickness(0, 24, 0, 2));
+        return heading;
+    }
+
+    /* 8. A row: a title, a quieter line under it, cut short past two lines, and a button, a switch or a dot at its
+          end. With click, the whole row is a button that lights up under the pointer. */
+    static Border Item(string title, string? under, FrameworkElement? end = null, Action? click = null)
+    {
+        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = title, FontSize = 13.5, Foreground = Ink, TextWrapping = TextWrapping.Wrap } } };
+        if (under is not null) words.Children.Add(new TextBlock { Text = under, FontSize = 12, Foreground = Ink2, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap, MaxHeight = 34, TextTrimming = TextTrimming.WordEllipsis, ToolTip = under });
         var row = new DockPanel();
-        if (end is not null) { DockPanel.SetDock(end, System.Windows.Controls.Dock.Right); row.Children.Add(end); }
+        if (end is not null) { end.Margin = new Thickness(16, 0, 0, 0); DockPanel.SetDock(end, System.Windows.Controls.Dock.Right); row.Children.Add(end); }
         row.Children.Add(words);
-        return new Border { BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 10, 0, 10), Child = row };
+        var b = new Border { BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(8, 10, 8, 10), Margin = new Thickness(-8, 0, -8, 0), Background = Brushes.Transparent, Child = row };
+        if (click is null) return b;
+        b.Cursor = Cursors.Hand;
+        Hover(b, Page_, Brushes.Transparent);
+        b.MouseLeftButtonUp += (_, _) => click();
+        return b;
+    }
+
+    // 8. A log's lines, oldest first, read while the program may still be writing it. None when there is no file yet.
+    static List<string> Lines(string path)
+    {
+        var lines = new List<string>();
+        try
+        {
+            using var read = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            for (string? line; (line = read.ReadLine()) is not null;) lines.Add(line);
+        }
+        catch (IOException) { }
+        return lines;
     }
 }

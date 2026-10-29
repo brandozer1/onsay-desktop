@@ -28,7 +28,7 @@
 // 11. Clear()                             a new chat: a new session, and home again
 // 12. Menu()                              the header's menu: Copy chat, from the session, and Apps and settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
-//                                         Note, Switch, Selectable and the Thin scrollbar
+//                                         Note, Toggle, Switch, Selectable and the Thin scrollbar
 using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -687,7 +687,7 @@ sealed class ChatWindow : Window
 
     ////////// HELPERS //////////
 
-    static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
+    internal static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 
     static T Right<T>(T e) where T : UIElement
     {
@@ -695,7 +695,7 @@ sealed class ChatWindow : Window
         return e;
     }
 
-    static void Hover(Border b, Brush over, Brush rest)
+    internal static void Hover(Border b, Brush over, Brush rest)
     {
         b.MouseEnter += (_, _) => b.Background = over;
         b.MouseLeave += (_, _) => b.Background = rest;
@@ -983,15 +983,15 @@ sealed class ChatWindow : Window
     // A heading over a few things, like a setting's name.
     internal static TextBlock Label(string text) => new() { Text = text, FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 6) };
 
-    // A quieter line, under or beside something.
-    internal static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
+    // A quieter line, under or beside something. Empty, it takes no room, so one waiting to say how something went is unseen.
+    internal static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6), Style = Unseen };
+    static readonly Style Unseen = new(typeof(TextBlock)) { Triggers = { new Trigger { Property = TextBlock.TextProperty, Value = "", Setters = { new Setter(VisibilityProperty, Visibility.Collapsed) } } } };
 
-    /* A setting that is on or off: its words on the left, a switch on the right whose knob slides across. below goes under
-       its words, inside it, and a click there never flips it. */
-    internal static Border Switch(string text, string? under, bool on, Action<bool> changed, FrameworkElement? below = null)
+    // An on or off switch whose knob slides across. A click on it flips it, and nothing under it.
+    internal static Border Toggle(bool on, Action<bool> changed)
     {
         var knob = new Ellipse { Width = 16, Height = 16, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
-        var track = new Border { Width = 40, Height = 22, CornerRadius = new CornerRadius(11), VerticalAlignment = below is null ? VerticalAlignment.Center : VerticalAlignment.Top, Child = knob };
+        var track = new Border { Width = 40, Height = 22, CornerRadius = new CornerRadius(11), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, Child = knob };
         void Draw(bool animate)
         {
             track.Background = on ? Accent : Edge_;
@@ -1000,17 +1000,24 @@ sealed class ChatWindow : Window
             if (animate && SystemParameters.ClientAreaAnimation) move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase() });
             else { move.BeginAnimation(TranslateTransform.XProperty, null); move.X = to; }
         }
+        track.MouseLeftButtonUp += (_, e) => { e.Handled = true; on = !on; Draw(true); changed(on); };
+        Draw(false);
+        return track;
+    }
+
+    // A setting that is on or off, as a card: its words on the left and its Toggle on the right. A click anywhere flips it.
+    internal static Border Switch(string text, string? under, bool on, Action<bool> changed)
+    {
+        var track = Toggle(on, changed);
         var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = text, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap } } };
         if (under is not null) words.Children.Add(new TextBlock { Text = under, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 2, 12, 0), TextWrapping = TextWrapping.Wrap });
-        if (below is not null) { below.MouseLeftButtonUp += (_, e) => e.Handled = true; below.Cursor = Cursors.Arrow; words.Children.Add(below); }
         var row = new Border
         {
             Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16, 12, 16, 12),
             Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand, Child = new DockPanel { Children = { Right(track), words } },
         };
         Hover(row, Page_, Card);
-        row.MouseLeftButtonUp += (_, _) => { on = !on; Draw(true); changed(on); };
-        Draw(false);
+        row.MouseLeftButtonUp += (_, _) => track.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = MouseLeftButtonUpEvent });
         return row;
     }
 

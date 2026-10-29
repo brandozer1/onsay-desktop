@@ -77,12 +77,12 @@ the lingo client refuses instead.
 
 | Page | What it has |
 |------|-------------|
-| Apps | every lingo on this computer: on or off, what it does, or why it can't run. Details: what it can do, each thing that matters allowed without asking or asked first (`grant`, `ungrant`); who can use it, with Stop sharing (`unshare`); and its own settings. Share: an Onsay name, and all of it or one part (`share`) |
+| Apps | a row for each lingo on this computer: its name, the start of what it is, and its switch, or why it can't run. Windows, Agent, Onsay and Native lead, and the library helpers (json, math, text and the like) fold under one Helpers row. A click opens the row: what it can do, each thing that matters allowed without asking or asked first (`grant`, `ungrant`); who can use it, with Stop sharing (`unshare`); Share with someone, an Onsay name and all of it or one part (`share`); and its own settings. A search box shows once there are more than eight |
 | Devices | the computers on the account, online or when last seen (`onsay.devices`) |
 | People | everyone an app is shared with, and what of it, with Stop sharing |
-| Activity | the lingo client's `decisions.log` in words, newest first: "Your desk used Windows", "Native wasn't allowed to run a program" |
-| Settings | the account and signing in and out, starting with Windows, his look, updates and Uninstall Onsay |
-| Advanced | the ceiling, every access rule and block in force, the account's policy, this computer's key and the chat (prompt) key, the folders, the lingo client's settings file and log, and everything sent to Onsay (`sent.log`) |
+| Activity | the lingo client's `decisions.log` in words, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
+| Settings | sections of one setting a row: the account and signing in and out, starting with Windows, his look, updates and Uninstall Onsay |
+| Advanced | the same rows, in plain labels: the ceiling, every access rule and block in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: everything sent to Onsay (`sent.log`), `decisions.log` as written, and the lingo client's `core.log` |
 
 **What it ships.** Every `.lingo` file in `..\lingo-client\core\bin\lingos`: `onsay`, `windows`, `native`, `agent` and
 the rest of the lingo library, copied into the lingos folder each time the lingo client starts. The first time a shipped
