@@ -1,8 +1,11 @@
 // Overlay.cs - what the windows lingo asks to be drawn while Onsay acts, read from the lingo client's output a line of
 // JSON at a time (Core.cs). See ../lingo-client/lingos/windows/windows.c, the hand:
-//   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r}   his pointer glides there along that curve,
-//                                                               the real mouse with it when r
+//   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r,"text":t}   his pointer glides there along that
+//                                                               curve, the real mouse with it when r, as a text cursor
+//                                                               where he is about to type when t
 //   {"show":"press","button":"left","times":1}                  it clicks
+//   {"show":"type"}                                             he is typing: the text cursor ticks, sent again every
+//                                                               moment it goes on
 //   {"show":"point","x":..,"y":..,"w":..,"h":..,"say":"..","seconds":n}   a ring around that box, him beside it
 //   {"show":"clear"}                                            the ring goes
 //   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
@@ -35,6 +38,7 @@ static class Overlay
     static POINT Pair(JsonElement p) => new(p[0].GetInt32(), p[1].GetInt32());
     static int Int(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
     static string Text(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+    static bool Yes(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
 
     static void Handle(JsonElement m)
     {
@@ -42,10 +46,13 @@ static class Overlay
         {
             case "glide":
                 _ = (hand ??= new HandWindow()).Glide(Pair(m.GetProperty("from")), Pair(m.GetProperty("to")), Int(m, "ms"), m.GetProperty("bend").GetDouble(),
-                    m.TryGetProperty("real", out var real) && real.ValueKind == JsonValueKind.True);
+                    Yes(m, "real"), Yes(m, "text"));
                 break;
             case "press":
                 (hand ??= new HandWindow()).Press(Int(m, "times"));
+                break;
+            case "type":
+                (hand ??= new HandWindow()).Type();
                 break;
             case "point":
                 int x = Int(m, "x"), y = Int(m, "y");

@@ -43,7 +43,8 @@ for each choice. Send, once every one is answered, sends them as the next messag
 `Where to? Rome`.
 
 His replies are drawn as Markdown, with Copy. What the `windows` lingo draws, his pointer, rings and his panel, comes as
-lines of JSON on the lingo client's output (`Overlay.cs`).
+lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his pointer
+glides to each click and ripples, and turns into a text cursor that ticks where he types (`HandWindow.cs`).
 
 **He asks first.** When an app needs something that matters (your screen, a file outside his own folder, running a
 program) and hasn't been allowed it, a card shows beside him with Allow, Only this time and Don't allow. Asked for by
