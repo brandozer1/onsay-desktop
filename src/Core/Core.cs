@@ -6,11 +6,13 @@
 //                             client with them, ending the one running first: on startup and the stop key. The first
 //                             time a shipped lingo appears it is started, with its Grants
 // 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
-// 3. Needs                    what a lingo may do on this computer, in words: for Settings, Permissions, and for asking
+// 3. Needs                    what a lingo may do on this computer, in words: for Apps, Activity, Advanced and asking
+//    Who(who, handle)         a caller or an access rule's who, in words, like "Your desktop" or "james"
 // 4. Control(verb, values)    one of the lingo client's verbs, like start, set, ceiling or asks: through its control
 //                             routes, or its command line when it isn't answering. Its answer, or why not, in words
-//    Onsay(phrase, values)    one of the onsay lingo's phrases, like status or sign_in, through call
-// 5. Lingos()                 every lingo on this computer: whether it runs, what it is, or why it can't run
+//    Onsay(phrase, values)    one of the onsay lingo's phrases, like status, sign_in or devices, through call
+// 5. Lingos()                 every lingo on this computer, an app on screen: whether it runs, what it is and needs, its
+//                             parts, or why it can't run. Title(name) is its name on screen
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -27,26 +29,39 @@ static class Core
     static readonly string Shipped = Path.Combine(AppContext.BaseDirectory, "lingos");
     public static readonly string Home = Path.Combine(Settings.Folder, "core");
     public static readonly string LingosFolder = Path.Combine(Home, "lingos");
-    static readonly string Config = Path.Combine(Settings.Folder, "core.json");
-    static readonly string Log = Path.Combine(Settings.Folder, "core.log");
+    public static readonly string Config = Path.Combine(Settings.Folder, "core.json");
+    public static readonly string Log = Path.Combine(Settings.Folder, "core.log");
     // Where it answers on this computer: the port in core.json, its own default 6969 when it names none.
     static int port = 6969;
     public static string Url => $"http://127.0.0.1:{port}";
     static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };   // each request has its own, below
 
-    // 3. Each need, what it is in Settings, Permissions, and what a lingo asking for it wants to do.
-    public static readonly (string Name, string Words, string Wants)[] Needs =
+    // 3. Each need: what it is as a switch, what an app asking for it wants to do, and what one did, for Activity.
+    public static readonly (string Name, string Words, string Wants, string Did)[] Needs =
     {
-        ("screen.read", "See windows and what is in them", "see your screen"),
-        ("screen.act", "Click, type and open apps", "use your mouse and keyboard"),
-        ("files.read", "Read your files", "read your files"),
-        ("files.write", "Change, move and delete files", "change your files"),
-        ("run", "Run commands", "run a program"),
-        ("net", "Reach the internet", "reach the internet"),
+        ("screen.read", "See windows and what is in them", "see your screen", "saw your screen"),
+        ("screen.act", "Click, type and open apps", "use your mouse and keyboard", "used your mouse and keyboard"),
+        ("files.read", "Read your files", "read your files", "read your files"),
+        ("files.write", "Change, move and delete files", "change your files", "changed your files"),
+        ("run", "Run commands", "run a program", "ran a program"),
+        ("net", "Reach the internet", "reach the internet", "reached the internet"),
     };
 
-    // What Onsay's own lingos may do without asking every time, given the first time each appears: what Settings,
-    // Permissions allowed every program before. Anything else they need is asked.
+    /* 3. handle is this computer's own, so its other devices read as "Your desktop". A device signs as desktop.brandon,
+          and me is the account itself, through Onsay. */
+    public static string Who(string who, string? handle) => who switch
+    {
+        "this computer" => "You, on this computer",
+        "me" => "Your Onsay account",
+        "my devices" => "Your other devices",
+        "public" => "Anyone",
+        _ when who.StartsWith("ip ") => $"A computer at {who[3..]}",
+        _ when who.Split('.') is [var device, var h] => h == handle ? $"Your {device}" : h,
+        _ => who,
+    };
+
+    // What Onsay's own lingos may do without asking every time, given the first time each appears, and taken back in Apps.
+    // Anything else they need is asked.
     static readonly Dictionary<string, string[]> Grants = new() { ["windows"] = new[] { "screen.read", "screen.act", "files.read" } };
 
     static Process? process;
@@ -169,14 +184,23 @@ static class Core
         catch (Exception e) { return (null, e.Message); }
     }
 
-    // 4.
-    public static (JsonNode? answer, string? why) Onsay(string phrase, params JsonNode[] values) =>
-        Control("call", new() { ["fn"] = $"onsay.{phrase}", ["values"] = new JsonArray(values) });
+    // 4. Why not as a sentence, without the phrase's name in front.
+    public static (JsonNode? answer, string? why) Onsay(string phrase, params JsonNode[] values)
+    {
+        var (answer, why) = Control("call", new() { ["fn"] = $"onsay.{phrase}", ["values"] = new JsonArray(values) });
+        why = why?.Replace($"onsay.{phrase}: ", "").TrimEnd('.');
+        return (answer, why is null ? null : why + ".");
+    }
 
     ////////// 5. THE LINGOS //////////
 
-    // One lingo on this computer. Error is why it can't run, null when it can. Shipped comes with Onsay.
-    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool Shipped);
+    /* One lingo on this computer. Error is why it can't run, null when it can. Shipped comes with Onsay. Needs are what its
+       routes say they need, and Parts the first step of each route after its own, like /window for /windows/window/list,
+       each a part that can be shared on its own. */
+    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool Shipped, string[] Needs, string[] Parts);
+
+    // 5.
+    public static string Title(string name) => name.Length > 0 ? char.ToUpper(name[0]) + name[1..] : name;
 
     /* 5. As the lingo client says: GET / from this computer lists every lingo, running or not. What one is comes from its
           openapi.json, in its .lingo file or its folder. Null while the lingo client isn't answering. */
@@ -194,6 +218,7 @@ static class Core
             var name = $"{e?["name"]}";
             var file = Path.Combine(LingosFolder, name + ".lingo");
             string about = "";
+            var (needs, parts) = (new SortedSet<string>(), new SortedSet<string>());
             try
             {
                 string manifest;
@@ -204,10 +229,18 @@ static class Core
                     manifest = read.ReadToEnd();
                 }
                 else manifest = File.ReadAllText(Path.Combine(LingosFolder, name, "openapi.json"));
-                about = $"{JsonNode.Parse(manifest)?["info"]?["description"]}";
+                var doc = JsonNode.Parse(manifest);
+                about = $"{doc?["info"]?["description"]}";
+                var route = $"{doc?["x-lingo"]?["route"] ?? "/" + name}";
+                foreach (var (path, ops) in doc?["paths"]?.AsObject() ?? new JsonObject())
+                {
+                    if (path.StartsWith(route + "/") && path[(route.Length + 1)..].Split('/')[0] is { Length: > 0 } part) parts.Add("/" + part);
+                    foreach (var (_, op) in ops?.AsObject() ?? new JsonObject())
+                        foreach (var need in op?["x-lingo-needs"]?.AsArray() ?? new JsonArray()) needs.Add($"{need}");
+                }
             }
             catch (Exception) { }   // one being written may have no openapi.json yet
-            return new Lingo(name, (bool?)e?["running"] == true, e?["error"] is { } why ? $"{why}" : null, about, File.Exists(Path.Combine(Shipped, name + ".lingo")));
+            return new Lingo(name, (bool?)e?["running"] == true, e?["error"] is { } why ? $"{why}" : null, about, File.Exists(Path.Combine(Shipped, name + ".lingo")), needs.ToArray(), parts.ToArray());
         }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

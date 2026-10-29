@@ -8,7 +8,8 @@
 //                                         ends whatever it was doing
 // 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
 //                                         Settings, Account, and signing out from there
-// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, home or chat
+// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, Onsay turned
+//                                         off, home or chat
 // 6.  Send(), Ask(text)                   your message to /onsay in this chat's session, and his answer or his questions
 //     Replied(...)                        his answer, with how it ended and how long it took
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
@@ -17,7 +18,7 @@
 //                                         of the conversation
 // 10. Questions(list)                     his questions back, each picked or typed, answered together with one Send
 // 11. Clear()                             a new chat: a new session, and home again
-// 12. Menu()                              the header's menu: Copy chat and Settings
+// 12. Menu()                              the header's menu: Copy chat, and Apps and settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
 //                                         Note, Switch, Selectable and the Thin scrollbar
 using System.Net.Http;
@@ -54,7 +55,7 @@ sealed class ChatWindow : Window
     readonly Border fresh, send;                   // the header's new chat, and send
 
     // The pages. Only one shows at a time, see Page.
-    readonly FrameworkElement signInPage, homePage;
+    readonly FrameworkElement signInPage, offPage, homePage;
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
@@ -75,7 +76,8 @@ sealed class ChatWindow : Window
     };
     readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 0, 0) };
 
-    // The onsay lingo's status: {signed_in, signing_in, connected, handle, device, key}. Null until it first answers.
+    // The onsay lingo's status: {signed_in, signing_in, failed, running, connected, handle, device, key}. Null until it
+    // first answers.
     JsonObject? status;
     bool refreshing;
     string? session;                             // this chat's session in the onsay lingo, from its first answer
@@ -94,6 +96,7 @@ sealed class ChatWindow : Window
     public bool Busy => waiting;                    // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
     bool SignedIn => (bool?)status?["signed_in"] == true;
+    bool Off => (bool?)status?["running"] == false;
 
     readonly Grid whole;                            // the card and its shadow, which open and close as one
     readonly ScaleTransform zoom = new(1, 1);
@@ -132,6 +135,20 @@ sealed class ChatWindow : Window
                 new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
                 Paragraph("Sign in so I can help on this computer.", centre: true),
                 SignInBox(centre: true),
+            },
+        };
+
+        // Onsay turned off on this computer: signed in, but nothing to answer.
+        var turnOn = Button("Turn Onsay on", Kind.Primary, () => { Core.Control("start", new() { ["lingo"] = "onsay" }); Refresh(); });
+        turnOn.HorizontalAlignment = HorizontalAlignment.Center;
+        offPage = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 20),
+            Children =
+            {
+                new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
+                Paragraph("Onsay is turned off on this computer, so I can't answer here. Turn it on and I'm back.", centre: true),
+                turnOn,
             },
         };
 
@@ -195,7 +212,7 @@ sealed class ChatWindow : Window
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
         // The bottom line: what he may do here, and the stop key, written the way a keyboard shortcut is.
-        var permits = Button("Permissions", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Permissions"), "What Onsay may do on this computer");
+        var apps = Button("Apps", Kind.Quiet, () => SettingsWindow.Open(settings, this), "Turn apps on or off, and see what each may do");
         var stopKey = new StackPanel
         {
             Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Stops him from any app, at any time",
@@ -209,10 +226,10 @@ sealed class ChatWindow : Window
                 },
             },
         };
-        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), Children = { Right(stopKey), permits } };
+        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), Children = { Right(stopKey), apps } };
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { signInPage, homePage, chatPage } };
+        var pages = new Grid { Children = { signInPage, offPage, homePage, chatPage } };
         var layout = new Grid();
         UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input, footer };
         for (int i = 0; i < rows.Length; i++)
@@ -397,7 +414,8 @@ sealed class ChatWindow : Window
                     {
                         await Task.Delay(2000, stop);
                         now = (await Task.Run(() => Core.Onsay("status"))).answer;
-                        if (now is not null && (bool?)now["signed_in"] != true && (bool?)now["signing_in"] != true) throw new Exception("signing in didn't finish. Try again.");
+                        if (now is not null && (bool?)now["signed_in"] != true && (bool?)now["signing_in"] != true)
+                            throw new Exception(now["failed"] is { } failed ? $"{failed}." : "Signing in didn't finish. Try again.");
                     }
                 }
                 Refresh();
@@ -405,7 +423,7 @@ sealed class ChatWindow : Window
                 done?.Invoke();
             }
             catch (OperationCanceledException) { }
-            catch (Exception e) { error.Text = $"That didn't work: {e.Message}"; error.Visibility = Visibility.Visible; }
+            catch (Exception e) { error.Text = e.Message; error.Visibility = Visibility.Visible; }
             finally
             {
                 signing = null;
@@ -442,11 +460,12 @@ sealed class ChatWindow : Window
 
     void Page()
     {
-        bool known = status is not null, talking = SignedIn && Talking, connected = (bool?)status?["connected"] == true;
+        bool known = status is not null, on = SignedIn && !Off, talking = on && Talking, connected = (bool?)status?["connected"] == true;
         signInPage.Visibility = Shown(known && !SignedIn);
-        homePage.Visibility = Shown(!known || (SignedIn && !talking));
+        offPage.Visibility = Shown(SignedIn && Off);
+        homePage.Visibility = Shown(!known || (on && !talking));
         chatPage.Visibility = fresh.Visibility = Shown(talking);
-        input.Visibility = footer.Visibility = Shown(SignedIn);
+        input.Visibility = footer.Visibility = Shown(on);
         subtitle.Text = !known ? "" : SignedIn ? $"{status!["handle"]}" : "Not signed in";
         if (known && !SignedIn) Working(null);
         ReadyInput();
@@ -460,7 +479,7 @@ sealed class ChatWindow : Window
     void Send()
     {
         var text = box.Text.Trim();
-        if (text.Length == 0 || Busy || !SignedIn) return;
+        if (text.Length == 0 || Busy || !SignedIn || Off) return;
         box.Clear();
         Ask(text);
     }
@@ -499,6 +518,7 @@ sealed class ChatWindow : Window
         if (stopping) await Replied("Stopped.", "Stopped", ms);
         else if (code != 200)
             await Replied(code == 0 ? "Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."
+                : code == 404 ? "Onsay is turned off on this computer, so I can't answer. Turn it on and ask again."
                 : $"{answer?["error"] ?? "Something went wrong there. Try again in a moment."}", "Failed", ms);
         else
         {
@@ -723,7 +743,7 @@ sealed class ChatWindow : Window
             Clipboard.SetText(string.Join("\n\n", said.Select(s => s.from switch { "you" => $"You: {s.text}", "onsay" => $"Onsay: {s.text}", _ => s.text })));
             Tell("Copied the chat.");
         }));
-        rows.Children.Add(Row("Settings", "Your lingos, what he may do, your account and more", () => { menu.IsOpen = false; SettingsWindow.Open(settings, this); }));
+        rows.Children.Add(Row("Apps and settings", "Your apps, devices, people, activity and account", () => { menu.IsOpen = false; SettingsWindow.Open(settings, this); }));
         menu.IsOpen = true;
     }
 
@@ -800,11 +820,12 @@ sealed class ChatWindow : Window
     // A quieter line, under or beside something.
     internal static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
 
-    // A setting that is on or off: its words on the left, a switch on the right whose knob slides across.
-    internal static Border Switch(string text, string? under, bool on, Action<bool> changed)
+    /* A setting that is on or off: its words on the left, a switch on the right whose knob slides across. below goes under
+       its words, inside it, and a click there never flips it. */
+    internal static Border Switch(string text, string? under, bool on, Action<bool> changed, FrameworkElement? below = null)
     {
         var knob = new Ellipse { Width = 16, Height = 16, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
-        var track = new Border { Width = 40, Height = 22, CornerRadius = new CornerRadius(11), VerticalAlignment = VerticalAlignment.Center, Child = knob };
+        var track = new Border { Width = 40, Height = 22, CornerRadius = new CornerRadius(11), VerticalAlignment = below is null ? VerticalAlignment.Center : VerticalAlignment.Top, Child = knob };
         void Draw(bool animate)
         {
             track.Background = on ? Accent : Edge_;
@@ -815,6 +836,7 @@ sealed class ChatWindow : Window
         }
         var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = text, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap } } };
         if (under is not null) words.Children.Add(new TextBlock { Text = under, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 2, 12, 0), TextWrapping = TextWrapping.Wrap });
+        if (below is not null) { below.MouseLeftButtonUp += (_, e) => e.Handled = true; below.Cursor = Cursors.Arrow; words.Children.Add(below); }
         var row = new Border
         {
             Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16, 12, 16, 12),

@@ -7,7 +7,7 @@
 // 5. OnPress / OnDrag / OnRelease    a click opens or closes the chat, a drag carries him
 // 6. Look()                          he follows the cursor, or his own pointer while it shows, and dozes when still
 // 7. StepAside(on)                   hides while something is fullscreen, and comes back when it ends
-// 8. BuildMenu()                     right click: open the chat, settings, the lingos folder, put him back, quit
+// 8. BuildMenu()                     right click: open the chat, apps, settings, put him back, quit
 // 9. Follow(), Fly                   while his own pointer shows, he flies beside it, then goes home, and the chat comes back
 //                                    if it was open
 using System.Diagnostics;
@@ -288,9 +288,9 @@ sealed class BuddyWindow : Window
             Items =
             {
                 Item("Open chat", () => Toggle(true)),
-                Item("Settings", () => SettingsWindow.Open(settings, chat)),
+                Item("Apps", () => SettingsWindow.Open(settings, chat)),
+                Item("Settings", () => SettingsWindow.Open(settings, chat, "Settings")),
                 new Separator(),
-                Item("Open lingos folder", () => Native.Open(Core.LingosFolder)),
                 Item("Put him back", () =>
                 {
                     (settings.Along, settings.MonitorX, settings.MonitorY, settings.FreeX, settings.FreeY) = (1, null, null, null, null);

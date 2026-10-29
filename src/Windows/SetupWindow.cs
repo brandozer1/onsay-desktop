@@ -4,7 +4,7 @@
 //
 // 1. Open(settings, chat, done)    shows it, and done runs once it is finished or skipped
 // 2. Welcome, Look, Find, Sent, SignIn   the steps
-// 3. LookPicker(settings, changed) his colour, face and surface, live. Also the Look page in Settings
+// 3. LookPicker(settings, changed) his colour, face and surface, live. Also his look in Settings
 // 4. Go(step)                      moves to a step, sliding it in, and he says its line
 // 5. Step, Swatch, Chips           the pieces the steps are made of, beside the ones every window shares (ChatWindow.cs)
 using System.Windows;
@@ -175,9 +175,9 @@ sealed class SetupWindow : Window
     {
         Line("Here's what I send.");
         Actions(Button("Back", Kind.Quiet, () => Go(2)), Button("Agree and continue", Kind.Primary, () => Go(4)));
-        return Step("What is sent to Onsay", "To answer you, this computer sends Onsay what you ask for, with the chat before it, and what your lingos ask Onsay as they run. " +
+        return Step("What is sent to Onsay", "To answer you, this computer sends Onsay what you ask for, with the chat before it, and what your apps ask Onsay as they run. " +
             "Your files, passwords and screen stay here unless you ask him to send something.",
-            Note("Everything sent is kept in a log you can read any time, under Settings, Requests."));
+            Note("Everything sent is kept in a log you can read any time, under Advanced."));
     }
 
     // 2. Signed in, here or before, it is the last word: all set.

@@ -1,5 +1,6 @@
-// AskWindow.cs - a lingo asking the person first, like "Onsay wants to see your screen", on a small card beside him with
-// Allow, Only this time and Don't allow. The lingo client keeps the questions; this asks it for them every second while
+// AskWindow.cs - an app asking the person first, like "Onsay wants to see your screen", or one asked to by another of
+// their devices, "Your desktop wants Onsay to run a program here", on a small card beside him with Allow, Only this time
+// and Don't allow. The lingo client keeps the questions; this asks it for them every second while
 // it runs, which is also how it knows someone is here to answer. One question at a time, and the card goes when its
 // question does: answered here, or no longer waited for.
 //
@@ -22,7 +23,6 @@ sealed class AskWindow : Window
     const double Wide = 440;   // the card's width in DIPs, its shadow's room around it
     readonly Func<RECT> body;  // his body in real pixels, to sit beside
     readonly TextBlock words = new() { FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
-    readonly TextBlock from = Note("");
     readonly HashSet<double> answered = new();
     double? shown;             // the id of the question on the card, null when none
     bool asking;
@@ -34,7 +34,6 @@ sealed class AskWindow : Window
         ShowActivated = false;
         SizeToContent = SizeToContent.WidthAndHeight;
         FontFamily = new FontFamily("Segoe UI");
-        from.Margin = new Thickness(0, 2, 0, 0);
         var face = new OnsayView { Width = 36, Height = 36, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Top };
         DockPanel.SetDock(face, System.Windows.Controls.Dock.Left);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
@@ -49,7 +48,7 @@ sealed class AskWindow : Window
             Width = Wide - Shadow * 2, Margin = new Thickness(Shadow), Padding = new Thickness(16, 14, 16, 16),
             Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14),
             Effect = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 6, Direction = 270, Opacity = 0.18 },
-            Child = new StackPanel { Children = { new DockPanel { Children = { face, new StackPanel { Children = { words, from } } } }, buttons } },
+            Child = new StackPanel { Children = { new DockPanel { Children = { face, words } }, buttons } },
         };
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => Poll();
@@ -57,12 +56,14 @@ sealed class AskWindow : Window
     }
 
     /* 1. Asked off this thread, since the lingo client answers one request at a time. Windows is his own hands, so it asks
-          as Onsay; any other lingo asks by its name, with the file it wants when it wants one. */
+          as Onsay; any other app asks by its name, with the file it wants when it wants one. Asked for by anyone but this
+          computer, it says who, by this computer's own handle, so its other devices read as "Your desktop". */
     async void Poll()
     {
         if (asking) return;
         asking = true;
         var waiting = Core.Running ? (await Task.Run(() => Core.Control("asks"))).answer as JsonArray : null;
+        var handle = waiting?.Any(a => $"{a?["caller"]}" != "this computer") == true ? (await Task.Run(() => Core.Onsay("status"))).answer?["handle"] : null;
         asking = false;
         if (waiting is null && Core.Running) return;   // a moment it didn't answer: the card stays as it is
         var ask = waiting?.FirstOrDefault(a => (double?)a?["id"] == shown) ?? waiting?.FirstOrDefault(a => !answered.Contains((double?)a?["id"] ?? 0));
@@ -72,9 +73,8 @@ sealed class AskWindow : Window
             shown = (double?)ask["id"];
             var (need, path, caller) = ($"{ask["need"]}", ask["path"] is { } p ? $"{p}" : null, $"{ask["caller"]}");
             var wants = Core.Needs.FirstOrDefault(n => n.Name == need).Wants ?? need;
-            words.Text = $"{($"{ask["lingo"]}" is var lingo && lingo == "windows" ? "Onsay" : lingo)} wants to {(path is null ? wants : wants.Replace("your files", path))}";
-            from.Text = caller == "this computer" ? "" : $"Asked for by {caller.Replace("ip ", "someone at ")}.";
-            from.Visibility = caller == "this computer" ? Visibility.Collapsed : Visibility.Visible;
+            var (app, does) = ($"{ask["lingo"]}" is var lingo && lingo == "windows" ? "Onsay" : Core.Title(lingo), path is null ? wants : wants.Replace("your files", path));
+            words.Text = caller == "this computer" ? $"{app} wants to {does}." : $"{Core.Who(caller, handle is null ? null : $"{handle}")} wants {app} to {does} here.";
             Show();
         }
         // Beside him, wherever he is now.

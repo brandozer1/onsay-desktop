@@ -10,7 +10,8 @@ It is two things:
   program that answers web requests on port 6969, on this computer alone until its policy shares something. Each running
   lingo in its lingos folder is a program at its route. Its **onsay lingo** connects it to Onsay: signing in, the
   connection, and `/onsay`, where prompts come in.
-- **The app around it**: his character on the taskbar, the chat, setting him up, and settings.
+- **The app around it**: his character on the taskbar, the chat, setting him up, and his window: Apps, Devices, People,
+  Activity, Settings and Advanced. On screen a lingo is an app.
 
 ## Setting him up
 
@@ -20,13 +21,17 @@ to Onsay (Agree and continue), and signing in, which can be skipped. Then his ch
 **Signing in** is the onsay lingo's: `onsay.sign_in` gives the address of Onsay's page and a code. The page opens in the
 browser and the code shows in the app; once the person presses Connect there, the onsay lingo keeps its token and
 connects. "You're brandon. This computer is laptop." is `onsay.status`, and Sign out is `onsay.sign_out`. The app keeps
-no sign in of its own.
+no sign in of its own. Signing in works even with the onsay lingo turned off, and never holds anything up; when it
+fails, the reason shows in words (`failed` in `onsay.status`).
+
+**With the onsay lingo turned off** (`running` in `onsay.status`), the chat and Settings say so plainly, with Turn
+Onsay on.
 
 ## Using him
 
 He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O stops him at any time, from any app.
-While something has the whole screen he steps aside. Right click him for Open chat, Settings, Open lingos folder, Put him
-back and Quit.
+While something has the whole screen he steps aside. Right click him for Open chat, Apps, Settings, Put him back and
+Quit.
 
 **Each chat is a session of the onsay lingo.** A message goes to `/onsay` on the lingo client with its prompt key, read
 from the onsay lingo's settings, and the session its first answer gave. The onsay lingo asks Onsay and keeps the session
@@ -40,21 +45,22 @@ for each choice. Send, once every one is answered, sends them as the next messag
 His replies are drawn as Markdown, with Copy. What the `windows` lingo draws, his pointer, rings and his panel, comes as
 lines of JSON on the lingo client's output (`Overlay.cs`).
 
-**He asks first.** When a lingo needs something that matters (your screen, a file outside his own folder, running a
-program) and hasn't been allowed it, a card shows beside him with Allow, Only this time and Don't allow. The app asks the
+**He asks first.** When an app needs something that matters (your screen, a file outside his own folder, running a
+program) and hasn't been allowed it, a card shows beside him with Allow, Only this time and Don't allow. Asked for by
+another of your devices it says so: "Your desktop wants Onsay to run a program here." The app asks the
 lingo client for the questions every second (`/.lingo/asks`) and answers through `/.lingo/answer`. With the app closed,
 the lingo client refuses instead.
 
-## Settings
+## His window
 
 | Page | What it has |
 |------|-------------|
-| General | starting with Windows, the version, Check for updates now, and Uninstall Onsay |
-| Look | his colour, face and surface |
-| Lingos | every lingo on this computer: on or off, what it does, its settings, or why it can't run |
-| Permissions | the most his programs may ever do on this computer; the lingo client refuses anything that is off |
-| Account | who this computer is signed in as, and signing in and out |
-| Requests | everything this computer sent Onsay, exactly as it went, every token masked: the onsay lingo's `sent.log` |
+| Apps | every lingo on this computer: on or off, what it does, or why it can't run. Details: what it can do, each thing that matters allowed without asking or asked first (`grant`, `ungrant`); who can use it, with Stop sharing (`unshare`); and its own settings. Share: an Onsay name, and all of it or one part (`share`) |
+| Devices | the computers on the account, online or when last seen (`onsay.devices`) |
+| People | everyone an app is shared with, and what of it, with Stop sharing |
+| Activity | the lingo client's `decisions.log` in words, newest first: "Your desk used Windows", "Native wasn't allowed to run a program" |
+| Settings | the account and signing in and out, starting with Windows, his look, updates and Uninstall Onsay |
+| Advanced | the ceiling, every access rule and block in force, the account's policy, this computer's key and the chat (prompt) key, the folders, the lingo client's settings file and log, and everything sent to Onsay (`sent.log`) |
 
 **What it ships.** Every `.lingo` file in `..\lingo-client\core\bin\lingos`: `onsay`, `windows`, `native`, `agent` and
 the rest of the lingo library, copied into the lingos folder each time the lingo client starts. The first time a shipped
@@ -62,7 +68,8 @@ lingo appears the app starts it, and gives `windows` seeing the screen, using th
 It remembers which it started (`Started` in `desktop.json`), so one you turn off stays off.
 
 **How it talks to the lingo client.** Through its control routes, `/.lingo/<verb>` (`start`, `stop`, `asks`, `answer`,
-`settings`, `set`, `policy`, `grant`, `ceiling`, and `call` for the onsay lingo's phrases), or its command line,
+`settings`, `set`, `policy`, `share`, `unshare`, `grant`, `ungrant`, `ceiling`, and `call` for the onsay lingo's
+phrases), or its command line,
 `onsay-core core.json <verb> ...`, when nothing answers the port (`Core.Control`).
 
 ## Files
@@ -102,7 +109,7 @@ next quits (`src/System/Updates.cs`).
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), settings and the request log (`SettingsWindow`), a lingo asking first (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), his window, Apps to Advanced (`SettingsWindow`), a lingo asking first (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
 | `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the windows lingo asks to be drawn (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 
