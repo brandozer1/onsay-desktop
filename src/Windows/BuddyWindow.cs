@@ -59,6 +59,7 @@ sealed class BuddyWindow : Window
         Width = Height = Box;
         Content = him;
         chat = new ChatWindow(settings, Toggle);
+        Overlay.Chat = chat;
 
         SourceInitialized += (_, _) =>
         {
@@ -78,7 +79,7 @@ sealed class BuddyWindow : Window
             him.React("greet");
             // The first time, he is set up, and then the chat opens.
             if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, chat, () => Toggle(true)));
-            new AskWindow(() => Rect().Inset(Pad));   // a lingo asking first, on a card beside him
+            new AskWindow(() => Rect().Inset(Pad), chat);   // a lingo asking first, on a card beside him, and its questions in the chat
             Updates.Start();
         };
         DpiChanged += (_, _) => { if (!dragging) Later(() => Park(dropped: false)); };

@@ -1,10 +1,10 @@
 // AskWindow.cs - an app asking the person first, like "Onsay wants to see your screen", or one asked to by another of
 // their devices, "Your desktop wants Onsay to run a program here", on a small card beside him with Allow, Only this time
-// and Don't allow. The lingo client keeps the questions; this asks it for them every second while
-// it runs, which is also how it knows someone is here to answer. One question at a time, and the card goes when its
-// question does: answered here, or no longer waited for.
+// and Don't allow. The lingo client keeps the questions; this asks it for them every second while it runs, which is also
+// how it knows someone is here to answer. One question at a time, and the card goes when its question does: answered
+// here, or no longer waited for. Questions a lingo asks the person with chat.ask are handed to the chat (ChatWindow.Asked).
 //
-// 1. Poll()      the questions waiting, the first one shown
+// 1. Poll()      the questions waiting: whether a lingo may, the first one shown here, and chat.ask's, handed to the chat
 // 2. Answer(a)   always, once or no to the one shown
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -22,14 +22,16 @@ sealed class AskWindow : Window
 {
     const double Wide = 440;   // the card's width in DIPs, its shadow's room around it
     readonly Func<RECT> body;  // his body in real pixels, to sit beside
+    readonly ChatWindow chat;  // where chat.ask's questions are asked
     readonly TextBlock words = new() { FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
     readonly HashSet<double> answered = new();
     double? shown;             // the id of the question on the card, null when none
     bool asking;
 
-    public AskWindow(Func<RECT> body)
+    public AskWindow(Func<RECT> body, ChatWindow chat)
     {
         this.body = body;
+        this.chat = chat;
         Bare(this);
         ShowActivated = false;
         SizeToContent = SizeToContent.WidthAndHeight;
@@ -62,7 +64,9 @@ sealed class AskWindow : Window
     {
         if (asking) return;
         asking = true;
-        var waiting = Core.Running ? (await Task.Run(() => Core.Control("asks"))).answer as JsonArray : null;
+        var all = Core.Running ? (await Task.Run(() => Core.Control("asks"))).answer as JsonArray : null;
+        if (all is not null || !Core.Running) chat.Asked(all?.Where(a => a?["questions"] is JsonArray).ToList() ?? new());
+        var waiting = all?.Where(a => a?["need"] is not null).ToList();
         var handle = waiting?.Any(a => $"{a?["caller"]}" != "this computer") == true ? (await Task.Run(() => Core.Onsay("status"))).answer?["handle"] : null;
         asking = false;
         if (waiting is null && Core.Running) return;   // a moment it didn't answer: the card stays as it is

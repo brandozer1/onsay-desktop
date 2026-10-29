@@ -20,6 +20,8 @@
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
 //                                         of the conversation
 // 10. Questions(list, send)               his questions back, each picked or typed, answered together with one Send
+//     Asked(waiting), Lingo(kind, text)   a lingo's own: its questions (chat.ask), what it says (chat.say) and a step it
+//                                         shows (chat.step)
 //     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
 // 11. Clear()                             a new chat: a new session, and home again
 // 12. Menu()                              the header's menu: Copy chat, and Apps and settings
@@ -97,6 +99,8 @@ sealed class ChatWindow : Window
     // Each message's steps: its block in the chat, the line it folds under, its lines, how many and how long it took.
     sealed class StepList { public required Border Root; public required TextBlock Head; public required StackPanel Body; public int Count; public double Ms; }
     readonly List<StepList> stepLists = new();
+    // The cards of the questions a lingo waits on, by their id in the lingo client (chat.ask).
+    readonly Dictionary<double, Border> lingoCards = new();
     // A prompt waits on Onsay, up to 5 minutes in the onsay lingo.
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(6) };
 
@@ -528,6 +532,7 @@ sealed class ChatWindow : Window
         int code = 0;
         session ??= $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Random.Shared.Next(0x1000000):x6}";
         var steps = Steps();
+        int heard = 0;                           // of the steps Onsay sent, how many are lines here
         Border? card = null;
         using var done = new CancellationTokenSource();
         try
@@ -551,7 +556,7 @@ sealed class ChatWindow : Window
                         using var res = await Http.SendAsync(look, done.Token);
                         if (JsonNode.Parse(await res.Content.ReadAsStringAsync(done.Token)) is not JsonObject now || mine != chat) continue;
                         var got = now["steps"] as JsonArray ?? new();
-                        for (int i = steps.Count; i < got.Count; i++) AddStep(steps, $"{got[i]?["text"]}", (int?)got[i]?["depth"] ?? 0);
+                        for (; heard < got.Count; heard++) AddStep(steps, $"{got[heard]?["text"]}", (int?)got[heard]?["depth"] ?? 0);
                         if (got.Count > 0) Working($"{got[^1]?["text"]}");
                         if (now["questions"] is not JsonArray q) asked = null;
                         else if (q.ToJsonString() != asked)
@@ -578,7 +583,7 @@ sealed class ChatWindow : Window
         Working(null);
         if (card is not null) card.IsEnabled = false;
         // The answer has every step, for those that came while this computer was too busy to say.
-        if (answer?["steps"] is JsonArray all) for (int i = steps.Count; i < all.Count; i++) AddStep(steps, $"{all[i]?["text"]}", (int?)all[i]?["depth"] ?? 0);
+        if (answer?["steps"] is JsonArray all) for (; heard < all.Count; heard++) AddStep(steps, $"{all[heard]?["text"]}", (int?)all[heard]?["depth"] ?? 0);
         var ms = (DateTime.Now - started).TotalMilliseconds;
         Fold(steps, ms);
         if (stopping) await Replied("Stopped.", "Stopped", ms);
@@ -760,6 +765,36 @@ sealed class ChatWindow : Window
         return shown;
     }
 
+    /* 10. The questions a lingo waits on the person for (chat.ask), as the lingo client keeps them: each a card here, the
+           chat opening for it, its answers sent back to the lingo client in order. A card whose question is no longer
+           waited for, answered or given up on, is left as it is and can't be sent. */
+    public void Asked(List<JsonNode?> waiting)
+    {
+        foreach (var (id, card) in lingoCards.Where(c => !waiting.Any(a => (double?)a?["id"] == c.Key)).ToList()) { card.IsEnabled = false; lingoCards.Remove(id); }
+        foreach (var a in waiting)
+        {
+            if ((double?)a?["id"] is not { } id || lingoCards.ContainsKey(id) || a["questions"] is not JsonArray questions) continue;
+            if (!Showing) setOpen(true);
+            lingoCards[id] = Questions(questions, answers =>
+                Task.Run(() => Core.Control("answer", new() { ["id"] = id, ["answer"] = new JsonArray(answers.Select(x => (JsonNode?)x).ToArray()) })));
+            Page();
+        }
+    }
+
+    /* 10. What a lingo says while it works (chat.say), his line in the chat, or a step it shows (chat.step): under the
+           message running, a step further in than Onsay's own, and on the bar, else with the steps that came on their
+           own. Neither opens the chat, so the work never loses the keyboard. */
+    public void Lingo(string kind, string text)
+    {
+        if (kind == "say") _ = Say(text);
+        else
+        {
+            AddStep(stepLists.LastOrDefault(l => l.Ms == 0) ?? Steps(), text, waiting ? 1 : 0);
+            if (waiting) Working(text);
+        }
+        Page();
+    }
+
     ////////// 10. STEPS //////////
 
     bool StepsOpen => settings.ShowSteps == true;
@@ -819,6 +854,7 @@ sealed class ChatWindow : Window
         lines.Children.Clear();
         said.Clear();
         stepLists.Clear();
+        lingoCards.Clear();
         (session, waiting) = (null, false);
         chat++;
         Working(null);

@@ -10,7 +10,10 @@
 //   {"show":"clear"}                                            the ring goes
 //   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
 //   {"show":"unpanel"}                                          his panel goes
-// Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept.
+//   {"show":"say","text":".."}                                  he says that in the chat while the work goes on (chat.say)
+//   {"show":"step","text":".."}                                 a step line in the chat, under the message running (chat.step)
+// Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept. chat.ask's questions
+// come another way, as the lingo client's questions for the app, see AskWindow.cs.
 //
 // 1. Line(text)    one line from the lingo client, on any thread
 // 2. Hand          where his pointer is while it shows, for him to watch instead of the mouse
@@ -26,6 +29,7 @@ static class Overlay
     static HandWindow? hand;
     static RingWindow? ring;
     static PanelWindow? panel;
+    public static ChatWindow? Chat;   // the chat, for what a lingo says or shows in it
 
     // 1.
     public static void Line(string text)
@@ -67,6 +71,9 @@ static class Overlay
                 break;
             case "unpanel":
                 panel?.Hide();
+                break;
+            case "say" or "step":
+                Chat?.Lingo(what.GetString()!, Text(m, "text"));
                 break;
         }
     }

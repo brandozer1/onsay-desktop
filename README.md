@@ -35,8 +35,8 @@ Quit.
 
 **Each chat is a session of the onsay lingo.** A message goes to `/onsay` on the lingo client with its prompt key, read
 from the onsay lingo's settings, in a session the app names when the chat starts, the way the onsay lingo names one. The
-onsay lingo keeps the session on this computer and sends the whole of it to Onsay with every message, so he remembers
-the chat. New chat starts a new one. One message at a time; Stop, or the stop key, starts the lingo client again,
+onsay lingo keeps the session on this computer, the agent's tool calls and what they gave included, and sends the whole
+of it to Onsay with every message, so he remembers the chat and what he did in it. New chat starts a new one. One message at a time; Stop, or the stop key, starts the lingo client again,
 which ends whatever it was doing.
 
 **What he is doing shows as he does it.** While a message runs the app asks `/onsay/sessions/<session>/live` every
@@ -55,8 +55,14 @@ card keeps only each question and its answer.
 for each choice. Send, once every one is answered, sends them as the next message in the same session, a line each, like
 `Where to? Rome`.
 
-His replies are drawn as Markdown, with Copy. What the `windows` lingo draws, his pointer, rings and his panel, comes as
-lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his pointer
+**Any lingo can talk in the chat** through the `windows` lingo's `chat` group. `chat.ask` asks you while it works and
+waits: its questions come with the "Allow" questions from `/.lingo/asks`, open the chat and show as the same card, and
+your answers go back through `/.lingo/answer`, so the lingo, like the agent, carries on with them in the same turn
+(`AskWindow.cs` hands them to `ChatWindow.Asked`). `chat.say` adds his line to the chat and `chat.step` a step under the
+message running; neither opens the chat, so the work keeps the keyboard.
+
+His replies are drawn as Markdown, with Copy. What the `windows` lingo draws, his pointer, rings and his panel, and its
+chat lines, come as lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his pointer
 glides to each click and ripples, and turns into a text cursor that ticks where he types (`HandWindow.cs`).
 
 **He asks first.** When an app needs something that matters (your screen, a file outside his own folder, running a
@@ -124,7 +130,7 @@ next quits (`src/System/Updates.cs`).
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
 | `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), his window, Apps to Advanced (`SettingsWindow`), a lingo asking first (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
-| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the windows lingo asks to be drawn (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
+| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the windows lingo asks to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 
 ## License
