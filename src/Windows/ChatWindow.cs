@@ -63,7 +63,7 @@ sealed class ChatWindow : Window
     readonly Border fresh, send;                   // the header's new chat, and send
 
     // The pages. Only one shows at a time, see Page.
-    readonly FrameworkElement signInPage, offPage, homePage;
+    readonly FrameworkElement signInPage, homePage;
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
@@ -108,7 +108,6 @@ sealed class ChatWindow : Window
     public bool Busy => waiting;                    // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
     bool SignedIn => (bool?)status?["signed_in"] == true;
-    bool Off => (bool?)status?["running"] == false;
 
     readonly Grid whole;                            // the card and its shadow, which open and close as one
     readonly ScaleTransform zoom = new(1, 1);
@@ -147,20 +146,6 @@ sealed class ChatWindow : Window
                 new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
                 Paragraph("Sign in so I can help on this computer.", centre: true),
                 SignInBox(centre: true),
-            },
-        };
-
-        // Onsay turned off on this computer: signed in, but nothing to answer.
-        var turnOn = Button("Turn Onsay on", Kind.Primary, () => { Core.Control("start", new() { ["lingo"] = "onsay" }); Refresh(); });
-        turnOn.HorizontalAlignment = HorizontalAlignment.Center;
-        offPage = new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 20),
-            Children =
-            {
-                new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
-                Paragraph("Onsay is turned off on this computer, so I can't answer here. Turn it on and I'm back.", centre: true),
-                turnOn,
             },
         };
 
@@ -257,7 +242,7 @@ sealed class ChatWindow : Window
         footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, choose } };
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { signInPage, offPage, homePage, chatPage } };
+        var pages = new Grid { Children = { signInPage, homePage, chatPage } };
         var layout = new Grid();
         UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input, footer };
         for (int i = 0; i < rows.Length; i++)
@@ -488,9 +473,8 @@ sealed class ChatWindow : Window
 
     void Page()
     {
-        bool known = status is not null, on = SignedIn && !Off, talking = on && Talking, connected = (bool?)status?["connected"] == true;
+        bool known = status is not null, on = SignedIn, talking = on && Talking, connected = (bool?)status?["connected"] == true;
         signInPage.Visibility = Shown(known && !SignedIn);
-        offPage.Visibility = Shown(SignedIn && Off);
         homePage.Visibility = Shown(!known || (on && !talking));
         chatPage.Visibility = fresh.Visibility = Shown(talking);
         input.Visibility = footer.Visibility = Shown(on);
@@ -507,7 +491,7 @@ sealed class ChatWindow : Window
     void Send()
     {
         var text = box.Text.Trim();
-        if (text.Length == 0 || Busy || !SignedIn || Off) return;
+        if (text.Length == 0 || Busy || !SignedIn) return;
         box.Clear();
         Ask(text);
     }
@@ -583,7 +567,6 @@ sealed class ChatWindow : Window
         if (stopping) await Replied("Stopped.", "Stopped", ms);
         else if (code != 200)
             await Replied(code == 0 ? "Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."
-                : code == 404 ? "Onsay is turned off on this computer, so I can't answer. Turn it on and ask again."
                 : $"{answer?["error"] ?? "Something went wrong there. Try again in a moment."}", "Failed", ms);
         else
         {

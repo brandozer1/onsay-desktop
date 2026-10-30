@@ -15,7 +15,6 @@
 //                             parts, or why it can't run. Title(name) is its name on screen
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -60,6 +59,10 @@ static class Core
         _ => who,
     };
 
+    // The lingos built into the lingo client. A .lingo file or folder an older version of this app put in the lingos folder
+    // for one goes, since a lingo there with a built-in one's name is set aside.
+    static readonly string[] BuiltIn = { "onsay", "windows", "native" };
+
     // What Onsay's own lingos may do without asking every time, given the first time each appears, and taken back in Apps.
     // Anything else they need is asked.
     static readonly Dictionary<string, string[]> Grants = new() { ["windows"] = new[] { "screen.read", "screen.act", "files.read" } };
@@ -91,6 +94,14 @@ static class Core
     static void Run()
     {
         if (!wanted || process is { HasExited: false }) return;
+        foreach (var name in BuiltIn)
+            try
+            {
+                File.Delete(Path.Combine(LingosFolder, name + ".lingo"));
+                var folder = Path.Combine(LingosFolder, name);
+                if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException) { }   // still open somewhere: it goes next time
         var shipped = Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.lingo") : Array.Empty<string>();
         foreach (var from in shipped)
             try
@@ -119,15 +130,18 @@ static class Core
         p.BeginOutputReadLine();
         process = p;
 
-        // A lingo newly in the folder is stopped, so the ones this app ships are started the first time they appear, once
-        // it answers. Started remembers them, so one the person stops stays stopped.
-        var fresh = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
+        // Onsay's own lingos are set up the first time each appears, once it answers: one this app ships is started, since a
+        // lingo new in the folder is stopped, and each is given what it may do without asking (Grants). Started remembers
+        // them, so one the person stops stays stopped.
+        var own = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Concat(BuiltIn);
+        var fresh = own.Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
         if (fresh.Count > 0) Task.Run(async () =>
         {
             for (var until = DateTime.Now.AddSeconds(15); Lingos() is null && DateTime.Now < until;) await Task.Delay(250);
             foreach (var name in fresh)
             {
-                if (Control("start", new() { ["lingo"] = name }).why is not null) continue;
+                var ships = !BuiltIn.Contains(name);
+                if (ships && Control("start", new() { ["lingo"] = name }).why is not null) continue;
                 foreach (var need in Grants.GetValueOrDefault(name, Array.Empty<string>())) Control("grant", new() { ["lingo"] = name, ["need"] = need });
                 (settings.Started ??= new()).Add(name);
             }
@@ -194,16 +208,16 @@ static class Core
 
     ////////// 5. THE LINGOS //////////
 
-    /* One lingo on this computer. Error is why it can't run, null when it can. Shipped comes with Onsay. Needs are what its
+    /* One lingo on this computer. Error is why it can't run, null when it can. BuiltIn is built into Onsay, and always on. Needs are what its
        routes say they need, and Parts the first step of each route after its own, like /window for /windows/window/list,
        each a part that can be shared on its own. */
-    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool Shipped, string[] Needs, string[] Parts);
+    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts);
 
     // 5.
     public static string Title(string name) => name.Length > 0 ? char.ToUpper(name[0]) + name[1..] : name;
 
-    /* 5. As the lingo client says: GET / from this computer lists every lingo, running or not. What one is comes from its
-          openapi.json, in its .lingo file or its folder. Null while the lingo client isn't answering. */
+    /* 5. As the lingo client says: GET / from this computer lists every lingo, running or not, and manifest gives what each
+          one is, a built-in one too. Null while the lingo client isn't answering. */
     public static List<Lingo>? Lingos()
     {
         JsonArray all;
@@ -216,31 +230,19 @@ static class Core
         return all.Select(e =>
         {
             var name = $"{e?["name"]}";
-            var file = Path.Combine(LingosFolder, name + ".lingo");
-            string about = "";
+            var doc = Control("manifest", new() { ["lingo"] = name }).answer;
+            var route = $"{doc?["x-lingo"]?["route"] ?? "/" + name}";
             var (needs, parts) = (new SortedSet<string>(), new SortedSet<string>());
-            try
+            foreach (var (path, ops) in doc?["paths"]?.AsObject() ?? new JsonObject())
             {
-                string manifest;
-                if (File.Exists(file))
-                {
-                    using var zip = ZipFile.OpenRead(file);
-                    using var read = new StreamReader(zip.GetEntry("openapi.json")!.Open());
-                    manifest = read.ReadToEnd();
-                }
-                else manifest = File.ReadAllText(Path.Combine(LingosFolder, name, "openapi.json"));
-                var doc = JsonNode.Parse(manifest);
-                about = $"{doc?["info"]?["description"]}";
-                var route = $"{doc?["x-lingo"]?["route"] ?? "/" + name}";
-                foreach (var (path, ops) in doc?["paths"]?.AsObject() ?? new JsonObject())
-                {
-                    if (path.StartsWith(route + "/") && path[(route.Length + 1)..].Split('/')[0] is { Length: > 0 } part) parts.Add("/" + part);
-                    foreach (var (_, op) in ops?.AsObject() ?? new JsonObject())
-                        foreach (var need in op?["x-lingo-needs"]?.AsArray() ?? new JsonArray()) needs.Add($"{need}");
-                }
+                if (path.StartsWith(route + "/") && path[(route.Length + 1)..].Split('/')[0] is { Length: > 0 } part) parts.Add("/" + part);
+                foreach (var (_, op) in ops?.AsObject() ?? new JsonObject())
+                    foreach (var need in op?["x-lingo-needs"]?.AsArray() ?? new JsonArray()) needs.Add($"{need}");
             }
-            catch (Exception) { }   // one being written may have no openapi.json yet
-            return new Lingo(name, (bool?)e?["running"] == true, e?["error"] is { } why ? $"{why}" : null, about, File.Exists(Path.Combine(Shipped, name + ".lingo")), needs.ToArray(), parts.ToArray());
+            var about = $"{doc?["info"]?["description"]}";
+            var builtIn = $"{doc?["x-lingo"]?["program"]}" == "built in";
+            var error = e?["error"] is { } why ? $"{why}" : null;
+            return new Lingo(name, (bool?)e?["running"] == true, error, about, builtIn, needs.ToArray(), parts.ToArray());
         }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

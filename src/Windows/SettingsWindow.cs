@@ -11,7 +11,7 @@
 // 5. Activity    what reached this computer and what apps were allowed or refused, by day, newest first
 // 6. Settings    the account, starting with Windows, his look, updates and removing Onsay
 // 7. Advanced    the most any app may do, who can reach this computer, the account, folders, and the logs to read
-// 8. Pieces      Off, the line when Onsay is turned off here; Section, a heading; Item, a row; Lines, a log's lines
+// 8. Pieces      Section, a heading; Item, a row; Lines, a log's lines
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -154,11 +154,9 @@ sealed class SettingsWindow : Window
                 // The start of its first sentence, so the list reads at a glance: up to its colon, or a comma that fits.
                 var first = l.About.Split(". ")[0].Trim().TrimEnd('.');
                 if (first.Length > 70) first = first.IndexOf(':') is var colon and >= 20 ? first[..colon] : first.LastIndexOf(", ", 70) is var comma and > 0 ? first[..comma] : first;
-                row = Item(Core.Title(l.Name), first.Length > 0 ? first : null, Toggle(l.Running, on =>
-                {
-                    said.Text = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why
-                        ?? (l.Name == "onsay" && !on ? "Off. He can't answer you in the chat, and your other devices can't reach this computer, until you turn it on again." : "");
-                }), () => Open(() => Details(into, l)));
+                // One built into Onsay is always on, so it has no switch.
+                var toggle = l.BuiltIn ? null : Toggle(l.Running, on => { said.Text = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why ?? ""; });
+                row = Item(Core.Title(l.Name), first.Length > 0 ? first : null, toggle, () => Open(() => Details(into, l)));
             }
             var list = Helpers.Contains(l.Name) ? helpers : main;
             list.Children.Add(row);
@@ -343,7 +341,6 @@ sealed class SettingsWindow : Window
         var p = Page("Devices", "Every computer signed in to your Onsay account. Your devices can use the apps on each other, and nobody else's.");
         var (status, why) = Core.Onsay("status");
         if (status is null) { p.Children.Add(Paragraph(why ?? Helper)); return p; }
-        if (Off(status) is { } off) p.Children.Add(off);
         if ((bool?)status["signed_in"] != true)
         {
             p.Children.Add(Paragraph("Sign in to see the computers on your account."));
@@ -497,7 +494,6 @@ sealed class SettingsWindow : Window
         if (status is null) p.Children.Add(Paragraph(why ?? Helper));
         else
         {
-            if (Off(status) is { } off) p.Children.Add(off);
             if ((bool?)status["signed_in"] != true)
             {
                 p.Children.Add(Paragraph("Not signed in. Sign in so he can answer you in the chat, and so your other devices can reach this one."));
@@ -666,23 +662,6 @@ sealed class SettingsWindow : Window
     }
 
     ////////// 8. PIECES //////////
-
-    /* 8. With the onsay lingo stopped, this computer has no connection to Onsay: a plain line saying so, and turning it on.
-          Signing in still works while it is off. Null while it is on. */
-    UIElement? Off(JsonNode status)
-    {
-        if ((bool?)status["running"] != false) return null;
-        var on = Button("Turn Onsay on", Kind.Primary, () =>
-        {
-            Core.Control("start", new() { ["lingo"] = "onsay" });
-            Go(pages.First(x => x.Row.Tag is not null).Name);
-        });
-        return new Border
-        {
-            Background = Butter, CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 12, 14, 14), Margin = new Thickness(0, 4, 0, 12),
-            Child = new StackPanel { Children = { Paragraph("Onsay is turned off on this computer, so he can't answer you in the chat and your other devices can't reach it."), on } },
-        };
-    }
 
     // 8. A heading over a few rows.
     static TextBlock Section(string text)
