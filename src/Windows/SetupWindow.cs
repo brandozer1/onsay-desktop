@@ -1,9 +1,9 @@
 // SetupWindow.cs - setting Onsay up, the first time he opens after installing: he says hello, you pick how he looks and
-// where to find him, read what is sent to Onsay, and sign in. Onsay stands on the left and says each step out loud, the
+// where to find him, read what is sent to Onsay, pick his AI, and sign in. Onsay stands on the left and says each step out loud, the
 // step on the right.
 //
 // 1. Open(settings, chat, done)    shows it, and done runs once it is finished or skipped
-// 2. Welcome, Look, Find, Sent, SignIn   the steps
+// 2. Welcome, Look, Find, Sent, Ai, SignIn   the steps
 // 3. LookPicker(settings, changed) his colour, face and surface, live. Also his look in Settings
 // 4. Go(step)                      moves to a step, sliding it in, and he says its line
 // 5. Step, Swatch, Chips           the pieces the steps are made of, beside the ones every window shares (ChatWindow.cs)
@@ -53,7 +53,7 @@ sealed class SetupWindow : Window
         this.settings = settings;
         this.chat = chat;
         this.done = done;
-        steps = new Func<UIElement>[] { Welcome, Look, Find, Sent, SignIn };
+        steps = new Func<UIElement>[] { Welcome, Look, Find, Sent, Ai, SignIn };
         Title = "Set up Onsay";
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -180,6 +180,19 @@ sealed class SetupWindow : Window
             Note("Everything sent is kept in a log you can read any time, under Advanced."));
     }
 
+    // 2. His AI: Onsay's own, there as soon as he is signed in, is the default and needs nothing. A key of their own is
+    // set in the agent's settings, under Apps, opened from here.
+    UIElement Ai()
+    {
+        Line("Which AI should I think with?");
+        Actions(Button("Back", Kind.Quiet, () => Go(3)), Button("Next", Kind.Primary, () => Go(5)));
+        var list = new StackPanel();
+        list.Children.Add(Note("Onsay's AI is on, free to start. Once the free part is used up, you can subscribe or add a key of your own, any time, in his settings under Apps."));
+        list.Children.Add(Button("Add my own key", Kind.Quiet, () => SettingsWindow.Open(settings, chat, "Apps")));
+        return Step("His AI", "He thinks with an AI. Onsay's own is ready the moment you sign in, or bring your own key for Claude, ChatGPT, OpenRouter or any service that works like them.",
+            list);
+    }
+
     // 2. Signed in, here or before, it is the last word: all set.
     UIElement SignIn()
     {
@@ -191,9 +204,9 @@ sealed class SetupWindow : Window
             return Step("You're all set", $"{(status["handle"] is { } handle ? $"You're {handle}. " : "You're signed in. ")}He's on your taskbar now: click him any time to open his chat.", new Border());
         }
         Line("Let's sign you in.");
-        Actions(Button("Back", Kind.Quiet, () => Go(3)), Button("Skip for now", Kind.Quiet, Finish));
-        return Step("Sign in", "Signing in gives this computer its own name on Onsay, like laptop.yourname, so he can answer you in the chat.",
-            chat.SignInBox(() => Go(4)));
+        Actions(Button("Back", Kind.Quiet, () => Go(4)), Button("Skip for now", Kind.Quiet, Finish));
+        return Step("Sign in", "Signing in gives this computer its own name on Onsay, like laptop.yourname, so he can answer you in the chat, and turns on Onsay's AI.",
+            chat.SignInBox(() => Go(5)));
     }
 
     ////////// 3. HIS LOOK //////////

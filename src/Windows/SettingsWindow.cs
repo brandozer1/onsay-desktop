@@ -3,7 +3,7 @@
 // person's: a lingo is an app, an access rule is sharing, a grant is allowing.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
-// 2. Apps        a row for each app with its switch, the helpers folded under one row. A row opens what it can do, who
+// 2. Apps        a row for each app with its switch. A row opens what it can do, who
 //                can use it, Share and its own settings
 //    Fields      an app's own settings, as its openapi.json declares them
 // 3. Devices     the computers on the account, online or not
@@ -114,9 +114,8 @@ sealed class SettingsWindow : Window
 
     ////////// 2. APPS //////////
 
-    // The ones Onsay leads with, then the rest by name, and the small tools other apps build on, folded under Helpers.
+    // The ones Onsay leads with, then the rest by name.
     static readonly string[] Lead = { "windows", "agent", "onsay", "native" };
-    static readonly string[] Helpers = { "encode", "json", "list", "math", "request", "text", "time", "url" };
 
     // 2. Each app is a row: its name, the start of what it is, and its switch. A click on the row opens the rest under it.
     UIElement Apps()
@@ -126,7 +125,6 @@ sealed class SettingsWindow : Window
         if (lingos is null) { p.Children.Add(Paragraph(Helper)); return p; }
         if (lingos.Count == 0) { p.Children.Add(Paragraph("No apps yet. To add one, open Advanced, press Open next to Apps folder, and put its file there.")); return p; }
         var main = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-        var helpers = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(16, 0, 0, 0) };
         var rows = new List<(Core.Lingo l, Border row, Border more)>();
         foreach (var l in lingos.OrderBy(l => Array.IndexOf(Lead, l.Name) is var i and >= 0 ? i : Lead.Length).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
         {
@@ -158,32 +156,19 @@ sealed class SettingsWindow : Window
                 var toggle = l.BuiltIn ? null : Toggle(l.Running, on => { said.Text = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why ?? ""; });
                 row = Item(Core.Title(l.Name), first.Length > 0 ? first : null, toggle, () => Open(() => Details(into, l)));
             }
-            var list = Helpers.Contains(l.Name) ? helpers : main;
-            list.Children.Add(row);
-            list.Children.Add(said);
-            list.Children.Add(more);
+            main.Children.Add(row);
+            main.Children.Add(said);
+            main.Children.Add(more);
             rows.Add((l, row, more));
         }
-        var tools = lingos.Where(l => Helpers.Contains(l.Name)).Select(l => Core.Title(l.Name)).ToList();
-        if (tools.Count > 0)
-        {
-            var chevron = new TextBlock { Text = "", FontFamily = Icons, FontSize = 12, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center };
-            main.Children.Add(Item("Helpers", $"Small tools other apps use: {string.Join(", ", tools.Take(3))}{(tools.Count > 3 ? $" and {tools.Count - 3} more" : "")}", chevron, () =>
-            {
-                helpers.Visibility = Shown(helpers.Visibility != Visibility.Visible);
-                chevron.Text = helpers.Visibility == Visibility.Visible ? "" : "";
-            }));
-            main.Children.Add(helpers);
-        }
         // A search box once the list is long enough to need one.
-        if (lingos.Count - tools.Count > 8)
+        if (lingos.Count > 8)
         {
             var box = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
             var hint = new TextBlock { Text = "Search apps", FontSize = 13, Foreground = Ink4, IsHitTestVisible = false, Margin = new Thickness(2, 0, 0, 0) };
             box.TextChanged += (_, _) =>
             {
                 hint.Visibility = Shown(box.Text.Length == 0);
-                if (box.Text.Length > 0) helpers.Visibility = Visibility.Visible;
                 foreach (var (l, row, more) in rows)
                 {
                     row.Visibility = Shown(l.Name.Contains(box.Text, StringComparison.OrdinalIgnoreCase) || l.About.Contains(box.Text, StringComparison.OrdinalIgnoreCase));

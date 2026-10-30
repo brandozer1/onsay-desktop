@@ -1,6 +1,6 @@
 # Onsay Desktop
 
-Onsay for Windows, in C# and WPF: a free, open source AI agent and employee. Customize, change, tweak and edit it
+Onsay for Windows, in C# and WPF: a free AI agent and employee. Customize, change, tweak and edit it
 however you like: the character, the UI, the setup, the lingos it ships. It is Apache 2.0 licensed and built to be built
 on.
 

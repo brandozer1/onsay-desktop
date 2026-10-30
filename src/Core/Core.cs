@@ -62,6 +62,8 @@ static class Core
     // The lingos built into the lingo client. A .lingo file or folder an older version of this app put in the lingos folder
     // for one goes, since a lingo there with a built-in one's name is set aside.
     static readonly string[] BuiltIn = { "onsay", "windows", "native" };
+    // What older versions shipped as lingos and are now standard functions of the lingo client, or no longer ship.
+    static readonly string[] Retired = { "encode", "json", "list", "math", "request", "text", "time", "url", "writer" };
 
     // What Onsay's own lingos may do without asking every time, given the first time each appears, and taken back in Apps.
     // Anything else they need is asked.
@@ -94,7 +96,7 @@ static class Core
     static void Run()
     {
         if (!wanted || process is { HasExited: false }) return;
-        foreach (var name in BuiltIn)
+        foreach (var name in BuiltIn.Concat(Retired))
             try
             {
                 File.Delete(Path.Combine(LingosFolder, name + ".lingo"));
