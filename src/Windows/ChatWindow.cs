@@ -2,7 +2,7 @@
 // only draws: each chat is one session of the onsay lingo on this computer, every message goes to its /onsay, which
 // works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask is
 // shown here. He is its close button (his back has an X while it is open), and Esc closes it too. Let me choose, at the
-// bottom, sends decision mode, so each step is a card of ways to pick from, and while he works his steps show as they
+// bottom, sends list mode, so each step is a card of ways to pick from, and while he works his steps show as they
 // happen, folded under one line once he answers.
 //
 // 1.  Open(body, monitor, scale, focus)   opens, or follows him, next to his body rect in pixels, growing out of him
@@ -498,7 +498,7 @@ sealed class ChatWindow : Window
 
     /* 6. Shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in this chat's session, made
           here for the first in the onsay lingo's own way so it can be followed from the start, and with Let me choose on,
-          in decision mode. While it runs, what it is doing is asked of the session every moment: each new step is a line,
+          in list mode. While it runs, what it is doing is asked of the session every moment: each new step is a line,
           the newest one on the bar, and what it asks you is a card, answered on the same card. Its answer is his reply,
           or questions back. */
     async void Ask(string text)
@@ -548,7 +548,7 @@ sealed class ChatWindow : Window
             }
             Follow();
             var body = new JsonObject { ["prompt"] = text, ["session"] = session };
-            if (settings.LetMeChoose == true) body["mode"] = "decision";
+            if (settings.LetMeChoose == true) body["mode"] = "list";
             using var ask = To(HttpMethod.Post, "", body);
             using var res = await Http.SendAsync(ask);
             code = (int)res.StatusCode;

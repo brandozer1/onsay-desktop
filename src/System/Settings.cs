@@ -31,7 +31,7 @@ sealed class Settings
     public bool? Welcomed { get => null; set { if (value == true) SetUp = true; } }
     // How he looks, picked in that window or Settings, Look. Null is the brand's own look.
     public Onsay.Character.OnsayView.Appearance? Look { get; set; }
-    // Let me choose, on the chat: true asks the person for every pick he makes (decision mode). Null is off.
+    // Let me choose, on the chat: true asks the person for every pick he makes (list mode). Null is off.
     public bool? LetMeChoose { get; set; }
     // Whether a message's steps stay open under it once it is answered, rather than folded under one line.
     public bool? ShowSteps { get; set; }
