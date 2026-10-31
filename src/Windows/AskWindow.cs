@@ -77,7 +77,7 @@ sealed class AskWindow : Window
             shown = (double?)ask["id"];
             var (need, path, caller) = ($"{ask["need"]}", ask["path"] is { } p ? $"{p}" : null, $"{ask["caller"]}");
             var wants = Core.Needs.FirstOrDefault(n => n.Name == need).Wants ?? need;
-            var (app, does) = ($"{ask["lingo"]}" is var lingo && lingo == "windows" ? "Onsay" : Core.Title(lingo), path is null ? wants : wants.Replace("your files", path));
+            var (app, does) = ($"{ask["lingo"]}" is var lingo && lingo == "onsay" ? "Onsay" : Core.Title(lingo), path is null ? wants : wants.Replace("your files", path));
             words.Text = caller == "this computer" ? $"{app} wants to {does}." : $"{Core.Who(caller, handle is null ? null : $"{handle}")} wants {app} to {does} here.";
             Show();
         }

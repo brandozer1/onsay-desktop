@@ -67,7 +67,8 @@ static class Core
 
     // What Onsay's own lingos may do without asking every time, given the first time each appears, and taken back in Apps.
     // Anything else they need is asked.
-    static readonly Dictionary<string, string[]> Grants = new() { ["windows"] = new[] { "screen.read", "screen.act", "files.read" } };
+    const string BaseCalls = "base calls";   // what Started remembers once the onsay lingo, which holds them, was given its grants
+    static readonly Dictionary<string, string[]> Grants = new() { [BaseCalls] = new[] { "screen.read", "screen.act", "files.read" } };
 
     static Process? process;
     static bool wanted;
@@ -135,16 +136,16 @@ static class Core
         // Onsay's own lingos are set up the first time each appears, once it answers: one this app ships is started, since a
         // lingo new in the folder is stopped, and each is given what it may do without asking (Grants). Started remembers
         // them, so one the person stops stays stopped.
-        var own = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Concat(BuiltIn);
+        var own = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Concat(BuiltIn).Append(BaseCalls);
         var fresh = own.Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
         if (fresh.Count > 0) Task.Run(async () =>
         {
             for (var until = DateTime.Now.AddSeconds(15); Lingos() is null && DateTime.Now < until;) await Task.Delay(250);
             foreach (var name in fresh)
             {
-                var ships = !BuiltIn.Contains(name);
+                var ships = !BuiltIn.Contains(name) && name != BaseCalls;
                 if (ships && Control("start", new() { ["lingo"] = name }).why is not null) continue;
-                foreach (var need in Grants.GetValueOrDefault(name, Array.Empty<string>())) Control("grant", new() { ["lingo"] = name, ["need"] = need });
+                foreach (var need in Grants.GetValueOrDefault(name, Array.Empty<string>())) Control("grant", new() { ["lingo"] = name == BaseCalls ? "onsay" : name, ["need"] = need });
                 (settings.Started ??= new()).Add(name);
             }
             settings.Save();

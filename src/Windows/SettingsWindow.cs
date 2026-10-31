@@ -115,14 +115,14 @@ sealed class SettingsWindow : Window
     ////////// 2. APPS //////////
 
     // The ones Onsay leads with, then the rest by name.
-    static readonly string[] Lead = { "windows", "agent", "onsay", "native" };
+    static readonly string[] Lead = { "agent" };
 
     // 2. Each app is a row: its name, the start of what it is, and its switch. A click on the row opens the rest under it.
     UIElement Apps()
     {
         var p = Page("Apps", "What Onsay can use on this computer. Turn one off and nothing can use it, not even him.");
-        // core is what the lingo client itself can do, never an app to the person.
-        var lingos = Core.Lingos()?.Where(l => l.Name != "core").ToList();
+        // What is built into Onsay is the program itself, never an app to the person.
+        var lingos = Core.Lingos()?.Where(l => !l.BuiltIn).ToList();
         if (lingos is null) { p.Children.Add(Paragraph(Helper)); return p; }
         if (lingos.Count == 0) { p.Children.Add(Paragraph("No apps yet. To add one, open Advanced, press Open next to Apps folder, and put its file there.")); return p; }
         var main = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
