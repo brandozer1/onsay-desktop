@@ -279,7 +279,6 @@ static class Core
         var name = steps.Length > 0 ? Title(steps[^1].Replace('_', ' ')) : "Open it";
         var group = steps.Length > 1 ? steps[0] : "";
         var does = $"{op?["description"] ?? op?["summary"]}";
-        if (does.StartsWith("->")) does = does.IndexOf(": ") is var colon and >= 0 ? does[(colon + 2)..] : "";
         return new Call(path, name, does, group);
     }
 
