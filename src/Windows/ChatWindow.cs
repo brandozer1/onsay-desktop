@@ -694,7 +694,8 @@ sealed class ChatWindow : Window
 
     ////////// 10. QUESTIONS BACK //////////
 
-    /* 10. Each question is text, answered by typing, or {question, choices}, answered by picking one. Send lights up once
+    /* 10. Each question is text, or {question, why, choices, other, skip}: picked, or typed under Something else, or Skip,
+           which sends Skipped. other and skip false leave those out. Send lights up once
            every one is answered, and sends them all as the next message in this session, a line each: the question, then
            its answer. Or, asked while a message runs, to send, its answers in order. Once sent, the card keeps only each
            question and its answer. Gives the card. */
@@ -702,6 +703,8 @@ sealed class ChatWindow : Window
     {
         var asked = questions.Select(q => q is JsonObject o ? (words: $"{o["question"] ?? o["text"]}", choices: o["choices"] as JsonArray) : (words: $"{q}", choices: null)).ToList();
         var answers = new string[asked.Count];
+        var picked = new string[asked.Count];
+        const string Other = "\u0001other";
         var card = new StackPanel();
         Border go = null!;
         void Ready()
@@ -716,14 +719,24 @@ sealed class ChatWindow : Window
             var label = Label(asked[i].words);
             label.Margin = new Thickness(0, i == 0 ? 0 : 12, 0, 6);
             card.Children.Add(label);
-            if (asked[i].choices is { Count: > 0 } choices)
-            {
-                card.Children.Add(SetupWindow.Chips(choices.Select(c => ($"{c}", $"{c}")).ToArray(), () => answers[at] ?? "", v => { answers[at] = v; Ready(); }));
-                continue;
-            }
+            var q = questions[at] as JsonObject;
+            if (!string.IsNullOrWhiteSpace($"{q?["why"]}")) card.Children.Add(new TextBlock { Text = $"{q!["why"]}", FontSize = 12, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) });
+            var options = (asked[i].choices?.Select(c => ($"{c}", $"{c}")) ?? Enumerable.Empty<(string, string)>()).ToList();
+            bool choosing = options.Count > 0;
+            if (choosing && (bool?)q?["other"] != false) options.Add(("Something else", Other));
+            if ((bool?)q?["skip"] != false) options.Add(("Skip", "Skipped"));
             var typed = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
-            typed.TextChanged += (_, _) => { answers[at] = typed.Text; Ready(); };
-            card.Children.Add(new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card, Child = typed });
+            typed.TextChanged += (_, _) => { answers[at] = typed.Text; picked[at] = choosing ? Other : ""; Ready(); };
+            var box = new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card, Child = typed };
+            box.Visibility = choosing ? Visibility.Collapsed : Visibility.Visible;
+            if (options.Count > 0) card.Children.Add(SetupWindow.Chips(options.ToArray(), () => picked[at] ?? "", v =>
+            {
+                picked[at] = v;
+                box.Visibility = v == Other || (!choosing && v != "Skipped") ? Visibility.Visible : Visibility.Collapsed;
+                answers[at] = v == Other ? typed.Text : v;
+                Ready();
+            }));
+            card.Children.Add(box);
         }
         go = Button("Send", Kind.Primary, () =>
         {
