@@ -10,6 +10,7 @@
 // 8. ClickThrough(window)       never clicked or activated, for a window that is only a picture. Returns its handle
 // 9. Open(target)               a file, folder or link in its default app
 // 10. WebLink(target)           the address as a Uri when it is a web or mail link, or null
+// 11. EndsWithThis(process)     a program that ends when this app does, however this app ends. What it starts goes on
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -198,4 +199,42 @@ static class Native
         if (!Uri.TryCreate(target, UriKind.Absolute, out var uri)) return null;
         return uri.Scheme is "http" or "https" or "mailto" ? uri : null;
     }
+
+    // 11. A job Windows closes when this app ends, even by a crash, ending what is in it. Silent breakaway keeps out what
+    // that program starts, so a browser or app opened for the person stays open.
+    static readonly IntPtr EndingJob = CreateJobObject(IntPtr.Zero, null);
+
+    public static void EndsWithThis(Process process)
+    {
+        var limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+        limits.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+        SetInformationJobObject(EndingJob, JobObjectExtendedLimitInformation, ref limits, (uint)Marshal.SizeOf(limits));
+        AssignProcessToJobObject(EndingJob, process.Handle);
+    }
+
+    const int JobObjectExtendedLimitInformation = 9;
+    const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+    const uint JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK = 0x1000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    {
+        public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass, SchedulingClass;
+        public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount;
+        public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateJobObject(IntPtr attributes, string? name);
+
+    [DllImport("kernel32.dll")]
+    static extern bool SetInformationJobObject(IntPtr job, int kind, ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION info, uint size);
+
+    [DllImport("kernel32.dll")]
+    static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
 }

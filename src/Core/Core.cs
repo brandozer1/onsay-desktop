@@ -113,6 +113,18 @@ static class Core
                 if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
             }
             catch (IOException) { }   // still open somewhere: it goes next time
+        // One left behind by an app that crashed before this one had its job would hold the port and fight this one for
+        // the connection to Onsay.
+        foreach (var other in Process.GetProcessesByName("onsay-core"))
+            try
+            {
+                if (string.Equals(other.MainModule?.FileName, Exe, StringComparison.OrdinalIgnoreCase))
+                {
+                    other.Kill();
+                    other.WaitForExit(3000);
+                }
+            }
+            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }   // already gone
         var shipped = Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.lingo") : Array.Empty<string>();
         foreach (var path in shipped)
             try
@@ -149,6 +161,7 @@ static class Core
             Run();
         };
         p.Start();
+        Native.EndsWithThis(p);
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
         process = p;

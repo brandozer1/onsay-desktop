@@ -179,8 +179,14 @@ static class Markdown
         return span;
     }
 
-    static IEnumerable<Inline> Inlines(string text)
+    // Bold inside bold inside bold ends somewhere: a long run of * or _ stays words, instead of running out of stack.
+    static IEnumerable<Inline> Inlines(string text, int depth = 0)
     {
+        if (depth > 8)
+        {
+            yield return new Run(text);
+            yield break;
+        }
         int at = 0;
         foreach (Match m in Spans.Matches(text))
         {
@@ -188,26 +194,28 @@ static class Markdown
             at = m.Index + m.Length;
             var g = m.Groups;
             if (g[2].Success) yield return new Run(g[2].Value.Trim()) { FontFamily = Mono, FontSize = 12.5, Background = Page_, Foreground = Ink };
-            else if (g[3].Success || g[4].Success) yield return Wrap(new Bold(), g[3].Success ? g[3].Value : g[4].Value);
-            else if (g[5].Success) yield return Wrap(new Span { TextDecorations = TextDecorations.Strikethrough }, g[5].Value);
-            else if (g[6].Success || g[7].Success) yield return Wrap(new Italic(), g[6].Success ? g[6].Value : g[7].Value);
-            else yield return Link(g[8].Success ? g[8].Value : g[10].Value, g[8].Success ? g[9].Value : g[10].Value);
+            else if (g[3].Success || g[4].Success) yield return Wrap(new Bold(), g[3].Success ? g[3].Value : g[4].Value, depth);
+            else if (g[5].Success) yield return Wrap(new Span { TextDecorations = TextDecorations.Strikethrough }, g[5].Value, depth);
+            else if (g[6].Success || g[7].Success) yield return Wrap(new Italic(), g[6].Success ? g[6].Value : g[7].Value, depth);
+            else yield return Link(g[8].Success ? g[8].Value : g[10].Value, g[8].Success ? g[9].Value : g[10].Value, depth);
         }
         if (at < text.Length) yield return new Run(text[at..]);
     }
 
-    static Span Wrap(Span span, string inner)
+    static Span Wrap(Span span, string inner, int depth)
     {
-        span.Inlines.AddRange(Inlines(inner).ToList());
+        span.Inlines.AddRange(Inlines(inner, depth + 1).ToList());
         return span;
     }
 
     // A link opens in the browser. Only web and mail links are links: anything else stays words.
-    static Inline Link(string words, string target)
+    static Inline Link(string words, string target, int depth)
     {
         if (Native.WebLink(target) is not { } uri) return new Run(words);
         var link = new Hyperlink { Foreground = Accent, TextDecorations = null, Cursor = Cursors.Hand, ToolTip = uri.ToString() };
-        Wrap(link, words);
+        // Words with an address in them stay words: read again they would be a link, inside a link, for ever.
+        if (words.Contains("://")) link.Inlines.Add(new Run(words));
+        else Wrap(link, words, depth);
         link.Click += (_, _) => Native.Open(uri.ToString());
         link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
         link.MouseLeave += (_, _) => link.TextDecorations = null;
