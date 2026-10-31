@@ -19,7 +19,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Onsay.Character;
 using static Onsay.Desktop.Native;
-using Spring = Onsay.Character.Spring;
 
 namespace Onsay.Desktop;
 
@@ -29,8 +28,11 @@ sealed class BuddyWindow : Window
 
     // In DIPs. Box is his window, the room around Body is for hops and leans. EndMargin keeps him off the very ends of
     // the bar, Gap is between his body and the bar.
-    const double Box = 96, Body = 64, EndMargin = 12, Gap = 3;
-    const int StopKey = 1;   // Alt+Shift+O's hotkey id
+    const double Box = 96;
+    const double Body = 64;
+    const double EndMargin = 12;
+    const double Gap = 3;
+    const int StopHotKey = 1;   // Alt+Shift+O's hotkey id
     static readonly TimeSpan Drowsy = TimeSpan.FromMinutes(3);
 
     ////////// STATE //////////
@@ -40,14 +42,33 @@ sealed class BuddyWindow : Window
     readonly ChatWindow chat;
     readonly Stopwatch clock = Stopwatch.StartNew();
     IntPtr hwnd;
-    bool open, pressed, dragging, asleep, aside, sliding, chasing, reopen;
-    POINT grab, lastCursor, seen;
+    bool open;       // the chat is open
+    bool asleep;     // dozing, the cursor having been still
+    bool aside;      // hidden while something is fullscreen
+
+    // Being held or dragged.
+    bool pressed;
+    bool dragging;
+    POINT grab;
     RECT grabRect;
-    double lastMoveAt, slideLast;
+    POINT lastCursor;
+    double lastMoveAt;
     Vector velocity;
-    (double x, double y) fly;   // where he is while following his pointer, kept unrounded so he moves evenly
+
+    // Sliding home.
+    bool sliding;
+    Spring? slideX;
+    Spring? slideY;
+    double slideLast;
+
+    // Following his own pointer.
+    bool chasing;
+    bool reopen;                // the chat comes back once his pointer has gone
+    (double x, double y) fly;   // where he is, kept unrounded so he moves evenly
     double flyLast;
-    Spring? slideX, slideY;
+
+    // Watching the cursor.
+    POINT seen;
     DateTime movedAt = DateTime.Now;
 
     public BuddyWindow()
@@ -67,14 +88,18 @@ sealed class BuddyWindow : Window
             SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
             HwndSource.FromHwnd(hwnd).AddHook(WndProc);
             // The hook swallows the key on its own thread. The hotkey is there in case it cannot hook.
-            Desktop.StopKey.Start(chat.Stop);
-            RegisterHotKey(hwnd, StopKey, MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, 'O');
+            StopKey.Start(chat.Stop);
+            RegisterHotKey(hwnd, StopHotKey, MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, 'O');
         };
         Loaded += (_, _) =>
         {
             ShowSystemCursor();   // in case the app last ended while his pointer had Windows' own hidden
             Park(dropped: false);
-            Every(TimeSpan.FromMilliseconds(33), () => { Follow(); Look(); });
+            Every(TimeSpan.FromMilliseconds(33), () =>
+            {
+                Follow();
+                Look();
+            });
             Every(TimeSpan.FromSeconds(1.5), () => StepAside(SomethingFullscreen()));
             him.React("greet");
             // The first time, he is set up, and then the chat opens.
@@ -82,8 +107,15 @@ sealed class BuddyWindow : Window
             new AskWindow(() => Rect().Inset(Pad), chat);   // a lingo asking first, on a card beside him, and its questions in the chat
             Updates.Start();
         };
-        DpiChanged += (_, _) => { if (!dragging) Later(() => Park(dropped: false)); };
-        Closed += (_, _) => { Core.Stop(); Application.Current.Shutdown(); };
+        DpiChanged += (_, _) =>
+        {
+            if (!dragging) Later(() => Park(dropped: false));
+        };
+        Closed += (_, _) =>
+        {
+            Core.Stop();
+            Application.Current.Shutdown();
+        };
 
         MouseLeftButtonDown += OnPress;
         MouseMove += OnDrag;
@@ -95,7 +127,13 @@ sealed class BuddyWindow : Window
     double Scale => VisualTreeHelper.GetDpi(this).DpiScaleX;
     int Px(double dips) => (int)Math.Round(dips * Scale);
     int Pad => Px((Box - Body) / 2);   // his window's room around his body, in pixels
-    RECT Rect() { GetWindowRect(hwnd, out var r); return r; }
+
+    RECT Rect()
+    {
+        GetWindowRect(hwnd, out var r);
+        return r;
+    }
+
     void Later(Action a) => Dispatcher.BeginInvoke(a, DispatcherPriority.Background);
 
     void Every(TimeSpan gap, Action tick)
@@ -107,8 +145,12 @@ sealed class BuddyWindow : Window
 
     IntPtr WndProc(IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_MOUSEACTIVATE) { handled = true; return MA_NOACTIVATE; }
-        if (msg == WM_HOTKEY && wParam == StopKey) chat.Stop();
+        if (msg == WM_MOUSEACTIVATE)
+        {
+            handled = true;
+            return MA_NOACTIVATE;
+        }
+        if (msg == WM_HOTKEY && wParam == StopHotKey) chat.Stop();
         // The taskbar moved or resized, or a monitor came or went. Let Windows finish first.
         if (msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam == SPI_SETWORKAREA)) Later(() => Park(dropped: false));
         return IntPtr.Zero;
@@ -145,13 +187,19 @@ sealed class BuddyWindow : Window
         if (dropped)
         {
             var here = MonitorAt(r.Center, MONITOR_DEFAULTTONEAREST);
-            (settings.MonitorX, settings.MonitorY) = (here.rcMonitor.Center.X, here.rcMonitor.Center.Y);
+            settings.MonitorX = here.rcMonitor.Center.X;
+            settings.MonitorY = here.rcMonitor.Center.Y;
             if (Dock.OnBar(here, body, Px(24)))
             {
                 settings.Along = Dock.AlongOf(here, new POINT(r.Left, r.Top), r.Width, r.Height, Px(EndMargin));
-                (settings.FreeX, settings.FreeY) = (null, null);
+                settings.FreeX = null;
+                settings.FreeY = null;
             }
-            else (settings.FreeX, settings.FreeY) = (r.Left, r.Top);
+            else
+            {
+                settings.FreeX = r.Left;
+                settings.FreeY = r.Top;
+            }
             settings.Save();
             slide = true;
         }
@@ -159,7 +207,9 @@ sealed class BuddyWindow : Window
         {
             var work = MonitorAt(new POINT(x + r.Width / 2, y + r.Height / 2), MONITOR_DEFAULTTONEAREST).rcWork;
             int inset = Pad;   // his padding may hang off the edge, his body may not
-            MoveTo(new POINT(Math.Clamp(x, work.Left - inset, work.Right - r.Width + inset), Math.Clamp(y, work.Top - inset, work.Bottom - r.Height + inset)), slide);
+            int keptX = Math.Clamp(x, work.Left - inset, work.Right - r.Width + inset);
+            int keptY = Math.Clamp(y, work.Top - inset, work.Bottom - r.Height + inset);
+            MoveTo(new POINT(keptX, keptY), slide);
             return;
         }
         var monitor = MonitorAt(new POINT(settings.MonitorX ?? 0, settings.MonitorY ?? 0), MONITOR_DEFAULTTOPRIMARY);
@@ -170,7 +220,11 @@ sealed class BuddyWindow : Window
     void MoveTo(POINT p, bool slide)
     {
         StopSlide();
-        if (!slide || !SystemParameters.ClientAreaAnimation) { Put(p); return; }
+        if (!slide || !SystemParameters.ClientAreaAnimation)
+        {
+            Put(p);
+            return;
+        }
         var r = Rect();
         slideX = new Spring(r.Left, (170, 24)) { Target = p.X };
         slideY = new Spring(r.Top, (170, 24)) { Target = p.Y };
@@ -181,11 +235,17 @@ sealed class BuddyWindow : Window
 
     void Slide(object? sender, EventArgs e)
     {
-        double now = clock.Elapsed.TotalSeconds, dt = slideLast > 0 ? now - slideLast : 0.016;
+        double now = clock.Elapsed.TotalSeconds;
+        double dt = slideLast > 0 ? now - slideLast : 0.016;
         slideLast = now;
-        bool moving = slideX!.Step(dt) | slideY!.Step(dt);
+        bool movingX = slideX!.Step(dt);
+        bool movingY = slideY!.Step(dt);
         bool far = Math.Abs(slideX.V - slideX.Target) > 0.5 || Math.Abs(slideY.V - slideY.Target) > 0.5;
-        if (moving && far) { Put(new POINT((int)Math.Round(slideX.V), (int)Math.Round(slideY.V))); return; }
+        if ((movingX || movingY) && far)
+        {
+            Put(new POINT((int)Math.Round(slideX.V), (int)Math.Round(slideY.V)));
+            return;
+        }
         StopSlide();
         Put(new POINT((int)slideX.Target, (int)slideY.Target));
     }
@@ -199,7 +259,11 @@ sealed class BuddyWindow : Window
     // 4. He and the chat move in one go, so the chat never draws a frame behind him.
     void Put(POINT p)
     {
-        if (!open) { Native.Place(hwnd, p); return; }
+        if (!open)
+        {
+            Native.Place(hwnd, p);
+            return;
+        }
         var r = Rect();
         var body = new RECT { Left = p.X, Top = p.Y, Right = p.X + r.Width, Bottom = p.Y + r.Height }.Inset(Pad);
         PlaceTogether((hwnd, p), chat.Spot(body, MonitorAt(body.Center, MONITOR_DEFAULTTONEAREST), Scale));
@@ -225,12 +289,17 @@ sealed class BuddyWindow : Window
         if (!pressed) return;
         GetCursorPos(out var c);
         if (!dragging && Math.Abs(c.X - grab.X) + Math.Abs(c.Y - grab.Y) < Px(5)) return;   // wobble on a click is still a click
-        if (!dragging) { dragging = true; him.React("grabbed"); }
+        if (!dragging)
+        {
+            dragging = true;
+            him.React("grabbed");
+        }
         Put(new POINT(grabRect.Left + c.X - grab.X, grabRect.Top + c.Y - grab.Y));
 
         // Smoothed, so one jerky event is not a lurch.
         double now = clock.Elapsed.TotalSeconds;
-        velocity = velocity * 0.6 + new Vector(c.X - lastCursor.X, c.Y - lastCursor.Y) / Math.Max(0.004, now - lastMoveAt) / Scale * 0.4;
+        var moved = new Vector(c.X - lastCursor.X, c.Y - lastCursor.Y);
+        velocity = velocity * 0.6 + moved / Math.Max(0.004, now - lastMoveAt) / Scale * 0.4;
         lastCursor = c;
         lastMoveAt = now;
         him.Carry(velocity);
@@ -241,7 +310,11 @@ sealed class BuddyWindow : Window
         if (!pressed) return;
         pressed = false;
         if (IsMouseCaptured) ReleaseMouseCapture();
-        if (!dragging) { Toggle(!open); return; }
+        if (!dragging)
+        {
+            Toggle(!open);
+            return;
+        }
         dragging = false;
         him.Carry(null);
         him.React("dropped");
@@ -259,14 +332,24 @@ sealed class BuddyWindow : Window
         if (Overlay.Hand is { } h) c = h;
         if (c.X == seen.X && c.Y == seen.Y)
         {
-            if (!asleep && !open && DateTime.Now - movedAt > Drowsy) { asleep = true; him.React("idle"); }
+            if (!asleep && !open && DateTime.Now - movedAt > Drowsy)
+            {
+                asleep = true;
+                him.React("idle");
+            }
             return;
         }
         seen = c;
         movedAt = DateTime.Now;
-        if (asleep) { asleep = false; him.React("wake"); }
+        if (asleep)
+        {
+            asleep = false;
+            him.React("wake");
+        }
         var r = Rect();
-        him.Watch(new Point((c.X - (r.Left + r.Width / 2.0)) / Scale, (c.Y - (r.Top + r.Height / 2.0)) / Scale));
+        double fromCentreX = c.X - (r.Left + r.Width / 2.0);
+        double fromCentreY = c.Y - (r.Top + r.Height / 2.0);
+        him.Watch(new Point(fromCentreX / Scale, fromCentreY / Scale));
     }
 
     // 7.
@@ -275,7 +358,11 @@ sealed class BuddyWindow : Window
         if (on == aside || pressed) return;
         aside = on;
         him.Paused = on;
-        if (on) { SetOpen(false); Hide(); }
+        if (on)
+        {
+            SetOpen(false);
+            Hide();
+        }
         else Show();
     }
 
@@ -283,7 +370,12 @@ sealed class BuddyWindow : Window
 
     ContextMenu BuildMenu()
     {
-        static MenuItem Item(string header, Action click) { var i = new MenuItem { Header = header }; i.Click += (_, _) => click(); return i; }
+        static MenuItem Item(string header, Action click)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => click();
+            return item;
+        }
         return new ContextMenu
         {
             Items =
@@ -294,7 +386,11 @@ sealed class BuddyWindow : Window
                 new Separator(),
                 Item("Put him back", () =>
                 {
-                    (settings.Along, settings.MonitorX, settings.MonitorY, settings.FreeX, settings.FreeY) = (1, null, null, null, null);
+                    settings.Along = 1;
+                    settings.MonitorX = null;
+                    settings.MonitorY = null;
+                    settings.FreeX = null;
+                    settings.FreeY = null;
                     settings.Save();
                     Park(dropped: false, slide: true);
                 }),
@@ -319,9 +415,14 @@ sealed class BuddyWindow : Window
         if (showing && !chasing)
         {
             chasing = true;
-            if (open) { reopen = true; SetOpen(false); }
+            if (open)
+            {
+                reopen = true;
+                SetOpen(false);
+            }
             var r = Rect();
-            (fly, flyLast) = ((r.Left, r.Top), 0);
+            fly = (r.Left, r.Top);
+            flyLast = 0;
             CompositionTarget.Rendering += Fly;
         }
         else if (!showing && chasing)
@@ -350,9 +451,14 @@ sealed class BuddyWindow : Window
     {
         if (Overlay.Hand is not { } h) return;
         var r = Rect();
-        if (pressed) { fly = (r.Left, r.Top); return; }
+        if (pressed)
+        {
+            fly = (r.Left, r.Top);
+            return;
+        }
         if (sliding) StopSlide();
-        double now = clock.Elapsed.TotalSeconds, dt = flyLast > 0 ? Math.Min(0.05, now - flyLast) : 0.016;
+        double now = clock.Elapsed.TotalSeconds;
+        double dt = flyLast > 0 ? Math.Min(0.05, now - flyLast) : 0.016;
         flyLast = now;
         var work = MonitorAt(h, MONITOR_DEFAULTTONEAREST).rcWork;
         int off = Px(4);   // his window's own padding keeps his body clear of the tip

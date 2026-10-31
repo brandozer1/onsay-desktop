@@ -55,22 +55,52 @@ static class Updates
     // 2. Only for an installed copy. Never throws: the message says what happened.
     public static async Task<string> CheckNow()
     {
-        try { return await Fetch() is { } version ? $"Version {version} is ready, and goes in next time you quit Onsay." : "Onsay is up to date."; }
-        catch (Exception e) { return $"Couldn't check just now: {e.Message}"; }
+        try
+        {
+            var version = await Fetch();
+            if (version is null) return "Onsay is up to date.";
+            return $"Version {version} is ready, and goes in next time you quit Onsay.";
+        }
+        catch (Exception e)
+        {
+            return $"Couldn't check just now: {e.Message}";
+        }
     }
 
     ////////// 3-4. THIS COPY //////////
 
     // 3.
-    public static bool Installed { get { try { return Manager.IsInstalled; } catch { return false; } } }
-    public static string Version { get { try { return Manager.CurrentVersion?.ToString() ?? ""; } catch { return ""; } } }
+    public static bool Installed
+    {
+        get
+        {
+            try { return Manager.IsInstalled; }
+            catch { return false; }
+        }
+    }
+
+    public static string Version
+    {
+        get
+        {
+            try { return Manager.CurrentVersion?.ToString() ?? ""; }
+            catch { return ""; }
+        }
+    }
 
     // 4. Velopack's own shortcuts, so they point at the copy that updates and go when he is uninstalled. Only for an
     //    installed copy.
     public static bool Shortcut(ShortcutLocation where)
     {
-        try { return new Shortcuts(VelopackLocator.Current).FindShortcuts(VelopackLocator.Current.ThisExeRelativePath, where).Count > 0; }
-        catch { return false; }
+        try
+        {
+            var links = new Shortcuts(VelopackLocator.Current);
+            return links.FindShortcuts(VelopackLocator.Current.ThisExeRelativePath, where).Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static void Shortcut(ShortcutLocation where, bool on)
@@ -93,7 +123,11 @@ static class Updates
         string? cmd = null;
         using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Onsay"))
             cmd = k?.GetValue("QuietUninstallString") as string ?? k?.GetValue("UninstallString") as string;
-        if (cmd is null) { try { Native.Open("ms-settings:appsfeatures"); } catch { } return; }
+        if (cmd is null)
+        {
+            try { Native.Open("ms-settings:appsfeatures"); } catch { }
+            return;
+        }
         // cmd is like "C:\...\Update.exe --uninstall": the exe, quoted, then its arguments.
         var exe = cmd.StartsWith('"') ? cmd[1..cmd.IndexOf('"', 1)] : cmd.Split(' ')[0];
         var args = cmd[(cmd.IndexOf(exe) + exe.Length)..].TrimStart('"', ' ');

@@ -12,29 +12,40 @@ static class StopKey
 {
     static readonly HookProc OnKey = KeyHook;   // held here so the collector never frees it under Windows
     static Action? pressed;
-    static bool alt, shift, ctrl, win, held;    // held on the real keyboard, from the hook's own events
+    // Down on the real keyboard, from the hook's own events.
+    static bool alt;
+    static bool shift;
+    static bool ctrl;
+    static bool win;
+    static bool held;
 
     // 1.
     public static void Start(Action onPressed)
     {
         if (pressed is not null) return;
         pressed = onPressed;
-        var t = new Thread(() =>
+        var thread = new Thread(() =>
         {
-            var hook = SetWindowsHookEx(13, OnKey, GetModuleHandle(null), 0);   // 13 is the keyboard. This thread pumps messages, as a hook needs
+            // 13 is the keyboard. This thread pumps messages, as a hook needs.
+            var hook = SetWindowsHookEx(13, OnKey, GetModuleHandle(null), 0);
             Dispatcher.Run();
             UnhookWindowsHookEx(hook);
-        }) { IsBackground = true, Name = "Onsay stop key" };
-        t.SetApartmentState(ApartmentState.STA);
-        t.Start();
+        });
+        thread.IsBackground = true;
+        thread.Name = "Onsay stop key";
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
     }
 
     static IntPtr KeyHook(int code, IntPtr msg, IntPtr data)
     {
         if (code < 0) return CallNextHookEx(IntPtr.Zero, code, msg, data);
         var k = Marshal.PtrToStructure<KEYHOOK>(data);
-        bool down = (int)msg is 0x100 or 0x104, up = (int)msg is 0x101 or 0x105;   // key down or up, with or without alt
-        if ((k.flags & 0x10) != 0 || !(down || up)) return CallNextHookEx(IntPtr.Zero, code, msg, data);   // 0x10 injected
+        // Key down or up, with or without alt. Flag 0x10 is injected input, which never counts.
+        bool down = (int)msg is 0x100 or 0x104;
+        bool up = (int)msg is 0x101 or 0x105;
+        bool injected = (k.flags & 0x10) != 0;
+        if (injected || !(down || up)) return CallNextHookEx(IntPtr.Zero, code, msg, data);
         switch (k.vk)
         {
             case 0x12 or 0xA4 or 0xA5: alt = down; break;

@@ -1,5 +1,5 @@
-// Overlay.cs - what the windows lingo asks to be drawn while Onsay acts, read from the lingo client's output a line of
-// JSON at a time (Core.cs). See ../lingo-client/lingos/windows/windows.c, the hand:
+// Overlay.cs - what the base calls ask to be drawn while Onsay acts, read from the lingo client's output a line of JSON at
+// a time (Core.cs). See ../lingo-client/lingos/windows/windows.c, the hand:
 //   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r,"text":t}   his pointer glides there along that
 //                                                               curve, the real mouse with it when r, as a text cursor
 //                                                               where he is about to type when t
@@ -17,7 +17,7 @@
 //
 // 1. Line(text)    one line from the lingo client, on any thread
 // 2. Hand          where his pointer is while it shows, for him to watch instead of the mouse
-// 3. Rest()        the core stopped or restarted: the pointer fades where it is and the ring goes
+// 3. Rest()        the lingo client stopped or restarted: the pointer fades where it is and the ring goes
 using System.Text.Json;
 using System.Windows;
 using static Onsay.Desktop.Native;
@@ -40,17 +40,30 @@ static class Overlay
     }
 
     static POINT Pair(JsonElement p) => new(p[0].GetInt32(), p[1].GetInt32());
-    static int Int(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
-    static string Text(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+
+    static int Int(JsonElement m, string key)
+    {
+        if (m.TryGetProperty(key, out var v) && v.TryGetInt32(out var n)) return n;
+        return 0;
+    }
+
+    static string Text(JsonElement m, string key)
+    {
+        if (m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String) return v.GetString() ?? "";
+        return "";
+    }
+
     static bool Yes(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
 
     static void Handle(JsonElement m)
     {
-        switch (m.TryGetProperty("show", out var what) ? what.GetString() : null)
+        var kind = Text(m, "show");
+        switch (kind)
         {
             case "glide":
-                _ = (hand ??= new HandWindow()).Glide(Pair(m.GetProperty("from")), Pair(m.GetProperty("to")), Int(m, "ms"), m.GetProperty("bend").GetDouble(),
-                    Yes(m, "real"), Yes(m, "text"));
+                var from = Pair(m.GetProperty("from"));
+                var to = Pair(m.GetProperty("to"));
+                _ = (hand ??= new HandWindow()).Glide(from, to, Int(m, "ms"), m.GetProperty("bend").GetDouble(), Yes(m, "real"), Yes(m, "text"));
                 break;
             case "press":
                 (hand ??= new HandWindow()).Press(Int(m, "times"));
@@ -59,9 +72,11 @@ static class Overlay
                 (hand ??= new HandWindow()).Type();
                 break;
             case "point":
-                int x = Int(m, "x"), y = Int(m, "y");
-                (ring ??= new RingWindow()).Point(new RECT { Left = x, Top = y, Right = x + Int(m, "w"), Bottom = y + Int(m, "h") },
-                    m.TryGetProperty("say", out var say) ? say.GetString() ?? "" : "", m.TryGetProperty("seconds", out var s) ? s.GetDouble() : 10);
+                int x = Int(m, "x");
+                int y = Int(m, "y");
+                var box = new RECT { Left = x, Top = y, Right = x + Int(m, "w"), Bottom = y + Int(m, "h") };
+                double seconds = m.TryGetProperty("seconds", out var s) ? s.GetDouble() : 10;
+                (ring ??= new RingWindow()).Point(box, Text(m, "say"), seconds);
                 break;
             case "clear":
                 ring?.Clear();
@@ -73,7 +88,7 @@ static class Overlay
                 panel?.Hide();
                 break;
             case "say" or "step":
-                Chat?.Lingo(what.GetString()!, Text(m, "text"));
+                Chat?.Lingo(kind, Text(m, "text"));
                 break;
         }
     }
@@ -82,5 +97,12 @@ static class Overlay
     public static POINT? Hand => hand is { Awake: true } ? hand.At : null;
 
     // 3.
-    public static void Rest() => Application.Current?.Dispatcher.BeginInvoke(() => { hand?.Rest(); ring?.Clear(); });
+    public static void Rest()
+    {
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            hand?.Rest();
+            ring?.Clear();
+        });
+    }
 }

@@ -1,6 +1,6 @@
 # start.ps1 - builds and starts Onsay. Run it with: .\start.ps1
-# The core comes from the lingo-client project beside this one: build it first with ..\lingo-client\core\build.ps1.
-# A running Onsay and its own core (never a test one) are closed first, since the core holds files the build replaces.
+# The lingo client comes from the lingo-client project beside this one: build it first with ..\lingo-client\core\build.ps1.
+# A running Onsay and its own lingo client (never a test one) are closed first, since it holds files the build replaces.
 
 $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
 if (-not $dotnet) { $dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }

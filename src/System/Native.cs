@@ -9,6 +9,7 @@
 // 7. Bare(window)               borderless, transparent, always on top, off screen and out of the taskbar
 // 8. ClickThrough(window)       never clicked or activated, for a window that is only a picture. Returns its handle
 // 9. Open(target)               a file, folder or link in its default app
+// 10. WebLink(target)           the address as a Uri when it is a web or mail link, or null
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -24,14 +25,23 @@ static class Native
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {
-        public int X, Y;
-        public POINT(int x, int y) { X = x; Y = y; }
+        public int X;
+        public int Y;
+
+        public POINT(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {
-        public int Left, Top, Right, Bottom;
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
         public readonly int Width => Right - Left;
         public readonly int Height => Bottom - Top;
         public readonly POINT Center => new(Left + Width / 2, Top + Height / 2);
@@ -42,23 +52,50 @@ static class Native
     public struct MONITORINFO
     {
         public int cbSize;
-        public RECT rcMonitor, rcWork;
+        public RECT rcMonitor;
+        public RECT rcWork;
         public uint dwFlags;
     }
 
     // What the low level keyboard hook hands over for each key. Flag 0x10 is injected input.
     [StructLayout(LayoutKind.Sequential)]
-    public struct KEYHOOK { public uint vk, scan, flags, time; public IntPtr extra; }
+    public struct KEYHOOK
+    {
+        public uint vk;
+        public uint scan;
+        public uint flags;
+        public uint time;
+        public IntPtr extra;
+    }
+
     public delegate IntPtr HookProc(int code, IntPtr msg, IntPtr data);
 
     ////////// CONSTANTS //////////
 
-    public const int GWL_EXSTYLE = -20, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
-    const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+    public const int GWL_EXSTYLE = -20;
+    public const int WS_EX_TRANSPARENT = 0x20;
+    public const int WS_EX_TOOLWINDOW = 0x80;
+    public const int WS_EX_NOACTIVATE = 0x08000000;
+
+    const uint SWP_NOSIZE = 0x1;
+    const uint SWP_NOMOVE = 0x2;
+    const uint SWP_NOZORDER = 0x4;
+    const uint SWP_NOACTIVATE = 0x10;
     static readonly IntPtr HWND_TOPMOST = new(-1);
-    public const uint MONITOR_DEFAULTTOPRIMARY = 1, MONITOR_DEFAULTTONEAREST = 2;
-    public const int WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3, WM_SETTINGCHANGE = 0x1A, SPI_SETWORKAREA = 0x2F, WM_DISPLAYCHANGE = 0x7E, WM_HOTKEY = 0x312;
-    public const uint MOD_ALT = 0x1, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000;
+
+    public const uint MONITOR_DEFAULTTOPRIMARY = 1;
+    public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    public const int WM_MOUSEACTIVATE = 0x21;
+    public const int MA_NOACTIVATE = 3;
+    public const int WM_SETTINGCHANGE = 0x1A;
+    public const int SPI_SETWORKAREA = 0x2F;
+    public const int WM_DISPLAYCHANGE = 0x7E;
+    public const int WM_HOTKEY = 0x312;
+
+    public const uint MOD_ALT = 0x1;
+    public const uint MOD_SHIFT = 0x4;
+    public const uint MOD_NOREPEAT = 0x4000;
 
     ////////// IMPORTS //////////
 
@@ -97,8 +134,11 @@ static class Native
     public static bool SomethingFullscreen() => SHQueryUserNotificationState(out var s) == 0 && s is 2 or 3 or 4;
 
     // 3.
-    public static void Place(IntPtr hwnd, POINT p, (int w, int h)? size = null) =>
-        SetWindowPos(hwnd, IntPtr.Zero, p.X, p.Y, size?.w ?? 0, size?.h ?? 0, (size is null ? SWP_NOSIZE : 0) | SWP_NOZORDER | SWP_NOACTIVATE);
+    public static void Place(IntPtr hwnd, POINT p, (int w, int h)? size = null)
+    {
+        uint keepSize = size is null ? SWP_NOSIZE : 0;
+        SetWindowPos(hwnd, IntPtr.Zero, p.X, p.Y, size?.w ?? 0, size?.h ?? 0, keepSize | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
 
     // 4.
     public static void Raise(IntPtr hwnd) => SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -107,7 +147,10 @@ static class Native
     public static void PlaceTogether(params (IntPtr hwnd, POINT p)[] moves)
     {
         var batch = BeginDeferWindowPos(moves.Length);
-        foreach (var (hwnd, p) in moves) if (batch != IntPtr.Zero) batch = DeferWindowPos(batch, hwnd, IntPtr.Zero, p.X, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        foreach (var (hwnd, p) in moves)
+        {
+            if (batch != IntPtr.Zero) batch = DeferWindowPos(batch, hwnd, IntPtr.Zero, p.X, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         if (batch != IntPtr.Zero) EndDeferWindowPos(batch);
     }
 
@@ -115,7 +158,9 @@ static class Native
     static readonly uint[] Cursors = { 32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651 };
     public static void HideSystemCursor()
     {
-        byte[] and = Enumerable.Repeat((byte)0xFF, 128).ToArray(), xor = new byte[128];   // 32 by 32, all clear
+        // 32 by 32, all clear.
+        byte[] and = Enumerable.Repeat((byte)0xFF, 128).ToArray();
+        byte[] xor = new byte[128];
         foreach (var id in Cursors) SetSystemCursor(CreateCursor(IntPtr.Zero, 0, 0, 32, 32, and, xor), id);
     }
     public static void ShowSystemCursor() => SystemParametersInfo(0x57, 0, IntPtr.Zero, 0);   // SPI_SETCURSORS
@@ -139,10 +184,18 @@ static class Native
         w.ShowActivated = false;
         w.IsHitTestVisible = false;
         var hwnd = new WindowInteropHelper(w).EnsureHandle();
-        SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+        int style = GetWindowLong(hwnd, GWL_EXSTYLE);
+        SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
         return hwnd;
     }
 
     // 9.
     public static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+
+    // 10. Only these open from a reply or a panel: anything else stays words.
+    public static Uri? WebLink(string target)
+    {
+        if (!Uri.TryCreate(target, UriKind.Absolute, out var uri)) return null;
+        return uri.Scheme is "http" or "https" or "mailto" ? uri : null;
+    }
 }

@@ -28,7 +28,8 @@
 // 11. Clear()                             a new chat: a new session, and home again
 // 12. Menu()                              the header's menu: Copy chat, from the session, and Apps and settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
-//                                         Note, Toggle, Switch, Selectable and the Thin scrollbar
+//                                         Note, Toggle, Switch, Selectable, Right, ScaleBoth, Shown, Hover and the Thin
+//                                         scrollbar
 using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -52,7 +53,9 @@ sealed class ChatWindow : Window
 
     public const double Shadow = 16;   // transparent room around the card for its shadow, in DIPs
     // Glyphs from Icons.
-    const string NewIcon = "", MoreIcon = "", SendIcon = "";
+    const string NewIcon = "\uE710";
+    const string MoreIcon = "\uE712";
+    const string SendIcon = "\uE724";
 
     ////////// STATE //////////
 
@@ -60,10 +63,12 @@ sealed class ChatWindow : Window
     readonly Action<bool> setOpen;
     readonly OnsayView face = new() { Width = 32, Height = 32 };
     readonly TextBlock subtitle = new() { FontSize = 12, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly Border fresh, send;                   // the header's new chat, and send
+    readonly Border fresh;   // the header's new chat
+    readonly Border send;
 
     // The pages. Only one shows at a time, see Page.
-    readonly FrameworkElement signInPage, homePage;
+    readonly FrameworkElement signInPage;
+    readonly FrameworkElement homePage;
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
@@ -76,11 +81,20 @@ sealed class ChatWindow : Window
     readonly TextBlock workingText = new() { FontSize = 12, Foreground = Ink2, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly TextBlock workingTime = new() { FontSize = 12, FontFamily = Mono, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
     readonly Ellipse[] dots = Enumerable.Range(0, 3).Select(_ => new Ellipse { Width = 6, Height = 6, Fill = Accent, Margin = new Thickness(0, 0, 4, 0), Opacity = 0.3 }).ToArray();
-    readonly FrameworkElement input, footer;
+    readonly FrameworkElement input;
+    readonly FrameworkElement footer;
     readonly TextBox box = new()
     {
-        BorderThickness = new Thickness(0), Background = Brushes.Transparent, FontSize = 14, Foreground = Ink, VerticalContentAlignment = VerticalAlignment.Center,
-        AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 30, MaxHeight = 116, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        BorderThickness = new Thickness(0),
+        Background = Brushes.Transparent,
+        FontSize = 14,
+        Foreground = Ink,
+        VerticalContentAlignment = VerticalAlignment.Center,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MinHeight = 30,
+        MaxHeight = 116,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
     readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 0, 0) };
 
@@ -91,14 +105,23 @@ sealed class ChatWindow : Window
     string? session;                             // this chat's session in the onsay lingo, named here as the onsay lingo names one
     string? promptKey;                           // the onsay lingo's prompt key, read again for each message
     int chat;                                    // which chat this is, so an answer to one cleared away is dropped
-    bool waiting, stopping;                      // a message is out, and Stop was pressed while it was
-    bool greeted, following = true;
+    bool waiting;                                // a message is out
+    bool stopping;                               // Stop was pressed while it was
+    bool greeted;
+    bool following = true;                       // the chat keeps to its bottom as new lines come
     DateTime doingSince;                         // when what he is doing now started, for the bar's timer
     (RichTextBox row, string text)? speaking;
     CancellationTokenSource? signing;            // a sign in waiting on the browser
     readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     // Each message's steps: its block in the chat, the line it folds under, its lines, how many and how long it took.
-    sealed class StepList { public required Border Root; public required TextBlock Head; public required StackPanel Body; public int Count; public double Ms; }
+    sealed class StepList
+    {
+        public required Border Root;
+        public required TextBlock Head;
+        public required StackPanel Body;
+        public int Count;
+        public double Ms;
+    }
     readonly List<StepList> stepLists = new();
     // The cards of the questions a lingo waits on, by their id in the lingo client (chat.ask).
     readonly Dictionary<double, Border> lingoCards = new();
@@ -121,10 +144,14 @@ sealed class ChatWindow : Window
         Native.Bare(this);
         Width = 420 + Shadow * 2;
         Height = 600 + Shadow * 2;
-        FontFamily = new FontFamily("Segoe UI");
+        FontFamily = Ui;
 
         // The header: him, who he is and where, and the buttons.
-        fresh = Button(NewIcon, Kind.Icon, () => { Clear(); box.Focus(); }, "New chat");
+        fresh = Button(NewIcon, Kind.Icon, () =>
+        {
+            Clear();
+            box.Focus();
+        }, "New chat");
         Border more = null!;
         more = Button(MoreIcon, Kind.Icon, () => Menu(more), "More");
         var header = new DockPanel { Margin = new Thickness(10, 10, 10, 10) };
@@ -220,11 +247,20 @@ sealed class ChatWindow : Window
         }
         var choose = new StackPanel
         {
-            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), Cursor = Cursors.Hand, Background = Brushes.Transparent,
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            Background = Brushes.Transparent,
             ToolTip = "On: I show you the ways I found, and you pick what I do",
             Children = { track, new TextBlock { Text = "Let me choose", FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center } },
         };
-        choose.MouseLeftButtonUp += (_, _) => { settings.LetMeChoose = settings.LetMeChoose != true; settings.Save(); Choosing(); };
+        choose.MouseLeftButtonUp += (_, _) =>
+        {
+            settings.LetMeChoose = settings.LetMeChoose != true;
+            settings.Save();
+            Choosing();
+        };
         Choosing();
         var stopKey = new StackPanel
         {
@@ -234,7 +270,11 @@ sealed class ChatWindow : Window
                 new TextBlock { Text = "Stop anytime", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) },
                 new Border
                 {
-                    Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 0, 5, 1),
+                    Background = Page_,
+                    BorderBrush = Rule,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 0, 5, 1),
                     Child = new TextBlock { Text = "Alt+Shift+O", FontSize = 10.5, FontFamily = Mono, Foreground = Ink3 },
                 },
             },
@@ -257,27 +297,45 @@ sealed class ChatWindow : Window
            and fade as one when it opens and closes, see Appear. */
         var shadow = new Border
         {
-            Background = Card, CornerRadius = new CornerRadius(14), CacheMode = new BitmapCache(),
+            Background = Card,
+            CornerRadius = new CornerRadius(14),
+            CacheMode = new BitmapCache(),
             Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.18 },
         };
         var card = new Border
         {
-            Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14),
+            Background = Card,
+            BorderBrush = Edge_,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(14),
             Child = new Border { CornerRadius = new CornerRadius(14), ClipToBounds = true, Child = layout },
         };
         whole = new Grid { Margin = new Thickness(Shadow), Children = { shadow, card }, RenderTransform = zoom };
         Content = whole;
 
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; setOpen(false); } };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape) return;
+            e.Handled = true;
+            setOpen(false);
+        };
         // Alt+F4 puts the card away rather than destroying it. The app closing still closes it.
-        Closing += (_, e) => { if (IsVisible && Application.Current.MainWindow?.IsVisible == true) { e.Cancel = true; setOpen(false); } };
+        Closing += (_, e) =>
+        {
+            if (!IsVisible || Application.Current.MainWindow?.IsVisible != true) return;
+            e.Cancel = true;
+            setOpen(false);
+        };
         Resources.MergedDictionaries.Add(Thin);
         new WindowInteropHelper(this).EnsureHandle();
         Page();
         Core.Start(settings);
         // Whether this computer is signed in and connected, asked again every few seconds while the card shows.
         var look = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        look.Tick += (_, _) => { if (Showing || status is null) Refresh(); };
+        look.Tick += (_, _) =>
+        {
+            if (Showing || status is null) Refresh();
+        };
         look.Start();
     }
 
@@ -301,7 +359,8 @@ sealed class ChatWindow : Window
         var (hwnd, p) = Spot(body, monitor, scale);
         if (appearing)
         {
-            (Left, Top) = (p.X / scale, p.Y / scale);
+            Left = p.X / scale;
+            Top = p.Y / scale;
             ShowActivated = focus;
             Show();
             ShowActivated = true;
@@ -315,15 +374,21 @@ sealed class ChatWindow : Window
         if (greeted) return;
         greeted = true;
         // He greets you once he has arrived in the header, so the two movements do not cancel out.
-        Dispatcher.InvokeAsync(async () => { await Task.Delay(260); face.React("greet"); });
+        Dispatcher.InvokeAsync(async () =>
+        {
+            await Task.Delay(260);
+            face.React("greet");
+        });
     }
 
     // Where it goes beside him, without moving it, so he can move both in one go. Its shadow room is most of the gap.
     // While open it keeps to its side for as long as that fits.
     public (IntPtr hwnd, Native.POINT p) Spot(Native.RECT body, Native.MONITORINFO monitor, double scale)
     {
-        var p = Dock.Beside(monitor, body, (int)Math.Round(Width * scale), (int)Math.Round(Height * scale), (int)Math.Round((6 - Shadow) * scale),
-            Showing ? side : null, out var s);
+        int width = (int)Math.Round(Width * scale);
+        int height = (int)Math.Round(Height * scale);
+        int gap = (int)Math.Round((6 - Shadow) * scale);
+        var p = Dock.Beside(monitor, body, width, height, gap, Showing ? side : null, out var s);
         side = s;
         return (new WindowInteropHelper(this).Handle, p);
     }
@@ -336,24 +401,33 @@ sealed class ChatWindow : Window
         speaking = null;
         if (!Showing) return;
         closing = true;
-        Animate(0, 0.96, 130, EasingMode.EaseIn, () => { if (closing) { closing = false; Hide(); } });
+        Animate(0, 0.96, 130, EasingMode.EaseIn, () =>
+        {
+            if (!closing) return;
+            closing = false;
+            Hide();
+        });
     }
 
     // Out of the side of him it sits on: from a little smaller and clear to whole, quick and easing out.
     void Appear()
     {
-        bool fresh = !closing;   // closing, it turns round from wherever it got to
+        bool wasClosing = closing;   // closing, it turns round from wherever it got to
         closing = false;
         whole.RenderTransformOrigin = side switch
         {
-            Side.Above => new Point(0.5, 1), Side.Below => new Point(0.5, 0), Side.Left => new Point(1, 0.5), _ => new Point(0, 0.5),
+            Side.Above => new Point(0.5, 1),
+            Side.Below => new Point(0.5, 0),
+            Side.Left => new Point(1, 0.5),
+            _ => new Point(0, 0.5),
         };
-        if (fresh)
+        if (!wasClosing)
         {
             whole.BeginAnimation(OpacityProperty, null);
-            zoom.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            zoom.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            (whole.Opacity, zoom.ScaleX, zoom.ScaleY) = (0, 0.94, 0.94);
+            ScaleBoth(zoom, null);
+            whole.Opacity = 0;
+            zoom.ScaleX = 0.94;
+            zoom.ScaleY = 0.94;
         }
         Animate(1, 1, 190, EasingMode.EaseOut);
     }
@@ -366,8 +440,7 @@ sealed class ChatWindow : Window
         var fade = new DoubleAnimation(opacity, time) { EasingFunction = ease };
         if (done is not null) fade.Completed += (_, _) => done();
         whole.BeginAnimation(OpacityProperty, fade);
-        zoom.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(size, time) { EasingFunction = ease });
-        zoom.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(size, time) { EasingFunction = ease });
+        ScaleBoth(zoom, new DoubleAnimation(size, time) { EasingFunction = ease });
     }
 
     // 3. Whatever the lingo client is running ends as it starts again, the message waiting here with it.
@@ -375,7 +448,10 @@ sealed class ChatWindow : Window
     {
         stopping = true;
         Core.Start(settings);
-        Dispatcher.BeginInvoke(() => { if (Busy) Working("Stopping"); });
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (Busy) Working("Stopping");
+        });
     }
 
     ////////// 4-5. SIGNING IN, AND THE PAGES //////////
@@ -392,16 +468,23 @@ sealed class ChatWindow : Window
         error.Visibility = Visibility.Collapsed;
         var cancel = Button("Cancel", Kind.Quiet, () => signing?.Cancel());
         cancel.HorizontalAlignment = align;
-        var waiting = new StackPanel
+        var codeShown = new StackPanel
         {
-            Visibility = Visibility.Collapsed, HorizontalAlignment = align,
+            Visibility = Visibility.Collapsed,
+            HorizontalAlignment = align,
             Children =
             {
                 new TextBlock { Text = "Your code", FontSize = 12, Foreground = Ink3, HorizontalAlignment = align },
                 new Border
                 {
-                    Background = Page_, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
-                    Padding = new Thickness(18, 6, 18, 8), Margin = new Thickness(0, 6, 0, 10), HorizontalAlignment = align, Child = code,
+                    Background = Page_,
+                    BorderBrush = Edge_,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(18, 6, 18, 8),
+                    Margin = new Thickness(0, 6, 0, 10),
+                    HorizontalAlignment = align,
+                    Child = code,
                 },
                 Paragraph("Your browser opened. Sign in there, and press Connect if it shows this code.", centre),
                 cancel,
@@ -413,7 +496,8 @@ sealed class ChatWindow : Window
             if (signing is not null) return;
             signing = new CancellationTokenSource(TimeSpan.FromMinutes(10));
             var stop = signing.Token;
-            error.Visibility = start.Visibility = Visibility.Collapsed;
+            error.Visibility = Visibility.Collapsed;
+            start.Visibility = Visibility.Collapsed;
             try
             {
                 var (got, why) = await Task.Run(() => Core.Onsay("sign_in"));
@@ -421,14 +505,15 @@ sealed class ChatWindow : Window
                 if (got["url"] is { } url)
                 {
                     code.Text = $"{got["code"]}";
-                    waiting.Visibility = Visibility.Visible;
+                    codeShown.Visibility = Visibility.Visible;
                     Native.Open($"{url}");
-                    for (JsonNode? now = null; (bool?)now?["signed_in"] != true;)
+                    JsonNode? now = null;
+                    while ((bool?)now?["signed_in"] != true)
                     {
                         await Task.Delay(2000, stop);
-                        now = (await Task.Run(() => Core.Onsay("status"))).answer;
-                        if (now is not null && (bool?)now["signed_in"] != true && (bool?)now["signing_in"] != true)
-                            throw new Exception(now["failed"] is { } failed ? $"{failed}." : "Signing in didn't finish. Try again.");
+                        (now, _) = await Task.Run(() => Core.Onsay("status"));
+                        if (now is null || (bool?)now["signed_in"] == true || (bool?)now["signing_in"] == true) continue;
+                        throw new Exception(now["failed"] is { } failed ? $"{failed}." : "Signing in didn't finish. Try again.");
                     }
                 }
                 Refresh();
@@ -436,16 +521,20 @@ sealed class ChatWindow : Window
                 done?.Invoke();
             }
             catch (OperationCanceledException) { }
-            catch (Exception e) { error.Text = e.Message; error.Visibility = Visibility.Visible; }
+            catch (Exception e)
+            {
+                error.Text = e.Message;
+                error.Visibility = Visibility.Visible;
+            }
             finally
             {
                 signing = null;
-                waiting.Visibility = Visibility.Collapsed;
+                codeShown.Visibility = Visibility.Collapsed;
                 start.Visibility = Visibility.Visible;
             }
         });
         start.HorizontalAlignment = align;
-        return new StackPanel { Children = { start, waiting, error } };
+        return new StackPanel { Children = { start, codeShown, error } };
     }
 
     // 4. Why it couldn't, or null. The lingo client runs on, for this computer alone.
@@ -463,7 +552,8 @@ sealed class ChatWindow : Window
     {
         if (refreshing || !Core.Running) return;
         refreshing = true;
-        if ((await Task.Run(() => Core.Onsay("status"))).answer is JsonObject now) status = now;
+        var (answer, _) = await Task.Run(() => Core.Onsay("status"));
+        if (answer is JsonObject now) status = now;
         refreshing = false;
         Page();
     }
@@ -473,16 +563,28 @@ sealed class ChatWindow : Window
 
     void Page()
     {
-        bool known = status is not null, on = SignedIn, talking = on && Talking, connected = (bool?)status?["connected"] == true;
-        signInPage.Visibility = Shown(known && !SignedIn);
+        bool known = status is not null;
+        bool on = SignedIn;
+        bool talking = on && Talking;
+        bool connected = (bool?)status?["connected"] == true;
+        signInPage.Visibility = Shown(known && !on);
         homePage.Visibility = Shown(!known || (on && !talking));
-        chatPage.Visibility = fresh.Visibility = Shown(talking);
-        input.Visibility = footer.Visibility = Shown(on);
-        subtitle.Text = !known ? "" : SignedIn ? $"{status!["handle"]}" : "Not signed in";
-        if (known && !SignedIn) Working(null);
+        chatPage.Visibility = Shown(talking);
+        fresh.Visibility = Shown(talking);
+        input.Visibility = Shown(on);
+        footer.Visibility = Shown(on);
+
+        if (!known) subtitle.Text = "";
+        else if (on) subtitle.Text = $"{status!["handle"]}";
+        else subtitle.Text = "Not signed in";
+
+        if (known && !on) Working(null);
         ReadyInput();
+
         readyDot.Fill = connected ? Good : Ink4;
-        ready.Text = connected ? $"You're {status!["handle"]}. This computer is {status["device"]}." : SignedIn ? "Connecting to Onsay" : "Getting this computer ready";
+        if (connected) ready.Text = $"You're {status!["handle"]}. This computer is {status["device"]}.";
+        else if (on) ready.Text = "Connecting to Onsay";
+        else ready.Text = "Getting this computer ready";
     }
 
     ////////// 6. TALKING TO HIM //////////
@@ -504,7 +606,8 @@ sealed class ChatWindow : Window
     async void Ask(string text)
     {
         int mine = chat;
-        (waiting, stopping) = (true, false);
+        waiting = true;
+        stopping = false;
         Yours(text);
         Page();
         following = true;
@@ -519,9 +622,17 @@ sealed class ChatWindow : Window
         int heard = 0;                           // of the steps Onsay sent, how many are lines here
         Border? card = null;
         using var done = new CancellationTokenSource();
+
+        // Lines for the steps not drawn yet.
+        void Hear(JsonArray all)
+        {
+            for (; heard < all.Count; heard++) AddStep(steps, $"{all[heard]?["text"]}", (int?)all[heard]?["depth"] ?? 0);
+        }
+
         try
         {
-            promptKey = $"{(await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }))).answer?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
+            var (onsaySettings, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }));
+            promptKey = $"{onsaySettings?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
             async void Follow()
             {
                 string? asked = null;
@@ -534,22 +645,26 @@ sealed class ChatWindow : Window
                         using var res = await Http.SendAsync(look, done.Token);
                         if (JsonNode.Parse(await res.Content.ReadAsStringAsync(done.Token)) is not JsonObject now || mine != chat) continue;
                         var got = now["steps"] as JsonArray ?? new();
-                        for (; heard < got.Count; heard++) AddStep(steps, $"{got[heard]?["text"]}", (int?)got[heard]?["depth"] ?? 0);
+                        Hear(got);
                         if (got.Count > 0) Working($"{got[^1]?["text"]}");
                         if (now["questions"] is not JsonArray q) asked = null;
                         else if (q.ToJsonString() != asked)
                         {
                             asked = q.ToJsonString();
-                            card = Questions(q, answers => _ = Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/answers", new JsonObject { ["answers"] = new JsonArray(answers.Select(a => (JsonNode?)a).ToArray()) })));
+                            card = Questions(q, answers =>
+                            {
+                                var body = new JsonObject { ["answers"] = Strings(answers) };
+                                _ = Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/answers", body));
+                            });
                         }
                     }
                     catch (Exception) { }
                 }
             }
             Follow();
-            var body = new JsonObject { ["prompt"] = text, ["session"] = session };
-            if (settings.LetMeChoose == true) body["mode"] = "list";
-            using var ask = To(HttpMethod.Post, "", body);
+            var message = new JsonObject { ["prompt"] = text, ["session"] = session };
+            if (settings.LetMeChoose == true) message["mode"] = "list";
+            using var ask = To(HttpMethod.Post, "", message);
             using var res = await Http.SendAsync(ask);
             code = (int)res.StatusCode;
             answer = JsonNode.Parse(await res.Content.ReadAsStringAsync()) as JsonObject;
@@ -561,13 +676,12 @@ sealed class ChatWindow : Window
         Working(null);
         if (card is not null) card.IsEnabled = false;
         // The answer has every step, for those that came while this computer was too busy to say.
-        if (answer?["steps"] is JsonArray all) for (; heard < all.Count; heard++) AddStep(steps, $"{all[heard]?["text"]}", (int?)all[heard]?["depth"] ?? 0);
+        if (answer?["steps"] is JsonArray every) Hear(every);
         var ms = (DateTime.Now - started).TotalMilliseconds;
         Fold(steps, ms);
         if (stopping) await Replied("Stopped.", "Stopped", ms);
-        else if (code != 200)
-            await Replied(code == 0 ? "Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."
-                : $"{answer?["error"] ?? "Something went wrong there. Try again in a moment."}", "Failed", ms);
+        else if (code == 0) await Replied("Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment.", "Failed", ms);
+        else if (code != 200) await Replied($"{answer?["error"] ?? "Something went wrong there. Try again in a moment."}", "Failed", ms);
         else
         {
             session = $"{answer!["session"]}";
@@ -579,7 +693,8 @@ sealed class ChatWindow : Window
     // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.
     HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
     {
-        var req = new HttpRequestMessage(method, $"{Core.Url}/onsay{path}") { Content = body is null ? null : new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+        var req = new HttpRequestMessage(method, $"{Core.Url}/onsay{path}");
+        if (body is not null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         req.Headers.Authorization = new("Bearer", promptKey);
         return req;
     }
@@ -593,7 +708,12 @@ sealed class ChatWindow : Window
         if (text.Trim().Length > 0) under.Children.Add(Right(Markdown.Copy(text, "Copy")));
         under.Children.Add(new TextBlock { Text = $"{ended} in {Took(ms)}", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center });
         lines.Children.Add(under);
-        face.React(ended == "Done" ? "answered" : ended == "Stopped" ? "no" : "stuck");
+        face.React(ended switch
+        {
+            "Done" => "answered",
+            "Stopped" => "no",
+            _ => "stuck",
+        });
     }
 
     ////////// 7-8. THE BAR AND THE BANNER //////////
@@ -606,13 +726,23 @@ sealed class ChatWindow : Window
         working.Visibility = Shown(text is not null);
         workingText.Text = text ?? "";
         workingTime.Text = text is null ? "" : Took(0, live: true);
-        if (text is null) tick.Stop(); else tick.Start();
+        if (text is null) tick.Stop();
+        else tick.Start();
         for (int i = 0; i < dots.Length; i++)
-            dots[i].BeginAnimation(OpacityProperty, text is null ? null : new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(420))
+        {
+            if (text is null)
             {
-                AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = TimeSpan.FromMilliseconds(i * 160),
+                dots[i].BeginAnimation(OpacityProperty, null);
+                continue;
+            }
+            dots[i].BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(420))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                BeginTime = TimeSpan.FromMilliseconds(i * 160),
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
             });
+        }
     }
 
     // 8. It goes by itself after a few seconds.
@@ -635,13 +765,20 @@ sealed class ChatWindow : Window
         if (error) row.Foreground = Bad;
         speaking = (row, text);
         var drawn = DateTime.MinValue;
-        if (Showing) await face.Speak(text, soFar =>
+        if (Showing)
         {
-            if ((DateTime.Now - drawn).TotalMilliseconds < 50) return;
-            drawn = DateTime.Now;
-            row.Document = Markdown.Render(soFar);
-        }, Math.Max(46, text.Length / 4.0));
-        if (speaking?.row == row) { row.Document = Markdown.Render(text); speaking = null; }
+            await face.Speak(text, soFar =>
+            {
+                if ((DateTime.Now - drawn).TotalMilliseconds < 50) return;
+                drawn = DateTime.Now;
+                row.Document = Markdown.Render(soFar);
+            }, Math.Max(46, text.Length / 4.0));
+        }
+        if (speaking?.row == row)
+        {
+            row.Document = Markdown.Render(text);
+            speaking = null;
+        }
     }
 
     // Yours sit right on blue, as you typed it.
@@ -651,8 +788,12 @@ sealed class ChatWindow : Window
         shown.Text = text;
         lines.Children.Add(new Border
         {
-            Child = shown, Background = BlueSoft, CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 7, 12, 8),
-            Margin = new Thickness(48, 0, 0, 12), HorizontalAlignment = HorizontalAlignment.Right,
+            Child = shown,
+            Background = BlueSoft,
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12, 7, 12, 8),
+            Margin = new Thickness(48, 0, 0, 12),
+            HorizontalAlignment = HorizontalAlignment.Right,
         });
     }
 
@@ -661,36 +802,31 @@ sealed class ChatWindow : Window
     {
         var shown = new RichTextBox
         {
-            IsReadOnly = true, IsDocumentEnabled = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Padding = new Thickness(0),
-            Foreground = Ink, Margin = new Thickness(0, 2, 0, 12), Document = new System.Windows.Documents.FlowDocument(),
+            IsReadOnly = true,
+            IsDocumentEnabled = true,
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            Padding = new Thickness(0),
+            Foreground = Ink,
+            Margin = new Thickness(0, 2, 0, 12),
+            Document = new System.Windows.Documents.FlowDocument(),
         };
         lines.Children.Add(shown);
         return shown;
-    }
-
-    ////////// HELPERS //////////
-
-    internal static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
-
-    static T Right<T>(T e) where T : UIElement
-    {
-        DockPanel.SetDock(e, System.Windows.Controls.Dock.Right);
-        return e;
-    }
-
-    internal static void Hover(Border b, Brush over, Brush rest)
-    {
-        b.MouseEnter += (_, _) => b.Background = over;
-        b.MouseLeave += (_, _) => b.Background = rest;
     }
 
     // How long, the way a person reads it: 0.8s, 12s, 1m 05s. Live, it counts whole seconds.
     static string Took(double ms, bool live = false)
     {
         var s = ms / 1000;
-        if (s < 60) return live ? $"{Math.Floor(s)}s" : s < 10 ? $"{s:0.0}s" : $"{Math.Round(s)}s";
-        return $"{(int)(s / 60)}m {(int)(s % 60):00}s";
+        if (s >= 60) return $"{(int)(s / 60)}m {(int)(s % 60):00}s";
+        if (live) return $"{Math.Floor(s)}s";
+        if (s < 10) return $"{s:0.0}s";
+        return $"{Math.Round(s)}s";
     }
+
+    // Answers as JSON, for the lingo client or /onsay.
+    static JsonArray Strings(IEnumerable<string> texts) => new(texts.Select(t => (JsonNode?)t).ToArray());
 
     ////////// 10. QUESTIONS BACK //////////
 
@@ -701,7 +837,11 @@ sealed class ChatWindow : Window
            question and its answer. Gives the card. */
     Border Questions(JsonArray questions, Action<string[]>? send = null)
     {
-        var asked = questions.Select(q => q is JsonObject o ? (words: $"{o["question"] ?? o["text"]}", choices: o["choices"] as JsonArray) : (words: $"{q}", choices: null)).ToList();
+        var asked = questions.Select(q =>
+        {
+            if (q is JsonObject o) return (words: $"{o["question"] ?? o["text"]}", choices: o["choices"] as JsonArray);
+            return (words: $"{q}", choices: null);
+        }).ToList();
         var answers = new string[asked.Count];
         var picked = new string[asked.Count];
         const string Other = "\u0001other";
@@ -720,30 +860,71 @@ sealed class ChatWindow : Window
             label.Margin = new Thickness(0, i == 0 ? 0 : 12, 0, 6);
             card.Children.Add(label);
             var q = questions[at] as JsonObject;
-            if (!string.IsNullOrWhiteSpace($"{q?["why"]}")) card.Children.Add(new TextBlock { Text = $"{q!["why"]}", FontSize = 12, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) });
+            if (!string.IsNullOrWhiteSpace($"{q?["why"]}"))
+            {
+                card.Children.Add(new TextBlock
+                {
+                    Text = $"{q!["why"]}",
+                    FontSize = 12,
+                    Foreground = Ink2,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 6),
+                });
+            }
             var options = (asked[i].choices?.Select(c => ($"{c}", $"{c}")) ?? Enumerable.Empty<(string, string)>()).ToList();
             bool choosing = options.Count > 0;
             if (choosing && (bool?)q?["other"] != false) options.Add(("Something else", Other));
             if ((bool?)q?["skip"] != false) options.Add(("Skip", "Skipped"));
             var typed = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
-            typed.TextChanged += (_, _) => { answers[at] = typed.Text; picked[at] = choosing ? Other : ""; Ready(); };
-            var box = new Border { BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 4, 6, 4), Background = Card, Child = typed };
-            box.Visibility = choosing ? Visibility.Collapsed : Visibility.Visible;
-            if (options.Count > 0) card.Children.Add(SetupWindow.Chips(options.ToArray(), () => picked[at] ?? "", v =>
+            typed.TextChanged += (_, _) =>
             {
-                picked[at] = v;
-                box.Visibility = v == Other || (!choosing && v != "Skipped") ? Visibility.Visible : Visibility.Collapsed;
-                answers[at] = v == Other ? typed.Text : v;
+                answers[at] = typed.Text;
+                picked[at] = choosing ? Other : "";
                 Ready();
-            }));
-            card.Children.Add(box);
+            };
+            var typedBox = new Border
+            {
+                BorderBrush = Edge_,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(6, 4, 6, 4),
+                Background = Card,
+                Child = typed,
+                Visibility = Shown(!choosing),
+            };
+            if (options.Count > 0)
+            {
+                card.Children.Add(SetupWindow.Chips(options.ToArray(), () => picked[at] ?? "", v =>
+                {
+                    picked[at] = v;
+                    typedBox.Visibility = Shown(v == Other || (!choosing && v != "Skipped"));
+                    answers[at] = v == Other ? typed.Text : v;
+                    Ready();
+                }));
+            }
+            card.Children.Add(typedBox);
         }
         go = Button("Send", Kind.Primary, () =>
         {
             if (send is null && Busy) return;
-            var told = asked.Select((q, i) => $"{q.words}{(q.words.TrimEnd().EndsWith('?') || q.words.TrimEnd().EndsWith(':') ? "" : ":")} {answers[i].Trim()}").ToList();
+            var told = asked.Select((q, i) =>
+            {
+                var words = q.words.TrimEnd();
+                bool punctuated = words.EndsWith('?') || words.EndsWith(':');
+                return $"{q.words}{(punctuated ? "" : ":")} {answers[i].Trim()}";
+            }).ToList();
             card.Children.Clear();
-            foreach (var line in told) card.Children.Add(new TextBlock { Text = line, FontSize = 13, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 1) });
+            foreach (var line in told)
+            {
+                card.Children.Add(new TextBlock
+                {
+                    Text = line,
+                    FontSize = 13,
+                    Foreground = Ink2,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 1, 0, 1),
+                });
+            }
             if (send is not null) send(answers.Select(a => a.Trim()).ToArray());
             else Ask(string.Join("\n", told));
         });
@@ -752,8 +933,13 @@ sealed class ChatWindow : Window
         Ready();
         var shown = new Border
         {
-            Child = card, Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(14, 12, 14, 14), Margin = new Thickness(0, 2, 24, 12),
+            Child = card,
+            Background = Page_,
+            BorderBrush = Rule,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14, 12, 14, 14),
+            Margin = new Thickness(0, 2, 24, 12),
         };
         lines.Children.Add(shown);
         face.Mood("calm");
@@ -766,13 +952,20 @@ sealed class ChatWindow : Window
            waited for, answered or given up on, is left as it is and can't be sent. */
     public void Asked(List<JsonNode?> waiting)
     {
-        foreach (var (id, card) in lingoCards.Where(c => !waiting.Any(a => (double?)a?["id"] == c.Key)).ToList()) { card.IsEnabled = false; lingoCards.Remove(id); }
+        var gone = lingoCards.Where(c => !waiting.Any(a => (double?)a?["id"] == c.Key)).ToList();
+        foreach (var (id, card) in gone)
+        {
+            card.IsEnabled = false;
+            lingoCards.Remove(id);
+        }
         foreach (var a in waiting)
         {
             if ((double?)a?["id"] is not { } id || lingoCards.ContainsKey(id) || a["questions"] is not JsonArray questions) continue;
             if (!Showing) setOpen(true);
             lingoCards[id] = Questions(questions, answers =>
-                Task.Run(() => Core.Control("answer", new() { ["id"] = id, ["answer"] = new JsonArray(answers.Select(x => (JsonNode?)x).ToArray()) })));
+            {
+                Task.Run(() => Core.Control("answer", new() { ["id"] = id, ["answer"] = Strings(answers) }));
+            });
             Page();
         }
     }
@@ -802,11 +995,16 @@ sealed class ChatWindow : Window
         var body = new StackPanel();
         var list = new StepList
         {
-            Head = head, Body = body,
+            Head = head,
+            Body = body,
             Root = new Border
             {
-                BorderBrush = Rule, BorderThickness = new Thickness(2, 0, 0, 0), Padding = new Thickness(10, 2, 0, 2), Margin = new Thickness(0, 0, 8, 12),
-                Visibility = Visibility.Collapsed, Child = new StackPanel { Children = { head, body } },
+                BorderBrush = Rule,
+                BorderThickness = new Thickness(2, 0, 0, 0),
+                Padding = new Thickness(10, 2, 0, 2),
+                Margin = new Thickness(0, 0, 8, 12),
+                Visibility = Visibility.Collapsed,
+                Child = new StackPanel { Children = { head, body } },
             },
         };
         head.MouseLeftButtonUp += (_, _) =>
@@ -827,7 +1025,10 @@ sealed class ChatWindow : Window
         list.Root.Visibility = Visibility.Visible;
         list.Body.Children.Add(new TextBlock
         {
-            FontSize = 12, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Math.Min(depth, 4) * 14, 2, 0, 2),
+            FontSize = 12,
+            Foreground = Ink2,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(Math.Min(depth, 4) * 14, 2, 0, 2),
             Inlines = { new System.Windows.Documents.Run("●  ") { Foreground = depth > 0 ? Ink4 : Accent, FontSize = 8 }, new System.Windows.Documents.Run(text) },
         });
     }
@@ -836,7 +1037,12 @@ sealed class ChatWindow : Window
     void Fold(StepList list, double ms)
     {
         list.Ms = ms;
-        if (list.Count == 0) { lines.Children.Remove(list.Root); stepLists.Remove(list); return; }
+        if (list.Count == 0)
+        {
+            lines.Children.Remove(list.Root);
+            stepLists.Remove(list);
+            return;
+        }
         list.Head.Visibility = Visibility.Visible;
         list.Head.Text = $"{(StepsOpen ? "▾" : "▸")} {list.Count} step{(list.Count == 1 ? "" : "s")} · {Took(ms)}";
         list.Body.Visibility = Shown(StepsOpen);
@@ -850,7 +1056,8 @@ sealed class ChatWindow : Window
         lines.Children.Clear();
         stepLists.Clear();
         lingoCards.Clear();
-        (session, waiting) = (null, false);
+        session = null;
+        waiting = false;
         chat++;
         Working(null);
         Page();
@@ -863,7 +1070,10 @@ sealed class ChatWindow : Window
     {
         var row = new Border
         {
-            Padding = new Thickness(10, 7, 10, 7), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, Background = Brushes.Transparent,
+            Padding = new Thickness(10, 7, 10, 7),
+            CornerRadius = new CornerRadius(8),
+            Cursor = Cursors.Hand,
+            Background = Brushes.Transparent,
             Child = new StackPanel
             {
                 Children =
@@ -884,11 +1094,22 @@ sealed class ChatWindow : Window
         var rows = new StackPanel();
         var menu = new Popup
         {
-            PlacementTarget = anchor, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, VerticalOffset = 4,
+            PlacementTarget = anchor,
+            Placement = PlacementMode.Bottom,
+            StaysOpen = false,
+            AllowsTransparency = true,
+            VerticalOffset = 4,
             Child = new Border
             {
-                Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(6),
-                MinWidth = 220, MaxWidth = 320, Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 }, Child = rows,
+                Background = Card,
+                BorderBrush = Edge_,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(6),
+                MinWidth = 220,
+                MaxWidth = 320,
+                Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 },
+                Child = rows,
             },
         };
         // The chat as the onsay lingo keeps it in its session: each message, then his reply or his questions.
@@ -899,13 +1120,22 @@ sealed class ChatWindow : Window
             {
                 using var res = await Http.SendAsync(To(HttpMethod.Get, $"/sessions/{session}"));
                 var turns = JsonNode.Parse(await res.Content.ReadAsStringAsync())?["turns"] as JsonArray ?? new();
-                Clipboard.SetText(string.Join("\n\n", turns.Select(t => $"You: {t?["prompt"]}\n\nOnsay: " +
-                    (t?["questions"] is JsonArray q ? string.Join("\n", q.Select(x => x is JsonObject o ? $"{o["question"]}" : $"{x}")) : $"{t?["text"]}"))));
+                var written = turns.Select(t =>
+                {
+                    var reply = $"{t?["text"]}";
+                    if (t?["questions"] is JsonArray q) reply = string.Join("\n", q.Select(x => x is JsonObject o ? $"{o["question"]}" : $"{x}"));
+                    return $"You: {t?["prompt"]}\n\nOnsay: {reply}";
+                });
+                Clipboard.SetText(string.Join("\n\n", written));
                 Tell("Copied the chat.");
             }
             catch (Exception) { Tell("The chat couldn't be copied. Try again in a moment."); }
         }));
-        rows.Children.Add(Row("Apps and settings", "Your apps, devices, people, activity and account", () => { menu.IsOpen = false; SettingsWindow.Open(settings, this); }));
+        rows.Children.Add(Row("Apps and settings", "Your apps, devices, people, activity and account", () =>
+        {
+            menu.IsOpen = false;
+            SettingsWindow.Open(settings, this);
+        }));
         menu.IsOpen = true;
     }
 
@@ -913,17 +1143,54 @@ sealed class ChatWindow : Window
 
     // brand.css's tokens, light theme. Every window draws with these, through using static Onsay.Desktop.ChatWindow.
     internal const string Brand = "#5865F2";
-    internal static readonly SolidColorBrush Card = Hex("#FFFFFF"), Page_ = Hex("#F7F7FA"), Edge_ = Hex("#D8D9E5"), Rule = Hex("#E8E8F0"),
-        Ink = Hex("#12131C"), Ink2 = Hex("#4A4D5E"), Ink3 = Hex("#7B7F92"), Ink4 = Hex("#A9ACBC"), DropSoft = Hex("#D9DAEC"),
-        BlueSoft = Hex("#EEF0FF"), Accent = Hex(Brand), AccentDeep = Hex("#4752C4"), AccentEdge = Hex("#353DB8"), Good = Hex("#1F9D55"),
-        Bad = Hex("#C62A2F"), BadSoft = Hex("#FDECEC"), Butter = Hex("#FFF6D6");
-    internal static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets"), Mono = new("Consolas");
+    internal static readonly SolidColorBrush Card = Hex("#FFFFFF");
+    internal static readonly SolidColorBrush Page_ = Hex("#F7F7FA");
+    internal static readonly SolidColorBrush Edge_ = Hex("#D8D9E5");
+    internal static readonly SolidColorBrush Rule = Hex("#E8E8F0");
+    internal static readonly SolidColorBrush Ink = Hex("#12131C");
+    internal static readonly SolidColorBrush Ink2 = Hex("#4A4D5E");
+    internal static readonly SolidColorBrush Ink3 = Hex("#7B7F92");
+    internal static readonly SolidColorBrush Ink4 = Hex("#A9ACBC");
+    internal static readonly SolidColorBrush DropSoft = Hex("#D9DAEC");
+    internal static readonly SolidColorBrush BlueSoft = Hex("#EEF0FF");
+    internal static readonly SolidColorBrush Accent = Hex(Brand);
+    internal static readonly SolidColorBrush AccentDeep = Hex("#4752C4");
+    internal static readonly SolidColorBrush AccentEdge = Hex("#353DB8");
+    internal static readonly SolidColorBrush Good = Hex("#1F9D55");
+    internal static readonly SolidColorBrush Bad = Hex("#C62A2F");
+    internal static readonly SolidColorBrush BadSoft = Hex("#FDECEC");
+    internal static readonly SolidColorBrush Butter = Hex("#FFF6D6");
+    internal static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets");
+    internal static readonly FontFamily Mono = new("Consolas");
+    internal static readonly FontFamily Ui = new("Segoe UI");
 
     internal static SolidColorBrush Hex(string hex)
     {
         var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
         b.Freeze();
         return b;
+    }
+
+    internal static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
+
+    // Docks an element to the right of its DockPanel, and gives it back.
+    internal static T Right<T>(T e) where T : UIElement
+    {
+        DockPanel.SetDock(e, System.Windows.Controls.Dock.Right);
+        return e;
+    }
+
+    internal static void Hover(Border b, Brush over, Brush rest)
+    {
+        b.MouseEnter += (_, _) => b.Background = over;
+        b.MouseLeave += (_, _) => b.Background = rest;
+    }
+
+    // The same animation across and down, or null to let go of both.
+    internal static void ScaleBoth(ScaleTransform scale, DoubleAnimation? animation)
+    {
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
     }
 
     // Every kind of button is the same shape: a rounded rectangle, never a pill.
@@ -934,32 +1201,64 @@ sealed class ChatWindow : Window
        release on it. */
     internal static Border Button(string text, Kind kind, Action click, string? tip = null)
     {
-        bool icon = kind == Kind.Icon, primary = kind == Kind.Primary;
-        Brush rest = primary ? Accent : icon ? Brushes.Transparent : Card;
-        Brush hover = primary ? AccentDeep : kind == Kind.Danger ? BadSoft : Page_;
+        bool icon = kind == Kind.Icon;
+        bool primary = kind == Kind.Primary;
+        var (rest, hover, edge, ink) = kind switch
+        {
+            Kind.Primary => ((Brush)Accent, (Brush)AccentDeep, (Brush)AccentEdge, Brushes.White),
+            Kind.Danger => (Card, BadSoft, Bad, Bad),
+            Kind.Icon => (Brushes.Transparent, Page_, Edge_, Ink2),
+            _ => (Card, Page_, Edge_, Ink),
+        };
+        var scale = new ScaleTransform();
         var b = new Border
         {
-            Background = rest, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, ToolTip = tip, VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Left, BorderBrush = primary ? AccentEdge : kind == Kind.Danger ? Bad : Edge_,
-            BorderThickness = new Thickness(icon ? 0 : 1), Padding = icon ? new Thickness(0) : new Thickness(14, 6, 14, 7),
-            Width = icon ? 32 : double.NaN, Height = icon ? 32 : double.NaN,
+            Background = rest,
+            CornerRadius = new CornerRadius(8),
+            Cursor = Cursors.Hand,
+            ToolTip = tip,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            BorderBrush = edge,
+            BorderThickness = new Thickness(icon ? 0 : 1),
+            Padding = icon ? new Thickness(0) : new Thickness(14, 6, 14, 7),
+            Width = icon ? 32 : double.NaN,
+            Height = icon ? 32 : double.NaN,
             Effect = primary ? new DropShadowEffect { BlurRadius = 0, ShadowDepth = 2.5, Direction = 315, Color = AccentEdge.Color, Opacity = 1 } : null,
             Child = new TextBlock
             {
-                Text = text, FontSize = icon ? 14 : 13, FontWeight = icon ? FontWeights.Normal : FontWeights.SemiBold,
-                FontFamily = icon ? Icons : new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                Foreground = primary ? Brushes.White : kind == Kind.Danger ? Bad : icon ? Ink2 : Ink,
+                Text = text,
+                FontSize = icon ? 14 : 13,
+                FontWeight = icon ? FontWeights.Normal : FontWeights.SemiBold,
+                FontFamily = icon ? Icons : Ui,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = ink,
             },
-            RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(),
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = scale,
         };
         bool down = false;
-        void press(bool on) { var s = (ScaleTransform)b.RenderTransform; s.ScaleX = s.ScaleY = on ? 0.95 : 1; }
+        void Press(bool on)
+        {
+            scale.ScaleX = on ? 0.95 : 1;
+            scale.ScaleY = on ? 0.95 : 1;
+        }
         Hover(b, hover, rest);
-        b.MouseLeave += (_, _) => { down = false; press(false); };
-        b.MouseLeftButtonDown += (_, e) => { down = true; press(true); e.Handled = true; };
+        b.MouseLeave += (_, _) =>
+        {
+            down = false;
+            Press(false);
+        };
+        b.MouseLeftButtonDown += (_, e) =>
+        {
+            down = true;
+            Press(true);
+            e.Handled = true;
+        };
         b.MouseLeftButtonUp += (_, e) =>
         {
-            press(false);
+            Press(false);
             if (!down) return;
             down = false;
             e.Handled = true;
@@ -971,17 +1270,45 @@ sealed class ChatWindow : Window
     // Body text. centre is for a page of its own, like the chat's sign in.
     internal static TextBlock Paragraph(string text, bool centre = false) => new()
     {
-        Text = text, FontSize = 13, Foreground = Ink2, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, centre ? 16 : 10),
-        TextAlignment = centre ? TextAlignment.Center : TextAlignment.Left, HorizontalAlignment = centre ? HorizontalAlignment.Center : HorizontalAlignment.Stretch,
+        Text = text,
+        FontSize = 13,
+        Foreground = Ink2,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, centre ? 16 : 10),
+        TextAlignment = centre ? TextAlignment.Center : TextAlignment.Left,
+        HorizontalAlignment = centre ? HorizontalAlignment.Center : HorizontalAlignment.Stretch,
         MaxWidth = centre ? 320 : double.PositiveInfinity,
     };
 
     // A heading over a few things, like a setting's name.
-    internal static TextBlock Label(string text) => new() { Text = text, FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 6) };
+    internal static TextBlock Label(string text) => new()
+    {
+        Text = text,
+        FontSize = 13.5,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = Ink,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 14, 0, 6),
+    };
 
     // A quieter line, under or beside something. Empty, it takes no room, so one waiting to say how something went is unseen.
-    internal static TextBlock Note(string text) => new() { Text = text, FontSize = 12, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6), Style = Unseen };
-    static readonly Style Unseen = new(typeof(TextBlock)) { Triggers = { new Trigger { Property = TextBlock.TextProperty, Value = "", Setters = { new Setter(VisibilityProperty, Visibility.Collapsed) } } } };
+    internal static TextBlock Note(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        Foreground = Ink3,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, 6),
+        Style = Unseen,
+    };
+
+    static readonly Style Unseen = new(typeof(TextBlock))
+    {
+        Triggers =
+        {
+            new Trigger { Property = TextBlock.TextProperty, Value = "", Setters = { new Setter(VisibilityProperty, Visibility.Collapsed) } },
+        },
+    };
 
     // An on or off switch whose knob slides across. A click on it flips it, and nothing under it.
     internal static Border Toggle(bool on, Action<bool> changed)
@@ -993,10 +1320,23 @@ sealed class ChatWindow : Window
             track.Background = on ? Accent : Edge_;
             var to = on ? 18.0 : 0;
             var move = (TranslateTransform)knob.RenderTransform;
-            if (animate && SystemParameters.ClientAreaAnimation) move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase() });
-            else { move.BeginAnimation(TranslateTransform.XProperty, null); move.X = to; }
+            if (animate && SystemParameters.ClientAreaAnimation)
+            {
+                move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase() });
+            }
+            else
+            {
+                move.BeginAnimation(TranslateTransform.XProperty, null);
+                move.X = to;
+            }
         }
-        track.MouseLeftButtonUp += (_, e) => { e.Handled = true; on = !on; Draw(true); changed(on); };
+        track.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            on = !on;
+            Draw(true);
+            changed(on);
+        };
         Draw(false);
         return track;
     }
@@ -1005,12 +1345,22 @@ sealed class ChatWindow : Window
     internal static Border Switch(string text, string? under, bool on, Action<bool> changed)
     {
         var track = Toggle(on, changed);
-        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = text, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap } } };
-        if (under is not null) words.Children.Add(new TextBlock { Text = under, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 2, 12, 0), TextWrapping = TextWrapping.Wrap });
+        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        words.Children.Add(new TextBlock { Text = text, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap });
+        if (under is not null)
+        {
+            words.Children.Add(new TextBlock { Text = under, FontSize = 12.5, Foreground = Ink3, Margin = new Thickness(0, 2, 12, 0), TextWrapping = TextWrapping.Wrap });
+        }
         var row = new Border
         {
-            Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16, 12, 16, 12),
-            Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand, Child = new DockPanel { Children = { Right(track), words } },
+            Background = Card,
+            BorderBrush = Edge_,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(16, 12, 16, 12),
+            Margin = new Thickness(0, 0, 0, 10),
+            Cursor = Cursors.Hand,
+            Child = new DockPanel { Children = { Right(track), words } },
         };
         Hover(row, Page_, Card);
         row.MouseLeftButtonUp += (_, _) => track.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = MouseLeftButtonUpEvent });
@@ -1020,8 +1370,13 @@ sealed class ChatWindow : Window
     // Read only text that can still be selected and copied.
     internal static TextBox Selectable(double size, Brush ink) => new()
     {
-        IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Padding = new Thickness(0),
-        TextWrapping = TextWrapping.Wrap, FontSize = size, Foreground = ink,
+        IsReadOnly = true,
+        BorderThickness = new Thickness(0),
+        Background = Brushes.Transparent,
+        Padding = new Thickness(0),
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = size,
+        Foreground = ink,
     };
 
     // A thin rounded scrollbar with no arrows. Horizontal ones never appear in these windows, so they are hidden.

@@ -28,7 +28,14 @@ sealed class Settings
     // Whether setting him up, the window the first open shows (SetupWindow.cs), was finished or skipped. Null until then.
     // Welcomed is an older version's name for it, read so nobody who finished that is set up again.
     public bool? SetUp { get; set; }
-    public bool? Welcomed { get => null; set { if (value == true) SetUp = true; } }
+    public bool? Welcomed
+    {
+        get => null;
+        set
+        {
+            if (value == true) SetUp = true;
+        }
+    }
     // How he looks, picked in that window or Settings, Look. Null is the brand's own look.
     public Onsay.Character.OnsayView.Appearance? Look { get; set; }
     // Let me choose, on the chat: true asks the person for every pick he makes (list mode). Null is off.
@@ -38,7 +45,8 @@ sealed class Settings
 
     // His folder, %AppData%\Onsay. A test sets ONSAY_DATA to a folder of its own before he starts, so it never touches the
     // person's.
-    public static readonly string Folder = Environment.GetEnvironmentVariable("ONSAY_DATA") is { Length: > 0 } test ? test
+    public static readonly string Folder = Environment.GetEnvironmentVariable("ONSAY_DATA") is { Length: > 0 } test
+        ? test
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Onsay");
     static readonly string File_ = Path.Combine(Folder, "desktop.json");
 
@@ -47,8 +55,14 @@ sealed class Settings
     // 1.
     public static Settings Load()
     {
-        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(File_)) ?? new(); }
-        catch { return new(); }
+        try
+        {
+            return JsonSerializer.Deserialize<Settings>(File.ReadAllText(File_)) ?? new();
+        }
+        catch
+        {
+            return new();
+        }
     }
 
     // 2. Forgetting where he sat is not worth crashing over.
@@ -57,7 +71,8 @@ sealed class Settings
         try
         {
             Directory.CreateDirectory(Folder);
-            File.WriteAllText(File_, JsonSerializer.Serialize(this, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }));
+            var options = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+            File.WriteAllText(File_, JsonSerializer.Serialize(this, options));
         }
         catch { }
     }
@@ -65,12 +80,17 @@ sealed class Settings
 
 static class Startup
 {
-    const string Key = @"Software\Microsoft\Windows\CurrentVersion\Run", Name = "Onsay";
+    const string Key = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string Name = "Onsay";
 
     // 3.
     public static bool IsOn
     {
-        get { using var k = Registry.CurrentUser.OpenSubKey(Key); return k?.GetValue(Name) is string; }
+        get
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(Key);
+            return k?.GetValue(Name) is string;
+        }
     }
 
     // 4.

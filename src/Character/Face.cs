@@ -16,11 +16,18 @@ namespace Onsay.Character;
 
 static class Face
 {
-    public const double R = 46, EyeX = 15.5, EyeY = -8, EyeR = 8.4;
-    public const double MouthY = 12, MouthW = 21, MouthT = 7.4, MouthSag = 13;
-    public const double LookYaw = 0.5, LookPitch = 0.34;   // radians he turns at full look
-    public const double TiltMax = 7;                       // degrees he leans toward what he watches
-    public const double BackX = 11;                        // half the span of the X on his back
+    public const double R = 46;
+    public const double EyeX = 15.5;
+    public const double EyeY = -8;
+    public const double EyeR = 8.4;
+    public const double MouthY = 12;
+    public const double MouthW = 21;
+    public const double MouthT = 7.4;
+    public const double MouthSag = 13;
+    public const double LookYaw = 0.5;     // radians he turns at full look
+    public const double LookPitch = 0.34;  // radians he turns at full look
+    public const double TiltMax = 7;       // degrees he leans toward what he watches
+    public const double BackX = 11;        // half the span of the X on his back
 }
 
 ////////// 2. CHANNELS //////////
@@ -77,7 +84,8 @@ static class Channels
     public static double Wrap(Ch c, double v)
     {
         if (c != Ch.Spin) return v;
-        double period = Math.PI * 2, half = Math.PI;
+        double period = Math.PI * 2;
+        double half = Math.PI;
         return ((((v + half) % period) + period) % period) - half;
     }
 
@@ -88,13 +96,18 @@ static class Channels
 
 public sealed class Spring
 {
-    public double V, Target, Vel;
-    readonly double k, d;
+    public double V;
+    public double Target;
+    public double Vel;
+    readonly double k;
+    readonly double d;
 
     public Spring(double value, (double k, double d) cfg)
     {
-        V = Target = value;
-        (k, d) = cfg;
+        V = value;
+        Target = value;
+        k = cfg.k;
+        d = cfg.d;
     }
 
     // Returns whether it is still moving. dt is capped so waking from a long sleep is not a launch.
@@ -106,7 +119,12 @@ public sealed class Spring
         return Math.Abs(Vel) > 0.0008 || Math.Abs(V - Target) > 0.0008;
     }
 
-    public void Set(double v) { V = Target = v; Vel = 0; }
+    public void Set(double v)
+    {
+        V = v;
+        Target = v;
+        Vel = 0;
+    }
 }
 
 ////////// 4. EXPRESSIONS //////////
@@ -141,7 +159,11 @@ public sealed class GestureRun
     public required GestureDef Def;
     public required double Start;
     public Action? Done;
-    public double ReachL = 1.02, ReachR = 1.02, DropL, DropR;   // blink only: how far each eye has left
+    // Blink only: how far each eye has left.
+    public double ReachL = 1.02;
+    public double ReachR = 1.02;
+    public double DropL;
+    public double DropR;
 }
 
 static class Gestures
@@ -164,25 +186,45 @@ static class Gestures
             a.Add(Ch.Squash, anticip * 0.3 + land * 0.34 - lift * 0.16);
         } },
         ["spin"] = new() { Ms = 950, At = (p, _, a) => a.Add(Ch.Spin, Ease(p) * PI * 2) },
-        ["shake"] = new() { Ms = 520, At = (p, _, a) => { a.Add(Ch.X, Math.Sin(p * PI * 6) * (1 - p) * 6.5 * Rise(p, 0.14)); a.Add(Ch.Tilt, Math.Sin(p * PI * 6) * (1 - p) * 5 * Rise(p, 0.14)); } },
-        ["nod"] = new() { Ms = 620, At = (p, _, a) => { a.Add(Ch.LookY, Math.Sin(p * PI * 4) * (1 - p) * 0.55 * Rise(p, 0.18)); a.Add(Ch.Y, Math.Sin(p * PI * 4) * (1 - p) * 3 * Rise(p, 0.18)); } },
+        ["shake"] = new() { Ms = 520, At = (p, _, a) =>
+        {
+            double swing = Math.Sin(p * PI * 6) * (1 - p) * Rise(p, 0.14);
+            a.Add(Ch.X, swing * 6.5);
+            a.Add(Ch.Tilt, swing * 5);
+        } },
+        ["nod"] = new() { Ms = 620, At = (p, _, a) =>
+        {
+            double swing = Math.Sin(p * PI * 4) * (1 - p) * Rise(p, 0.18);
+            a.Add(Ch.LookY, swing * 0.55);
+            a.Add(Ch.Y, swing * 3);
+        } },
         ["wobble"] = new() { Ms = 900, At = (p, _, a) => a.Add(Ch.Tilt, Math.Sin(p * PI * 4) * (1 - p) * 13 * Rise(p, 0.2)) },
-        ["pop"] = new() { Ms = 420, At = (p, _, a) => { a.Add(Ch.Scale, Math.Sin(p * PI) * 0.16); a.Add(Ch.Squash, -Math.Sin(p * PI) * 0.12); } },
+        ["pop"] = new() { Ms = 420, At = (p, _, a) =>
+        {
+            a.Add(Ch.Scale, Math.Sin(p * PI) * 0.16);
+            a.Add(Ch.Squash, -Math.Sin(p * PI) * 0.12);
+        } },
         ["land"] = new() { Ms = 560, At = (p, _, a) =>
         {
             double b = Math.Sin(p * PI * 2) * Math.Sin(p * PI);
             a.Add(Ch.Squash, b * 0.32);
             a.Add(Ch.Y, Math.Max(0, b) * 2.2);
         } },
-        ["glance"] = new() { Ms = 1800, At = (p, _, a) => { a.Add(Ch.LookX, Math.Sin(p * PI * 2) * 0.8 * Settle(p)); a.Add(Ch.LookY, Math.Sin(p * PI) * -0.25 * Settle(p)); } },
+        ["glance"] = new() { Ms = 1800, At = (p, _, a) =>
+        {
+            a.Add(Ch.LookX, Math.Sin(p * PI * 2) * 0.8 * Settle(p));
+            a.Add(Ch.LookY, Math.Sin(p * PI) * -0.25 * Settle(p));
+        } },
         ["peek"] = new() { Ms = 1500, At = (p, _, a) => a.Add(Ch.Spin, Math.Sin(p * PI) * 1.2 * Settle(p, 0.3, 0.3)) },
         // An offset on the lids, closing faster than it opens. The lower lid lets go as the upper comes down.
         ["blink"] = new() { Ms = 260, At = (p, g, a) =>
         {
             double k = p < 0.34 ? p / 0.34 : 1 - (p - 0.34) / 0.66;
             double e = k * k * (3 - 2 * k);
-            a.Add(Ch.LidL, e * g.ReachL); a.Add(Ch.LidR, e * g.ReachR);
-            a.Add(Ch.LowerL, -e * g.DropL); a.Add(Ch.LowerR, -e * g.DropR);
+            a.Add(Ch.LidL, e * g.ReachL);
+            a.Add(Ch.LidR, e * g.ReachR);
+            a.Add(Ch.LowerL, -e * g.DropL);
+            a.Add(Ch.LowerR, -e * g.DropR);
         } },
     };
 }
@@ -233,10 +275,21 @@ public sealed record Viseme(double Open, double Width, double Curve, double Paus
 
 static class Visemes
 {
-    static readonly Viseme Rest = new(0, 0.88, 0.5, 0), MBP = new(0, 0.76, 0.12, 34), FV = new(0.16, 0.72, 0.16, 12),
-        TH = new(0.32, 0.8, 0.2, 10), L = new(0.38, 0.86, 0.28, 0), WQ = new(0.34, 0.42, 0.1, 0), OH = new(0.66, 0.54, 0.14, 4),
-        EE = new(0.38, 1.16, 0.42, 0), AH = new(0.82, 0.96, 0.22, 6), EH = new(0.52, 1.04, 0.32, 0), SDT = new(0.2, 0.94, 0.26, 0),
-        CH = new(0.28, 0.62, 0.1, 8), Space = new(0.05, 0.88, 0.42, 26), Comma = new(0.04, 0.86, 0.45, 140), Stop = new(0, 0.86, 0.5, 280);
+    static readonly Viseme Rest = new(0, 0.88, 0.5, 0);
+    static readonly Viseme MBP = new(0, 0.76, 0.12, 34);
+    static readonly Viseme FV = new(0.16, 0.72, 0.16, 12);
+    static readonly Viseme TH = new(0.32, 0.8, 0.2, 10);
+    static readonly Viseme L = new(0.38, 0.86, 0.28, 0);
+    static readonly Viseme WQ = new(0.34, 0.42, 0.1, 0);
+    static readonly Viseme OH = new(0.66, 0.54, 0.14, 4);
+    static readonly Viseme EE = new(0.38, 1.16, 0.42, 0);
+    static readonly Viseme AH = new(0.82, 0.96, 0.22, 6);
+    static readonly Viseme EH = new(0.52, 1.04, 0.32, 0);
+    static readonly Viseme SDT = new(0.2, 0.94, 0.26, 0);
+    static readonly Viseme CH = new(0.28, 0.62, 0.1, 8);
+    static readonly Viseme Space = new(0.05, 0.88, 0.42, 26);
+    static readonly Viseme Comma = new(0.04, 0.86, 0.45, 140);
+    static readonly Viseme Stop = new(0, 0.86, 0.5, 280);
 
     static readonly Dictionary<char, Viseme> Single = new()
     {
@@ -249,7 +302,8 @@ static class Visemes
     public static Viseme For(char prev, char c, char next)
     {
         c = char.ToLowerInvariant(c);
-        string ahead = $"{c}{char.ToLowerInvariant(next)}", behind = $"{char.ToLowerInvariant(prev)}{c}";
+        string ahead = $"{c}{char.ToLowerInvariant(next)}";
+        string behind = $"{char.ToLowerInvariant(prev)}{c}";
         bool pair(params string[] s) => s.Contains(ahead) || s.Contains(behind);
         if (pair("th")) return TH;
         if (pair("ch", "sh")) return CH;

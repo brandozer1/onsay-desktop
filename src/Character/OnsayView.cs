@@ -36,7 +36,11 @@ public sealed class OnsayView : FrameworkElement
     // Each surface is how strong the depth toward his edge and the gloss on top are. The highlight follows the gloss.
     public static readonly Dictionary<string, (double depth, double gloss)> Materials = new()
     {
-        ["soft"] = (0.4, 0.32), ["flat"] = (0, 0), ["matte"] = (0.55, 0.12), ["glossy"] = (0.5, 0.7), ["liquid"] = (0.58, 1),
+        ["soft"] = (0.4, 0.32),
+        ["flat"] = (0, 0),
+        ["matte"] = (0.55, 0.12),
+        ["glossy"] = (0.5, 0.7),
+        ["liquid"] = (0.58, 1),
     };
 
     static readonly Brush[] Layers =
@@ -46,8 +50,11 @@ public sealed class OnsayView : FrameworkElement
         Radial(0.3, 0.23, 0.17, (0, Color.FromArgb(242, 255, 255, 255)), (1, Color.FromArgb(0, 255, 255, 255))),     // highlight
     };
     static readonly Geometry BallClip = Frozen(new EllipseGeometry(new Point(0, 0), Face.R, Face.R));
-    static Brush BodyBrush = null!, FaceBrush = null!;
-    static Pen SlitPen = null!, ArcPen = null!, BackPen = null!;
+    static Brush BodyBrush = null!;
+    static Brush FaceBrush = null!;
+    static Pen SlitPen = null!;
+    static Pen ArcPen = null!;
+    static Pen BackPen = null!;
     static double[] Strength = null!;
     static event Action? Repaint;
     public static Appearance Current { get; private set; } = new();
@@ -56,7 +63,11 @@ public sealed class OnsayView : FrameworkElement
     // Every one of him takes the new look at once. A colour that doesn't read keeps the default.
     public static void Paint(Appearance look)
     {
-        static Color? Read(string hex) { try { return (Color)ColorConverter.ConvertFromString(hex); } catch { return null; } }
+        static Color? Read(string hex)
+        {
+            try { return (Color)ColorConverter.ConvertFromString(hex); }
+            catch { return null; }
+        }
         var (depth, gloss) = Materials.GetValueOrDefault(look.Material, Materials["soft"]);
         BodyBrush = Frozen(new SolidColorBrush(Read(look.Color) ?? Desktop.ChatWindow.Accent.Color));
         FaceBrush = Frozen(new SolidColorBrush(Read(look.Face) ?? Colors.White));
@@ -81,9 +92,13 @@ public sealed class OnsayView : FrameworkElement
 
     Dictionary<Ch, double> expressionTargets = new(Expressions.All["happy"]);
     string mood = "calm";
-    int era, speech;          // bumped to cancel an older timer chain or sentence
-    DispatcherTimer? blinkTimer, wanderTimer;
-    bool running, paused, carried;
+    int era;      // bumped to cancel an older timer chain
+    int speech;   // bumped to cancel an older sentence
+    DispatcherTimer? blinkTimer;
+    DispatcherTimer? wanderTimer;
+    bool running;
+    bool paused;
+    bool carried;
     double last;
     Point? point;
 
@@ -96,8 +111,18 @@ public sealed class OnsayView : FrameworkElement
         foreach (var (k, v) in expressionTargets) ch[(int)k].Set(v);
         RenderTransform = new TransformGroup { Children = { breathScale, breathMove } };
         RenderTransformOrigin = new Point(0.5, 0.5);
-        Loaded += (_, _) => { Repaint += InvalidateVisual; Mood(mood); };
-        Unloaded += (_, _) => { Repaint -= InvalidateVisual; Sleep(); era++; speech++; };
+        Loaded += (_, _) =>
+        {
+            Repaint += InvalidateVisual;
+            Mood(mood);
+        };
+        Unloaded += (_, _) =>
+        {
+            Repaint -= InvalidateVisual;
+            Sleep();
+            era++;
+            speech++;
+        };
         SizeChanged += (_, _) => Breathe();
     }
 
@@ -105,7 +130,11 @@ public sealed class OnsayView : FrameworkElement
     public bool Paused
     {
         get => paused;
-        set { paused = value; if (!value) Wake(); }
+        set
+        {
+            paused = value;
+            if (!value) Wake();
+        }
     }
 
     ////////// 1. FRAME //////////
@@ -130,7 +159,11 @@ public sealed class OnsayView : FrameworkElement
         double now = clock.Elapsed.TotalMilliseconds;
         double dt = last > 0 ? (now - last) / 1000 : 0.016;
         last = now;
-        if (paused) { Sleep(); return; }
+        if (paused)
+        {
+            Sleep();
+            return;
+        }
 
         bool busy = false;
         Aim();
@@ -139,7 +172,12 @@ public sealed class OnsayView : FrameworkElement
         {
             var g = gestures[i];
             double p = (now - g.Start) / g.Def.Ms;
-            if (p < 1) { g.Def.At(p, g, add); busy = true; continue; }
+            if (p < 1)
+            {
+                g.Def.At(p, g, add);
+                busy = true;
+                continue;
+            }
             gestures.RemoveAt(i);
             // Whatever it still held becomes a residual that springs home, so nothing teleports.
             var held = new double[Channels.Count];
@@ -171,7 +209,8 @@ public sealed class OnsayView : FrameworkElement
     {
         if (carried || expressionTargets.ContainsKey(Ch.LookX)) return;
         double over = Math.Max(140, ActualWidth * 2.2);
-        Look(point is { } p ? p.X / over : 0, point is { } q ? q.Y / over : 0);
+        var at = point ?? default;
+        Look(at.X / over, at.Y / over);
     }
 
     void Look(double x, double y, double tilt = double.NaN)
@@ -191,7 +230,8 @@ public sealed class OnsayView : FrameworkElement
         double size = Math.Min(ActualWidth, ActualHeight);
         if (size <= 0) return;
 
-        double scale = Math.Max(0.05, V(Ch.Scale)), sq = V(Ch.Squash);
+        double scale = Math.Max(0.05, V(Ch.Scale));
+        double sq = V(Ch.Squash);
         double about = Unit(V(Ch.About));
         double lookX = V(Ch.LookX) * (1 - about);   // looking and leaning fade as he turns away
         double spun = V(Ch.Tilt) + lookX * Face.TiltMax;
@@ -228,7 +268,11 @@ public sealed class OnsayView : FrameworkElement
         double behind = yaw + Math.PI;
         if (about > 0.02 && Project(0, 0, behind, pitch).z > 0.05)
         {
-            Point at(double px, double py) { var p = Project(px, py, behind, pitch); return new Point(p.x, p.y); }
+            Point at(double px, double py)
+            {
+                var p = Project(px, py, behind, pitch);
+                return new Point(p.x, p.y);
+            }
             double s = Face.BackX;
             dc.PushOpacity(Math.Min(1, about * 1.5));
             dc.DrawLine(BackPen, at(-s, -s), at(s, s));
@@ -245,11 +289,14 @@ public sealed class OnsayView : FrameworkElement
         var at = Project(px, Face.EyeY, yaw, pitch);
         if (at.z <= 0.03) return;
 
-        double arc = Unit(V(arcCh)), lid = Unit(V(lidCh)), lower = Unit(V(lowerCh));
+        double arc = Unit(V(arcCh));
+        double lid = Unit(V(lidCh));
+        double lower = Unit(V(lowerCh));
         double rEye = Face.EyeR * Math.Max(0.2, V(scaleCh));
         dc.PushTransform(new MatrixTransform(SurfaceTransform(at)));
 
-        double top = -rEye + lid * 2 * rEye, bottom = rEye - lower * 2 * rEye;
+        double top = -rEye + lid * 2 * rEye;
+        double bottom = rEye - lower * 2 * rEye;
         dc.PushClip(new RectangleGeometry(new Rect(-rEye * 1.6, top, rEye * 3.2, Math.Max(0, bottom - top))));
         dc.PushOpacity(1 - arc);
         dc.DrawEllipse(FaceBrush, null, default, rEye, rEye);
@@ -261,7 +308,8 @@ public sealed class OnsayView : FrameworkElement
         double lineOpacity = Math.Min(1, shutting) * Unit((0.62 - arc) / 0.24);
         if (lineOpacity > 0)
         {
-            double y = -rEye * 0.34 * (1 - shutting), halfW = rEye * 0.84;
+            double y = -rEye * 0.34 * (1 - shutting);
+            double halfW = rEye * 0.84;
             dc.PushOpacity(lineOpacity);
             dc.DrawLine(SlitPen, new Point(-halfW, y), new Point(halfW, y));
             dc.Pop();
@@ -295,7 +343,11 @@ public sealed class OnsayView : FrameworkElement
         {
             var a = Project(outer[i].X, outer[i].Y, yaw, pitch);
             var b = Project(inner[i].X, inner[i].Y, yaw, pitch);
-            if (a.z > 0.03 && b.z > 0.03) { front.Add(new Point(a.x, a.y)); back.Add(new Point(b.x, b.y)); }
+            if (a.z > 0.03 && b.z > 0.03)
+            {
+                front.Add(new Point(a.x, a.y));
+                back.Add(new Point(b.x, b.y));
+            }
             else if (front.Count > 0) break;   // gone round the side
         }
         if (front.Count < 2) return;
@@ -312,7 +364,8 @@ public sealed class OnsayView : FrameworkElement
     // A point painted on the sphere, turned by yaw and pitch. z is whether it faces us and how foreshortened.
     static (double x, double y, double z) Project(double px, double py, double yaw, double pitch)
     {
-        double x0 = px / Face.R, y0 = py / Face.R;
+        double x0 = px / Face.R;
+        double y0 = py / Face.R;
         double z0 = Math.Sqrt(Math.Max(0.0001, 1 - x0 * x0 - y0 * y0));
         double x1 = x0 * Math.Cos(yaw) + z0 * Math.Sin(yaw);
         double z1 = z0 * Math.Cos(yaw) - x0 * Math.Sin(yaw);
@@ -338,17 +391,22 @@ public sealed class OnsayView : FrameworkElement
     {
         var outer = new List<Point>(steps + 1);
         var inner = new List<Point>(steps + 1);
-        double s = Math.Abs(sag), flip = sag >= 0 ? 1 : -1;
+        double s = Math.Abs(sag);
+        double flip = sag >= 0 ? 1 : -1;
         bool flat = s < 0.4;
         double r = flat ? 0 : (w * w + s * s) / (2 * s);
         double yc = flat ? 0 : -(r - s);
-        double from = flat ? 0 : Math.Atan2(-yc, -w), to = flat ? 0 : Math.Atan2(-yc, w);
+        double from = flat ? 0 : Math.Atan2(-yc, -w);
+        double to = flat ? 0 : Math.Atan2(-yc, w);
         for (int i = 0; i <= steps; i++)
         {
-            double f = (double)i / steps, half = thickness(f * 2 - 1) / 2;
+            double f = (double)i / steps;
+            double half = thickness(f * 2 - 1) / 2;
             double th = from + (to - from) * f;
-            double px = flat ? -w + 2 * w * f : r * Math.Cos(th), py = flat ? 0 : yc + r * Math.Sin(th);
-            double nx = flat ? 0 : Math.Cos(th), ny = flat ? 1 : Math.Sin(th);
+            double px = flat ? -w + 2 * w * f : r * Math.Cos(th);
+            double py = flat ? 0 : yc + r * Math.Sin(th);
+            double nx = flat ? 0 : Math.Cos(th);
+            double ny = flat ? 1 : Math.Sin(th);
             outer.Add(new Point(px + nx * half, my + flip * (py + ny * half)));
             inner.Add(new Point(px - nx * half, my + flip * (py - ny * half)));
         }
@@ -375,7 +433,11 @@ public sealed class OnsayView : FrameworkElement
         var t = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(Rand(gap)) };
         t.Tick += (_, _) =>
         {
-            if (mine != era) { t.Stop(); return; }
+            if (mine != era)
+            {
+                t.Stop();
+                return;
+            }
             if (!paused) tick();
             t.Interval = TimeSpan.FromMilliseconds(Rand(gap));
         };
@@ -392,7 +454,10 @@ public sealed class OnsayView : FrameworkElement
         if (Reduced) return;
         var m = Moods.All[mood];
         Every(m.Blink, mine, Blink, t => blinkTimer = t);
-        Every(m.Wander, mine, () => { if (gestures.Count == 0) Play(m.WanderWith[rng.Next(m.WanderWith.Length)]); }, t => wanderTimer = t);
+        Every(m.Wander, mine, () =>
+        {
+            if (gestures.Count == 0) Play(m.WanderWith[rng.Next(m.WanderWith.Length)]);
+        }, t => wanderTimer = t);
     }
 
     // 4.
@@ -418,7 +483,11 @@ public sealed class OnsayView : FrameworkElement
     // 5. Reduced motion still gets the end of the story, just not the journey.
     void Play(string name, Action? done = null, Action<GestureRun>? setup = null)
     {
-        if (Reduced || !Gestures.All.TryGetValue(name, out var def)) { done?.Invoke(); return; }
+        if (Reduced || !Gestures.All.TryGetValue(name, out var def))
+        {
+            done?.Invoke();
+            return;
+        }
         var run = new GestureRun { Def = def, Start = clock.Elapsed.TotalMilliseconds, Done = done };
         setup?.Invoke(run);
         gestures.Add(run);
@@ -455,7 +524,10 @@ public sealed class OnsayView : FrameworkElement
         if (!Reactions.All.TryGetValue(name, out var r)) return;
         if (r.Expression is { } e) Express(e);
         if (r.Mood is { } m) Mood(m);
-        Play(r.Gesture ?? "", () => { if (r.Then is { } t) Mood(t); });
+        Play(r.Gesture ?? "", () =>
+        {
+            if (r.Then is { } then) Mood(then);
+        });
     }
 
     // 9.
@@ -520,7 +592,11 @@ public sealed class OnsayView : FrameworkElement
 
     ////////// HELPERS //////////
 
-    static T Frozen<T>(T f) where T : Freezable { f.Freeze(); return f; }
+    static T Frozen<T>(T f) where T : Freezable
+    {
+        f.Freeze();
+        return f;
+    }
 
     static Pen Stroke(double width, PenLineCap cap) =>
         Frozen(new Pen(FaceBrush, width) { StartLineCap = cap, EndLineCap = cap, LineJoin = PenLineJoin.Round });

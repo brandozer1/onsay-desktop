@@ -35,11 +35,17 @@ sealed class AskWindow : Window
         Bare(this);
         ShowActivated = false;
         SizeToContent = SizeToContent.WidthAndHeight;
-        FontFamily = new FontFamily("Segoe UI");
+        FontFamily = Ui;
         var face = new OnsayView { Width = 36, Height = 36, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Top };
         DockPanel.SetDock(face, System.Windows.Controls.Dock.Left);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
-        foreach (var (text, kind, answer) in new[] { ("Allow", Kind.Primary, "always"), ("Only this time", Kind.Quiet, "once"), ("Don't allow", Kind.Quiet, "no") })
+        var choices = new[]
+        {
+            ("Allow", Kind.Primary, "always"),
+            ("Only this time", Kind.Quiet, "once"),
+            ("Don't allow", Kind.Quiet, "no"),
+        };
+        foreach (var (text, kind, answer) in choices)
         {
             var b = Button(text, kind, () => Answer(answer));
             b.Margin = new Thickness(0, 0, 8, 0);
@@ -47,8 +53,13 @@ sealed class AskWindow : Window
         }
         Content = new Border
         {
-            Width = Wide - Shadow * 2, Margin = new Thickness(Shadow), Padding = new Thickness(16, 14, 16, 16),
-            Background = Card, BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14),
+            Width = Wide - Shadow * 2,
+            Margin = new Thickness(Shadow),
+            Padding = new Thickness(16, 14, 16, 16),
+            Background = Card,
+            BorderBrush = Edge_,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(14),
             Effect = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 6, Direction = 270, Opacity = 0.18 },
             Child = new StackPanel { Children = { new DockPanel { Children = { face, words } }, buttons } },
         };
@@ -64,28 +75,58 @@ sealed class AskWindow : Window
     {
         if (asking) return;
         asking = true;
-        var all = Core.Running ? (await Task.Run(() => Core.Control("asks"))).answer as JsonArray : null;
+        JsonArray? all = null;
+        if (Core.Running)
+        {
+            var (answer, _) = await Task.Run(() => Core.Control("asks"));
+            all = answer as JsonArray;
+        }
         if (all is not null || !Core.Running) chat.Asked(all?.Where(a => a?["questions"] is JsonArray).ToList() ?? new());
         var waiting = all?.Where(a => a?["need"] is not null).ToList();
-        var handle = waiting?.Any(a => $"{a?["caller"]}" != "this computer") == true ? (await Task.Run(() => Core.Onsay("status"))).answer?["handle"] : null;
+        JsonNode? handle = null;
+        if (waiting?.Any(a => $"{a?["caller"]}" != "this computer") == true)
+        {
+            var (status, _) = await Task.Run(() => Core.Onsay("status"));
+            handle = status?["handle"];
+        }
         asking = false;
         if (waiting is null && Core.Running) return;   // a moment it didn't answer: the card stays as it is
-        var ask = waiting?.FirstOrDefault(a => (double?)a?["id"] == shown) ?? waiting?.FirstOrDefault(a => !answered.Contains((double?)a?["id"] ?? 0));
-        if (ask is null) { shown = null; Hide(); return; }
+
+        var ask = waiting?.FirstOrDefault(a => (double?)a?["id"] == shown);
+        ask ??= waiting?.FirstOrDefault(a => !answered.Contains((double?)a?["id"] ?? 0));
+        if (ask is null)
+        {
+            shown = null;
+            Hide();
+            return;
+        }
         if (shown != (double?)ask["id"])
         {
             shown = (double?)ask["id"];
-            var (need, path, caller) = ($"{ask["need"]}", ask["path"] is { } p ? $"{p}" : null, $"{ask["caller"]}");
+            var need = $"{ask["need"]}";
+            var caller = $"{ask["caller"]}";
+            var lingo = $"{ask["lingo"]}";
             var wants = Core.Needs.FirstOrDefault(n => n.Name == need).Wants ?? need;
-            var (app, does) = ($"{ask["lingo"]}" is var lingo && lingo == "onsay" ? "Onsay" : Core.Title(lingo), path is null ? wants : wants.Replace("your files", path));
-            words.Text = caller == "this computer" ? $"{app} wants to {does}." : $"{Core.Who(caller, handle is null ? null : $"{handle}")} wants {app} to {does} here.";
+            var does = ask["path"] is { } path ? wants.Replace("your files", $"{path}") : wants;
+            var app = lingo == "onsay" ? "Onsay" : Core.Title(lingo);
+            if (caller == "this computer") words.Text = $"{app} wants to {does}.";
+            else
+            {
+                var who = Core.Who(caller, handle is null ? null : $"{handle}");
+                words.Text = $"{who} wants {app} to {does} here.";
+            }
             Show();
         }
+
         // Beside him, wherever he is now.
         UpdateLayout();
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var at = body();
-        var spot = Dock.Beside(MonitorAt(at.Center, MONITOR_DEFAULTTONEAREST), at, (int)Math.Round(ActualWidth * scale), (int)Math.Round(ActualHeight * scale), (int)Math.Round((6 - Shadow) * scale), null, out _);
+        var monitor = MonitorAt(at.Center, MONITOR_DEFAULTTONEAREST);
+        int width = (int)Math.Round(ActualWidth * scale);
+        int height = (int)Math.Round(ActualHeight * scale);
+        int gap = (int)Math.Round((6 - Shadow) * scale);
+        var spot = Dock.Beside(monitor, at, width, height, gap, null, out _);
         Place(new System.Windows.Interop.WindowInteropHelper(this).Handle, spot);
     }
 

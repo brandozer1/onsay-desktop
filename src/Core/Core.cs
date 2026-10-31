@@ -4,7 +4,7 @@
 //
 // 1. Start(settings)          writes core.json, puts the lingos this app ships in the lingos folder and starts the lingo
 //                             client with them, ending the one running first: on startup and the stop key. The first
-//                             time a shipped lingo appears it is started, with its Grants
+//                             time a shipped lingo appears it is started, and the base calls get their grants once
 // 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
 // 3. Needs                    what a lingo may do on this computer, in words: for Apps, Activity, Advanced and asking
 //    Who(who, handle)         a caller or an access rule's who, in words, like "Your desktop" or "james"
@@ -65,10 +65,10 @@ static class Core
     // What older versions shipped as lingos and are now standard functions of the lingo client, or no longer ship.
     static readonly string[] Retired = { "encode", "json", "list", "math", "request", "text", "time", "url", "writer" };
 
-    // What Onsay's own lingos may do without asking every time, given the first time each appears, and taken back in Apps.
-    // Anything else they need is asked.
-    const string BaseCalls = "base calls";   // what Started remembers once the onsay lingo, which holds them, was given its grants
-    static readonly Dictionary<string, string[]> Grants = new() { [BaseCalls] = new[] { "screen.read", "screen.act", "files.read" } };
+    // What the onsay lingo, which holds the base calls, may do without asking every time, given once and taken back in
+    // Apps. Anything else it needs is asked. Started remembers BaseCalls once that is done.
+    const string BaseCalls = "base calls";
+    static readonly string[] BaseCallGrants = { "screen.read", "screen.act", "files.read" };
 
     static Process? process;
     static bool wanted;
@@ -83,7 +83,15 @@ static class Core
         Directory.CreateDirectory(LingosFolder);
         if (!File.Exists(Exe)) return;
         var config = new JsonObject { ["home"] = Home };
-        try { if ((int?)JsonNode.Parse(File.ReadAllText(Config))?["port"] is int kept) config["port"] = port = kept; } catch (Exception) { }
+        try
+        {
+            if ((int?)JsonNode.Parse(File.ReadAllText(Config))?["port"] is int kept)
+            {
+                port = kept;
+                config["port"] = kept;
+            }
+        }
+        catch (Exception) { }
         File.WriteAllText(Config, config.ToJsonString());
         settings = s;
         wanted = true;
@@ -106,14 +114,15 @@ static class Core
             }
             catch (IOException) { }   // still open somewhere: it goes next time
         var shipped = Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.lingo") : Array.Empty<string>();
-        foreach (var from in shipped)
+        foreach (var path in shipped)
             try
             {
-                var to = new FileInfo(Path.Combine(LingosFolder, Path.GetFileName(from)));
-                var older = Path.Combine(LingosFolder, Path.GetFileNameWithoutExtension(from));
+                var from = new FileInfo(path);
+                var to = new FileInfo(Path.Combine(LingosFolder, from.Name));
+                var older = Path.Combine(LingosFolder, Path.GetFileNameWithoutExtension(path));
                 if (Directory.Exists(older)) Directory.Delete(older, recursive: true);
-                var a = new FileInfo(from);
-                if (!to.Exists || to.Length != a.Length || to.LastWriteTimeUtc != a.LastWriteTimeUtc) a.CopyTo(to.FullName, overwrite: true);
+                bool differs = !to.Exists || to.Length != from.Length || to.LastWriteTimeUtc != from.LastWriteTimeUtc;
+                if (differs) from.CopyTo(to.FullName, overwrite: true);
             }
             catch (IOException) { }   // still open somewhere: the one there stays until next time
         var p = new Process
@@ -125,27 +134,42 @@ static class Core
             },
             EnableRaisingEvents = true,
         };
-        p.ErrorDataReceived += (_, e) => { if (e.Data is not null) try { File.AppendAllText(Log, $"{DateTime.Now:s} {e.Data}\n"); } catch { } };
-        p.OutputDataReceived += (_, e) => { if (e.Data is not null) Overlay.Line(e.Data); };
-        p.Exited += async (_, _) => { await Task.Delay(2000); Run(); };
+        p.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            try { File.AppendAllText(Log, $"{DateTime.Now:s} {e.Data}\n"); } catch { }
+        };
+        p.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is not null) Overlay.Line(e.Data);
+        };
+        p.Exited += async (_, _) =>
+        {
+            await Task.Delay(2000);
+            Run();
+        };
         p.Start();
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
         process = p;
 
         // Onsay's own lingos are set up the first time each appears, once it answers: one this app ships is started, since a
-        // lingo new in the folder is stopped, and each is given what it may do without asking (Grants). Started remembers
-        // them, so one the person stops stays stopped.
+        // lingo new in the folder is stopped, and the base calls get their grants. Started remembers them, so one the person
+        // stops stays stopped.
         var own = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Concat(BuiltIn).Append(BaseCalls);
         var fresh = own.Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
         if (fresh.Count > 0) Task.Run(async () =>
         {
-            for (var until = DateTime.Now.AddSeconds(15); Lingos() is null && DateTime.Now < until;) await Task.Delay(250);
+            var until = DateTime.Now.AddSeconds(15);
+            while (Lingos() is null && DateTime.Now < until) await Task.Delay(250);
             foreach (var name in fresh)
             {
-                var ships = !BuiltIn.Contains(name) && name != BaseCalls;
+                bool ships = !BuiltIn.Contains(name) && name != BaseCalls;
                 if (ships && Control("start", new() { ["lingo"] = name }).why is not null) continue;
-                foreach (var need in Grants.GetValueOrDefault(name, Array.Empty<string>())) Control("grant", new() { ["lingo"] = name == BaseCalls ? "onsay" : name, ["need"] = need });
+                if (name == BaseCalls)
+                {
+                    foreach (var need in BaseCallGrants) Control("grant", new() { ["lingo"] = "onsay", ["need"] = need });
+                }
                 (settings.Started ??= new()).Add(name);
             }
             settings.Save();
@@ -156,7 +180,12 @@ static class Core
     public static void Stop()
     {
         wanted = false;
-        try { process?.Kill(); process?.WaitForExit(3000); } catch { }
+        try
+        {
+            process?.Kill();
+            process?.WaitForExit(3000);
+        }
+        catch { }
         process = null;
         Overlay.Rest();
     }
@@ -174,8 +203,12 @@ static class Core
         try
         {
             // A call, like signing in, may wait on Onsay. Anything else answers at once.
-            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Post, $"{Url}/.lingo/{verb}") { Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json") },
-                new CancellationTokenSource(TimeSpan.FromSeconds(verb == "call" ? 40 : 3)).Token);
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{Url}/.lingo/{verb}")
+            {
+                Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            var patience = TimeSpan.FromSeconds(verb == "call" ? 40 : 3);
+            using var res = Http.Send(request, new CancellationTokenSource(patience).Token);
             var said = JsonNode.Parse(res.Content.ReadAsStream());
             return res.IsSuccessStatusCode ? (said, null) : (null, $"{said?["error"]}");
         }
@@ -183,20 +216,39 @@ static class Core
         catch (HttpRequestException) { }
         catch (Exception) { return (null, "Onsay's helper on this computer took too long to answer. Try again in a moment."); }
         if (!File.Exists(Exe) || !File.Exists(Config)) return (null, "This copy of Onsay has no lingo client, so this can't be changed here.");
-        var info = new ProcessStartInfo(Exe) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
+        var info = new ProcessStartInfo(Exe)
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+        };
         info.ArgumentList.Add(Config);
         info.ArgumentList.Add(verb);
         foreach (var (key, v) in values)
-            if (v is JsonArray list) foreach (var x in list) info.ArgumentList.Add($"{x}");
-            else info.ArgumentList.Add(key != "value" && v is JsonValue j && j.TryGetValue(out string? text) ? text : v?.ToJsonString() ?? "null");
+        {
+            if (v is JsonArray list)
+            {
+                foreach (var x in list) info.ArgumentList.Add($"{x}");
+            }
+            else if (key != "value" && v is JsonValue j && j.TryGetValue(out string? text)) info.ArgumentList.Add(text);
+            else info.ArgumentList.Add(v?.ToJsonString() ?? "null");
+        }
         try
         {
             using var p = Process.Start(info)!;
             var output = p.StandardOutput.ReadToEndAsync();
             var error = p.StandardError.ReadToEnd();
-            if (!p.WaitForExit(20_000)) { p.Kill(); return (null, "The lingo client took too long to answer."); }
+            if (!p.WaitForExit(20_000))
+            {
+                p.Kill();
+                return (null, "The lingo client took too long to answer.");
+            }
+            if (p.ExitCode == 0) return (JsonNode.Parse(output.Result), null);
             // What it said last is why: the lines before it are the lingos it loaded.
-            return p.ExitCode == 0 ? (JsonNode.Parse(output.Result), null) : (null, error.Trim().Split('\n').Last().Trim() is { Length: > 0 } last ? last : "The lingo client couldn't do that.");
+            var last = error.Trim().Split('\n').Last().Trim();
+            return (null, last.Length > 0 ? last : "The lingo client couldn't do that.");
         }
         catch (Exception e) { return (null, e.Message); }
     }
@@ -214,7 +266,22 @@ static class Core
     /* One lingo on this computer. Error is why it can't run, null when it can. BuiltIn is built into Onsay, and always on. Needs are what its
        routes say they need, and Parts the first step of each route after its own, like /window for /windows/window/list,
        each a part that can be shared on its own. */
-    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts);
+    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts, string Route, string[] Missing, Call[] Calls);
+
+    // One thing an app can be asked for: its path after the computer, its name and what it does in words, and Group, the
+    // part of the app it is in, or empty.
+    public sealed record Call(string Path, string Name, string Does, string Group);
+
+    // What a path of a manifest is, for a person: its last step as a name, and its words without the shape of its answer.
+    static Call CallAt(string path, string route, JsonNode? op)
+    {
+        var steps = path.StartsWith(route) ? path[route.Length..].Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+        var name = steps.Length > 0 ? Title(steps[^1].Replace('_', ' ')) : "Open it";
+        var group = steps.Length > 1 ? steps[0] : "";
+        var does = $"{op?["description"] ?? op?["summary"]}";
+        if (does.StartsWith("->")) does = does.IndexOf(": ") is var colon and >= 0 ? does[(colon + 2)..] : "";
+        return new Call(path, name, does, group);
+    }
 
     // 5.
     public static string Title(string name) => name.Length > 0 ? char.ToUpper(name[0]) + name[1..] : name;
@@ -236,16 +303,21 @@ static class Core
             var doc = Control("manifest", new() { ["lingo"] = name }).answer;
             var route = $"{doc?["x-lingo"]?["route"] ?? "/" + name}";
             var (needs, parts) = (new SortedSet<string>(), new SortedSet<string>());
+            var calls = new List<Call>();
             foreach (var (path, ops) in doc?["paths"]?.AsObject() ?? new JsonObject())
             {
                 if (path.StartsWith(route + "/") && path[(route.Length + 1)..].Split('/')[0] is { Length: > 0 } part) parts.Add("/" + part);
                 foreach (var (_, op) in ops?.AsObject() ?? new JsonObject())
+                {
                     foreach (var need in op?["x-lingo-needs"]?.AsArray() ?? new JsonArray()) needs.Add($"{need}");
+                    if ((bool?)op?["x-lingo-internal"] != true) calls.Add(CallAt(path, route, op));
+                }
             }
             var about = $"{doc?["info"]?["description"]}";
             var builtIn = $"{doc?["x-lingo"]?["program"]}" == "built in";
             var error = e?["error"] is { } why ? $"{why}" : null;
-            return new Lingo(name, (bool?)e?["running"] == true, error, about, builtIn, needs.ToArray(), parts.ToArray());
+            var missing = doc?["x-lingo"]?["missing"]?.AsArray().Select(m => $"{m}").ToArray() ?? Array.Empty<string>();
+            return new Lingo(name, (bool?)e?["running"] == true, error, about, builtIn, needs.ToArray(), parts.ToArray(), route, missing, calls.ToArray());
         }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 }

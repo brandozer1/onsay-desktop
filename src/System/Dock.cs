@@ -20,12 +20,13 @@ static class Dock
     // 1. The side the work area gives up. Nothing given up is an auto hiding taskbar, so the bottom.
     public static Edge EdgeOf(MONITORINFO m)
     {
-        RECT mon = m.rcMonitor, work = m.rcWork;
-        return work.Bottom < mon.Bottom ? Edge.Bottom
-            : work.Top > mon.Top ? Edge.Top
-            : work.Left > mon.Left ? Edge.Left
-            : work.Right < mon.Right ? Edge.Right
-            : Edge.Bottom;
+        var mon = m.rcMonitor;
+        var work = m.rcWork;
+        if (work.Bottom < mon.Bottom) return Edge.Bottom;
+        if (work.Top > mon.Top) return Edge.Top;
+        if (work.Left > mon.Left) return Edge.Left;
+        if (work.Right < mon.Right) return Edge.Right;
+        return Edge.Bottom;
     }
 
     // 2. inset pushes the window over the bar, so his transparent padding overlaps the bar and not your work.
@@ -35,10 +36,14 @@ static class Dock
         var edge = EdgeOf(m);
         along = Math.Clamp(along, 0, 1);
         if (Horizontal(edge))
-            return new POINT(work.Left + margin + (int)Math.Round(along * Math.Max(0, work.Width - w - 2 * margin)),
-                edge == Edge.Bottom ? work.Bottom - h + inset : work.Top - inset);
-        return new POINT(edge == Edge.Right ? work.Right - w + inset : work.Left - inset,
-            work.Top + margin + (int)Math.Round(along * Math.Max(0, work.Height - h - 2 * margin)));
+        {
+            int x = work.Left + margin + (int)Math.Round(along * Math.Max(0, work.Width - w - 2 * margin));
+            int y = edge == Edge.Bottom ? work.Bottom - h + inset : work.Top - inset;
+            return new POINT(x, y);
+        }
+        int sideX = edge == Edge.Right ? work.Right - w + inset : work.Left - inset;
+        int sideY = work.Top + margin + (int)Math.Round(along * Math.Max(0, work.Height - h - 2 * margin));
+        return new POINT(sideX, sideY);
     }
 
     // 3.
@@ -59,7 +64,8 @@ static class Dock
     public static POINT Beside(MONITORINFO m, RECT body, int w, int h, int gap, Side? prefer, out Side side)
     {
         var work = m.rcWork;
-        int cx = (body.Left + body.Right - w) / 2, cy = (body.Top + body.Bottom - h) / 2;
+        int cx = (body.Left + body.Right - w) / 2;
+        int cy = (body.Top + body.Bottom - h) / 2;
         var above = (side: Side.Above, p: new POINT(cx, body.Top - gap - h), room: body.Top - gap - work.Top - h);
         var below = (side: Side.Below, p: new POINT(cx, body.Bottom + gap), room: work.Bottom - body.Bottom - gap - h);
         var right = (side: Side.Right, p: new POINT(body.Right + gap, cy), room: work.Right - body.Right - gap - w);
@@ -74,8 +80,9 @@ static class Dock
         var kept = order.FirstOrDefault(s => s.side == prefer && s.room >= 0);
         var pick = kept.side == prefer && prefer is not null ? kept : order.FirstOrDefault(s => s.room >= 0, order.MaxBy(s => s.room));
         side = pick.side;
-        return new POINT(Math.Clamp(pick.p.X, work.Left, Math.Max(work.Left, work.Right - w)),
-            Math.Clamp(pick.p.Y, work.Top, Math.Max(work.Top, work.Bottom - h)));
+        int keptX = Math.Clamp(pick.p.X, work.Left, Math.Max(work.Left, work.Right - w));
+        int keptY = Math.Clamp(pick.p.Y, work.Top, Math.Max(work.Top, work.Bottom - h));
+        return new POINT(keptX, keptY);
     }
 
     // 5.
