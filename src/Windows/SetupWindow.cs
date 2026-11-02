@@ -213,7 +213,7 @@ sealed class SetupWindow : Window
     }
 
     /* 2. His AI: Onsay's own, free for 30 days from his first message with no card, is picked first. Or one they already
-          have, with its key and where to get one. Next keeps the pick in the agent's settings, and a service picked needs
+          have, with its key and where to get one. Next keeps the pick in the ai lingo's settings, and a service picked needs
           its key before going on. Onsay's own leaves the service unset, so a key added later is used. */
     UIElement Ai()
     {
@@ -249,8 +249,8 @@ sealed class SetupWindow : Window
                 problem.Text = $"Paste your {s.Name} key to go on, or pick Onsay AI.";
                 return;
             }
-            var why = Core.Control("set", new() { ["lingo"] = "agent", ["key"] = "service", ["value"] = picked == "onsay" ? null : picked }).why;
-            if (why is null && picked != "onsay") why = Core.Control("set", new() { ["lingo"] = "agent", ["key"] = s.Setting, ["value"] = typed }).why;
+            var why = Core.Control("set", new() { ["lingo"] = "ai", ["key"] = "service", ["value"] = picked == "onsay" ? null : picked }).why;
+            if (why is null && picked != "onsay") why = Core.Control("set", new() { ["lingo"] = "ai", ["key"] = s.Setting, ["value"] = typed }).why;
             if (why is not null)
             {
                 problem.Text = why;
@@ -269,8 +269,8 @@ sealed class SetupWindow : Window
             new StackPanel { Children = { chips, free, keyArea, problem } });
     }
 
-    // The AIs he can think with from setting up: Onsay's, then the popular ones, each with the agent's setting its key
-    // goes in and where a key is made. More are in the agent's settings, under Apps.
+    // The AIs he can think with from setting up: Onsay's, then the popular ones, each with the ai lingo's setting its key
+    // goes in and where a key is made. More are in ai's settings, under Apps.
     static readonly (string Value, string Name, string Setting, string Keys)[] Services =
     {
         ("onsay", "Onsay AI, 30 days free", "", ""),

@@ -700,14 +700,14 @@ sealed class ChatWindow : Window
         Trial();
     }
 
-    /* 6. When he thinks with Onsay's own AI, with no key or service of the person's own set in the agent, Onsay is asked
+    /* 6. When he thinks with Onsay's own AI, with no key or service of the person's own set in the ai lingo, Onsay is asked
           where its free trial stands after each message. Once it is over, a card offers the subscription, on Onsay's
           website, or a key of their own, once each time the app runs. */
     async void Trial()
     {
         if (offeredSubscription) return;
-        var (agent, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "agent" }));
-        bool theirs = agent is JsonArray fields && fields.Any(f =>
+        var (aiSettings, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "ai" }));
+        bool theirs = aiSettings is JsonArray fields && fields.Any(f =>
         {
             var name = $"{f?["name"]}";
             var value = f?["value"];

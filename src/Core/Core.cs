@@ -44,6 +44,7 @@ static class Core
         ("files.write", "Change, move and delete files", "change your files", "changed your files"),
         ("run", "Run commands", "run a program", "ran a program"),
         ("net", "Reach the internet", "reach the internet", "reached the internet"),
+        ("lingos", "Make and change apps", "make or change an app", "made or changed an app"),
     };
 
     /* 3. handle is this computer's own, so its other devices read as "Your desktop". A device signs as desktop.brandon,
