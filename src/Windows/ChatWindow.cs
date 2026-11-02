@@ -5,7 +5,7 @@
 // bottom, sends list mode, so each step is a card of ways to pick from, and while he works his steps show as they
 // happen, folded under one line once he answers.
 //
-// 1.  Open(body, monitor, scale, focus)   opens, or follows him, next to his body rect in pixels, growing out of him
+// 1.  Open(body, monitor, focus)          opens, or follows him, next to his body rect in pixels, growing out of him
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
 // 3.  Stop()                              Stop, or Alt+Shift+O from any thread: the lingo client starts again, which
 //                                         ends whatever it was doing
@@ -17,6 +17,7 @@
 //                                         answer or his questions
 //     To(method, path, body)              a request to /onsay, with its prompt key
 //     Replied(...)                        his answer, with how it ended and how long it took
+//     Trial()                             once Onsay's AI trial is over, a card offering the subscription or your own key
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
 // 8.  Tell(text)                          a line across the top, like "Copied the chat."
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
@@ -125,8 +126,12 @@ sealed class ChatWindow : Window
     readonly List<StepList> stepLists = new();
     // The cards of the questions a lingo waits on, by their id in the lingo client (chat.ask).
     readonly Dictionary<double, Border> lingoCards = new();
-    // A prompt waits on Onsay, up to 5 minutes in the onsay lingo.
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(6) };
+    // A prompt is waited for as long as it works: each of its calls ends within 10 minutes in the onsay lingo, its steps
+    // show meanwhile, and Stop ends it.
+    static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    // Where Onsay's AI is subscribed to, on Onsay's website, and whether that was offered since the app started.
+    const string SubscribePage = "https://onsay.dev/subscribe";
+    bool offeredSubscription;
 
     public bool Busy => waiting;                    // a message sent from here is being answered
     bool Showing => IsVisible && !closing;          // open, and not on its way out
@@ -135,6 +140,7 @@ sealed class ChatWindow : Window
     readonly Grid whole;                            // the card and its shadow, which open and close as one
     readonly ScaleTransform zoom = new(1, 1);
     Side? side;                                     // where it sits beside him while open, kept so it never flips
+    public Side? SideNow => Showing ? side : null;  // that side while it shows, so a card beside him keeps clear of it
     bool closing;                                   // fading out, and hidden once it has
 
     public ChatWindow(Settings settings, Action<bool> setOpen)
@@ -353,10 +359,11 @@ sealed class ChatWindow : Window
 
     /* 1. focus false shows it without taking the keyboard, as when he comes back from using the computer. It is put where it
           belongs before it shows, so it never draws a frame where it last was, and then grows out of him. */
-    public void Open(Native.RECT body, Native.MONITORINFO monitor, double scale, bool focus)
+    public void Open(Native.RECT body, Native.MONITORINFO monitor, bool focus)
     {
         bool appearing = !Showing;
-        var (hwnd, p) = Spot(body, monitor, scale);
+        var (hwnd, p) = Spot(body, monitor);
+        double scale = Native.ScaleAt(monitor.rcMonitor.Center);
         if (appearing)
         {
             Left = p.X / scale;
@@ -382,9 +389,11 @@ sealed class ChatWindow : Window
     }
 
     // Where it goes beside him, without moving it, so he can move both in one go. Its shadow room is most of the gap.
-    // While open it keeps to its side for as long as that fits.
-    public (IntPtr hwnd, Native.POINT p) Spot(Native.RECT body, Native.MONITORINFO monitor, double scale)
+    // While open it keeps to its side for as long as that fits. Sized by the scaling of the monitor it lands on, never
+    // his, which may still be another monitor's as he crosses between two.
+    public (IntPtr hwnd, Native.POINT p) Spot(Native.RECT body, Native.MONITORINFO monitor)
     {
+        double scale = Native.ScaleAt(monitor.rcMonitor.Center);
         int width = (int)Math.Round(Width * scale);
         int height = (int)Math.Round(Height * scale);
         int gap = (int)Math.Round((6 - Shadow) * scale);
@@ -688,6 +697,46 @@ sealed class ChatWindow : Window
             if (answer["questions"] is JsonArray questions) Questions(questions);
             else await Replied($"{answer["text"]}", "Done", ms);
         }
+        Trial();
+    }
+
+    /* 6. When he thinks with Onsay's own AI, with no key or service of the person's own set in the agent, Onsay is asked
+          where its free trial stands after each message. Once it is over, a card offers the subscription, on Onsay's
+          website, or a key of their own, once each time the app runs. */
+    async void Trial()
+    {
+        if (offeredSubscription) return;
+        var (agent, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "agent" }));
+        bool theirs = agent is JsonArray fields && fields.Any(f =>
+        {
+            var name = $"{f?["name"]}";
+            var value = f?["value"];
+            if (value is null || $"{value}".Length == 0) return false;
+            return name.EndsWith("_key") || name == "url" || (name == "service" && $"{value}" != "onsay");
+        });
+        if (theirs) return;
+        var (ai, _) = await Task.Run(() => Core.Onsay("ai"));
+        if ((bool?)ai?["over"] != true || offeredSubscription) return;
+        offeredSubscription = true;
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        var subscribe = Button("Subscribe", Kind.Primary, () => Native.Open(SubscribePage));
+        var key = Button("Use my own key", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Apps"));
+        key.Margin = new Thickness(10, 0, 0, 0);
+        buttons.Children.Add(subscribe);
+        buttons.Children.Add(key);
+        var title = new TextBlock { Text = "Your free month of Onsay AI is over", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
+        var card = new StackPanel { Children = { title, Paragraph("Subscribe to keep using it, or think with an AI you already have, with its key."), buttons } };
+        lines.Children.Add(new Border
+        {
+            Child = card,
+            Background = Page_,
+            BorderBrush = Rule,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14, 12, 14, 14),
+            Margin = new Thickness(0, 2, 24, 12),
+        });
+        chatPage.ScrollToEnd();
     }
 
     // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.

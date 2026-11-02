@@ -1,6 +1,7 @@
 // Native.cs - the Win32 calls and window setup his windows need, in physical pixels.
 //
 // 1. MonitorAt(p, fallback)     the monitor under a point, with its work area
+//    ScaleAt(p)                 the scaling of the monitor nearest a point, like 1.5 for 150%
 // 2. SomethingFullscreen()      a game, film or presentation has the whole screen
 // 3. Place(hwnd, p, size)       moves a window, and sizes it when size is given, without activating it
 // 4. Raise(hwnd)                above every other always on top window, without taking focus
@@ -107,6 +108,7 @@ static class Native
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hwnd, int index, int value);
     [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr monitor, int kind, out uint dpiX, out uint dpiY);
     [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr hwnd, int id, uint mods, uint vk);
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
     [DllImport("user32.dll")] public static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr module, uint thread);
@@ -129,6 +131,14 @@ static class Native
         var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
         GetMonitorInfo(MonitorFromPoint(p, fallback), ref info);
         return info;
+    }
+
+    // 1. Its effective DPI over 96, the way per monitor aware windows are sized there.
+    public static double ScaleAt(POINT p)
+    {
+        const uint nearest = 2;
+        bool known = GetDpiForMonitor(MonitorFromPoint(p, nearest), 0, out var dpi, out _) == 0;
+        return known ? dpi / 96.0 : 1;
     }
 
     // 2. 2 busy, 3 fullscreen Direct3D, 4 presentation mode.

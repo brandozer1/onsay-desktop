@@ -901,7 +901,7 @@ sealed class SettingsWindow : Window
         })));
         p.Children.Add(checking);
         p.Children.Add(Section("Remove Onsay"));
-        p.Children.Add(Item("Uninstall Onsay", "Takes the app, its shortcuts and its startup off this computer.", Button("Uninstall", Kind.Danger, () =>
+        p.Children.Add(Item("Uninstall Onsay", "Takes the app, its shortcuts and its startup off this computer, and asks whether your settings and chats go too.", Button("Uninstall", Kind.Danger, () =>
         {
             Updates.Uninstall();
             Application.Current.Shutdown();
@@ -1165,8 +1165,8 @@ sealed class SettingsWindow : Window
         return b;
     }
 
-    // 8. A text box or password box in its border.
-    static Border Boxed(UIElement input) => new()
+    // 8. A text box or password box in its border. Also setting him up's key field.
+    internal static Border Boxed(UIElement input) => new()
     {
         BorderBrush = Edge_,
         BorderThickness = new Thickness(1),

@@ -119,8 +119,8 @@ sealed class BuddyWindow : Window
 
         MouseLeftButtonDown += OnPress;
         MouseMove += OnDrag;
-        MouseLeftButtonUp += (_, _) => OnRelease();
-        LostMouseCapture += (_, _) => OnRelease();
+        MouseLeftButtonUp += (_, _) => OnRelease(clicked: true);
+        LostMouseCapture += (_, _) => OnRelease(clicked: false);
         ContextMenu = BuildMenu();
     }
 
@@ -172,7 +172,7 @@ sealed class BuddyWindow : Window
     void FollowChat(bool focus)
     {
         var r = Rect();
-        chat.Open(r.Inset(Pad), MonitorAt(r.Center, MONITOR_DEFAULTTONEAREST), Scale, focus);
+        chat.Open(r.Inset(Pad), MonitorAt(r.Center, MONITOR_DEFAULTTONEAREST), focus);
         Raise(hwnd);
     }
 
@@ -266,7 +266,7 @@ sealed class BuddyWindow : Window
         }
         var r = Rect();
         var body = new RECT { Left = p.X, Top = p.Y, Right = p.X + r.Width, Bottom = p.Y + r.Height }.Inset(Pad);
-        PlaceTogether((hwnd, p), chat.Spot(body, MonitorAt(body.Center, MONITOR_DEFAULTTONEAREST), Scale));
+        PlaceTogether((hwnd, p), chat.Spot(body, MonitorAt(body.Center, MONITOR_DEFAULTTONEAREST)));
     }
 
     ////////// 5. CLICKS AND DRAGS //////////
@@ -294,7 +294,13 @@ sealed class BuddyWindow : Window
             dragging = true;
             him.React("grabbed");
         }
-        Put(new POINT(grabRect.Left + c.X - grab.X, grabRect.Top + c.Y - grab.Y));
+        // Held where he was grabbed, in proportion, since crossing to a monitor of other scaling resizes his window.
+        var r = Rect();
+        double across = (double)r.Width / Math.Max(1, grabRect.Width);
+        double down = (double)r.Height / Math.Max(1, grabRect.Height);
+        int x = c.X - (int)Math.Round((grab.X - grabRect.Left) * across);
+        int y = c.Y - (int)Math.Round((grab.Y - grabRect.Top) * down);
+        Put(new POINT(x, y));
 
         // Smoothed, so one jerky event is not a lurch.
         double now = clock.Elapsed.TotalSeconds;
@@ -305,14 +311,15 @@ sealed class BuddyWindow : Window
         him.Carry(velocity);
     }
 
-    void OnRelease()
+    // clicked: the button came up on him. Losing the mouse to a menu, Alt+Tab or a prompt only ends a drag, never a click.
+    void OnRelease(bool clicked)
     {
         if (!pressed) return;
         pressed = false;
         if (IsMouseCaptured) ReleaseMouseCapture();
         if (!dragging)
         {
-            Toggle(!open);
+            if (clicked) Toggle(!open);
             return;
         }
         dragging = false;

@@ -118,7 +118,7 @@ sealed class AskWindow : Window
             Show();
         }
 
-        // Beside him, wherever he is now.
+        // Beside him, wherever he is now, clear of his chat when it is open.
         UpdateLayout();
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var at = body();
@@ -126,7 +126,7 @@ sealed class AskWindow : Window
         int width = (int)Math.Round(ActualWidth * scale);
         int height = (int)Math.Round(ActualHeight * scale);
         int gap = (int)Math.Round((6 - Shadow) * scale);
-        var spot = Dock.Beside(monitor, at, width, height, gap, null, out _);
+        var spot = Dock.Beside(monitor, at, width, height, gap, null, out _, chat.SideNow);
         Place(new System.Windows.Interop.WindowInteropHelper(this).Handle, spot);
     }
 

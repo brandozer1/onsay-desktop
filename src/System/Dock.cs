@@ -60,8 +60,8 @@ static class Dock
           that side, so it tries the other sides in turn and takes the first it fits on whole, never covering him. Only
           where it fits on none, on a small screen, it takes the one with most room and may overlap him. side is the one it
           went to. prefer keeps it on that side while it still fits there, so moving him along never flips the panel to the
-          other side of him and back. */
-    public static POINT Beside(MONITORINFO m, RECT body, int w, int h, int gap, Side? prefer, out Side side)
+          other side of him and back. avoid is a side taken already, like the chat's, left alone while another fits. */
+    public static POINT Beside(MONITORINFO m, RECT body, int w, int h, int gap, Side? prefer, out Side side, Side? avoid = null)
     {
         var work = m.rcWork;
         int cx = (body.Left + body.Right - w) / 2;
@@ -77,6 +77,7 @@ static class Dock
             Edge.Left => new[] { right, left, above, below },
             _ => new[] { left, right, above, below },
         };
+        if (avoid is not null && order.Any(s => s.side != avoid && s.room >= 0)) order = order.Where(s => s.side != avoid).ToArray();
         var kept = order.FirstOrDefault(s => s.side == prefer && s.room >= 0);
         var pick = kept.side == prefer && prefer is not null ? kept : order.FirstOrDefault(s => s.room >= 0, order.MaxBy(s => s.room));
         side = pick.side;

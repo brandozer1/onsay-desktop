@@ -11,7 +11,11 @@
 // 3. Installed, Version       whether this copy was installed (so it updates and can be removed), and its version
 // 4. Shortcut(where, on)      his desktop or Start menu shortcut: whether it is there, and making or removing it
 // 5. Uninstall()              removes Onsay, its shortcuts and its startup, through the uninstaller Windows registered
+//    Uninstalling()           as it is removed: no more starting with Windows, and what it keeps goes too if the person
+//                             says so
 using System.Diagnostics;
+using System.IO;
+using System.Windows;
 using Microsoft.Win32;
 using Velopack;
 using Velopack.Locators;
@@ -132,5 +136,29 @@ static class Updates
         var exe = cmd.StartsWith('"') ? cmd[1..cmd.IndexOf('"', 1)] : cmd.Split(' ')[0];
         var args = cmd[(cmd.IndexOf(exe) + exe.Length)..].TrimStart('"', ' ');
         try { Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true }); } catch { }
+    }
+
+    /* 5. However it is removed, from his settings or Windows' Installed apps. Everything he keeps, in Settings.Folder, stays
+          unless the person says to delete it, since most who uninstall mean to install again. It is deleted once Onsay and
+          the lingo client are closed, so nothing holds a file open. Velopack gives this half a minute: no answer by then
+          keeps it all. */
+    public static void Uninstalling()
+    {
+        Startup.Set(false);
+        var answer = MessageBox.Show(
+            "Delete your Onsay data too? Your settings, sign in, AI keys, apps and chats on this computer will be gone.\n\nChoose No to keep them if you'll install Onsay again.",
+            "Uninstall Onsay", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+        foreach (var p in Process.GetProcessesByName("onsay-core").Concat(Process.GetProcessesByName("Onsay")))
+        {
+            if (p.Id == Environment.ProcessId) continue;
+            try
+            {
+                p.Kill();
+                p.WaitForExit(3000);
+            }
+            catch { }
+        }
+        try { Directory.Delete(Settings.Folder, recursive: true); } catch { }
     }
 }

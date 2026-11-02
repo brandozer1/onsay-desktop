@@ -97,7 +97,8 @@ lingo's phrases), or its command line, `onsay-core core.json <verb> ...`, when n
 Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` (the lingo client's home, and a port
 when one is written there) and `core.log` for the lingo client, `core\` for its home (lingos, settings, storage and
 `sent.log`), and `panel\` for his panel's browser storage. A test sets `ONSAY_DATA` to a folder of its own before he
-starts, so it never touches yours.
+starts, so it never touches yours. Uninstalling, from his settings or Windows' Installed apps, asks whether this folder
+goes too, and keeps it unless you say so, since most who uninstall mean to install again.
 
 ## Building
 
