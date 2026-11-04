@@ -365,7 +365,7 @@ sealed class SettingsWindow : Window
             var who = $"{rule["account"]}";
             if (who.Length == 0) who = handle;
             var stop = Button("Stop sharing", Kind.Quiet, () => Did(Core.Onsay("unshare", new JsonObject { ["who"] = who }).why));
-            var what = rule["allow"] is false ? "Kept out." : RoutesIn(rule);
+            var what = $"{rule["allow"]}" == "false" ? "Kept out." : RoutesIn(rule);
             into.Children.Add(Item(Core.Who(handle, null), what, stop));
         }
     }
@@ -671,7 +671,7 @@ sealed class SettingsWindow : Window
             return p;
         }
         var people = (policy["rules"] as JsonArray ?? new()).OfType<JsonObject>()
-            .Where(r => $"{r["handle"]}".Length > 0 && r["allow"] is not false)
+            .Where(r => $"{r["handle"]}".Length > 0 && $"{r["allow"]}" != "false")
             .GroupBy(r => $"{r["handle"]}");
         foreach (var person in people)
         {
@@ -800,7 +800,7 @@ sealed class SettingsWindow : Window
             {
                 var path = $"{d?["route"]}";
                 shared = (policy?["rules"] as JsonArray ?? new()).OfType<JsonObject>().FirstOrDefault(r =>
-                    r["allow"] is not false && $"{r["handle"]}" == them &&
+                    $"{r["allow"]}" != "false" && $"{r["handle"]}" == them &&
                     (r["routes"] is not JsonArray routes || routes.Any(x => path == $"{x}" || path.StartsWith($"{x}/"))));
             }
             if (shared is not null)
@@ -1008,7 +1008,7 @@ sealed class SettingsWindow : Window
             var what = RoutesIn(rule);
             var devices = Texts(rule["devices"]);
             if (devices.Count > 0) what += $" On your {string.Join(", ", devices)}.";
-            if (rule["allow"] is false) what = $"Kept out of {what.ToLowerInvariant()}";
+            if ($"{rule["allow"]}" == "false") what = $"Kept out of {what.ToLowerInvariant()}";
             p.Children.Add(Item(Core.Who(who, null), what));
         }
         var rules = Path.Combine(Core.Home, "policy.json");
