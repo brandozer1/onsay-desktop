@@ -4,13 +4,13 @@
 //
 // 1. Start(settings)          writes core.json, puts the lingos this app ships in the lingos folder and starts the lingo
 //                             client with them, ending the one running first: on startup and the stop key. The first
-//                             time a shipped lingo appears it is started, and the base calls get their grants once
+//                             time a shipped lingo appears it is started
 // 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
-// 3. Needs                    what a lingo may do on this computer, in words: for Apps, Activity, Advanced and asking
-//    Who(who, handle)         a caller or an access rule's who, in words, like "Your desktop" or "james"
+// 3. Needs                    what a lingo may do on this computer, in words: for Apps, Activity and Advanced
+//    Who(who, handle)         a caller or a rule's who, in words, like "Your desktop" or "james"
 // 4. Control(verb, values)    one of the lingo client's verbs, like start, set, ceiling or asks: through its control
 //                             routes, or its command line when it isn't answering. Its answer, or why not, in words
-//    Onsay(phrase, values)    one of the onsay lingo's phrases, like status, sign_in or devices, through call
+//    Onsay(phrase, values)    one of the onsay lingo's phrases, like status, sign_in, share or devices, through call
 // 5. Lingos()                 every lingo on this computer, an app on screen: whether it runs, what it is and needs, its
 //                             parts, or why it can't run. Title(name) is its name on screen
 using System.Diagnostics;
@@ -48,13 +48,15 @@ static class Core
     };
 
     /* 3. handle is this computer's own, so its other devices read as "Your desktop". A device signs as desktop.brandon,
-          and me is the account itself, through Onsay. */
+          me is the account itself through Onsay, and onsay is Onsay's own search and agent. */
     public static string Who(string who, string? handle) => who switch
     {
         "this computer" => "You, on this computer",
         "me" => "Your Onsay account",
         "my devices" => "Your other devices",
+        "onsay" => "Onsay's search and agent",
         "public" => "Anyone",
+        _ when who.StartsWith("acct_") => "Someone on Onsay",
         _ when who.StartsWith("ip ") => $"A computer at {who[3..]}",
         _ when who.Split('.') is [var device, var h] => h == handle ? $"Your {device}" : h,
         _ => who,
@@ -66,10 +68,8 @@ static class Core
     // What older versions shipped as lingos and are now standard functions of the lingo client, or no longer ship.
     static readonly string[] Retired = { "encode", "json", "list", "math", "request", "text", "time", "url", "writer" };
 
-    // What the onsay lingo, which holds the base calls, may do without asking every time, given once and taken back in
-    // Apps. Anything else it needs is asked. Started remembers BaseCalls once that is done.
+    // A marker that Onsay's own lingos were set up once, so the person's choices are kept.
     const string BaseCalls = "base calls";
-    static readonly string[] BaseCallGrants = { "screen.read", "screen.act", "files.read" };
 
     static Process? process;
     static bool wanted;
@@ -168,8 +168,7 @@ static class Core
         process = p;
 
         // Onsay's own lingos are set up the first time each appears, once it answers: one this app ships is started, since a
-        // lingo new in the folder is stopped, and the base calls get their grants. Started remembers them, so one the person
-        // stops stays stopped.
+        // lingo new in the folder is stopped. Started remembers them, so one the person stops stays stopped.
         var own = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Concat(BuiltIn).Append(BaseCalls);
         var fresh = own.Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
         if (fresh.Count > 0) Task.Run(async () =>
@@ -180,10 +179,6 @@ static class Core
             {
                 bool ships = !BuiltIn.Contains(name) && name != BaseCalls;
                 if (ships && Control("start", new() { ["lingo"] = name }).why is not null) continue;
-                if (name == BaseCalls)
-                {
-                    foreach (var need in BaseCallGrants) Control("grant", new() { ["lingo"] = "onsay", ["need"] = need });
-                }
                 (settings.Started ??= new()).Add(name);
             }
             settings.Save();

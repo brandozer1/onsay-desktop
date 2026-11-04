@@ -1,17 +1,17 @@
 // SettingsWindow.cs - Apps and settings, from his right click menu or the chat's: a list of pages down the left, the page
 // on the right. One window at a time, above his chat, and every change takes effect as it is made. Every word on it is the
-// person's: a lingo is an app, an access rule is sharing, a grant is allowing.
+// person's: a lingo is an app, a rule is sharing, and the ceiling is what any app may do here.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
-// 2. Apps        a list of apps, each opening to a page with tabs for what it can do, who can use it and its settings,
+// 2. Apps        a list of apps, each opening to a page with tabs for what it can do, who can reach it and its settings,
 //                and a map of every address on this computer and what can be asked for there
 //    Fields      an app's own settings, as its openapi.json declares them
 // 3. Devices     the computers on the account, online or not
-// 4. People      who each app is shared with, and Stop sharing
+// 4. People      who each route is shared with, and Stop sharing
 // 5. Activity    what reached this computer and what apps were allowed or refused, by day, newest first
 // 6. Settings    the account, starting with Windows, his look, updates and removing Onsay
 // 7. Advanced    the most any app may do, who can reach this computer, the account, folders, and the logs to read
-// 8. Pieces      Section, a heading; Item, a row; Boxed, an input in its border; AppsIn, a rule's apps in words;
+// 8. Pieces      Section, a heading; Item, a row; Boxed, an input in its border; RoutesIn, a rule's routes in words;
 //                StopSharing, its button; Lines, a log's newest lines
 using System.IO;
 using System.Text.Json;
@@ -281,8 +281,8 @@ sealed class SettingsWindow : Window
         return said;
     }
 
-    // 2. The things that matter that it says it needs, each allowed without asking or asked first, and what it was allowed
-    //    for one folder.
+    // 2. The things that matter that it says it needs, and whether this computer's ceiling allows each. The ceiling is the
+    //    one hard local limit: anything under it is allowed, with no per-app switch and no asking.
     static void Abilities(StackPanel into, Core.Lingo l, Action again)
     {
         var (policy, why) = Core.Control("policy");
@@ -291,18 +291,7 @@ sealed class SettingsWindow : Window
             into.Children.Add(Paragraph(why ?? Helper));
             return;
         }
-        var said = Problem();
-        into.Children.Add(said);
         var ceiling = Texts(policy["ceiling"]);
-        var granted = Texts(policy["grants"]?[l.Name]);
-        var here = Texts(policy["local"]?["overrides"]?["grants"]?[l.Name]);
-
-        void Change(string verb, string need, bool fromHere)
-        {
-            var problem = Core.Control(verb, new() { ["lingo"] = l.Name, ["need"] = need }).why;
-            if (problem is null) again();
-            else said.Text = fromHere ? problem : "That was allowed from your account on onsay.dev, so it changes there.";
-        }
 
         var asks = Core.Needs.Where(n => n.Name != "net" && l.Needs.Contains(n.Name)).ToList();
         foreach (var (need, words, _, _) in asks)
@@ -312,15 +301,7 @@ sealed class SettingsWindow : Window
                 into.Children.Add(Item(words, "Turned off for every app, under Advanced."));
                 continue;
             }
-            bool on = granted.Contains(need);
-            string how = on ? "Allowed without asking." : need.StartsWith("files") ? "Asks you first, except in its own folder." : "Asks you first.";
-            into.Children.Add(Item(words, how, Toggle(on, yes => Change(yes ? "grant" : "ungrant", need, yes || here.Contains(need)))));
-        }
-        foreach (var grant in granted.Where(g => g.Contains(' ')))
-        {
-            int space = grant.IndexOf(' ');
-            string action = grant[..space] == "files.read" ? "Read" : "Change";
-            into.Children.Add(Item($"{action} files in {grant[(space + 1)..]}", "Allowed without asking.", Toggle(true, _ => Change("ungrant", grant, here.Contains(grant)))));
+            into.Children.Add(Item(words, "Allowed."));
         }
 
         string? reach = null;
@@ -334,7 +315,25 @@ sealed class SettingsWindow : Window
         }
     }
 
-    // 2. You, then each rule that lets someone in, with Stop sharing on those set here, and sharing with someone new first.
+    // Whether a rule covers this app on this computer: no routes means every route, else one is the app's own path or under
+    // it, and no devices means every computer, else this one is named.
+    static bool Covers(JsonObject rule, Core.Lingo l, string computer)
+    {
+        var devices = Texts(rule["devices"]);
+        if (devices.Count > 0 && !devices.Contains(computer)) return false;
+        var routes = Texts(rule["routes"]);
+        if (routes.Count == 0) return true;
+        return routes.Any(r => r == l.Route || r.StartsWith(l.Route + "/"));
+    }
+
+    // A rule's routes in words: Only Photos share, or Every route here.
+    static string RoutesIn(JsonObject rule)
+    {
+        var routes = Texts(rule["routes"]).Select(r => Core.Title(r.Trim('/').Replace('/', ' '))).ToList();
+        return routes.Count > 0 ? $"Only {string.Join(", ", routes)}." : "Every route here.";
+    }
+
+    // 2. You, then each rule that reaches this app on this computer, with Stop sharing, and sharing with someone new first.
     static void Access(StackPanel into, Core.Lingo l, Action again)
     {
         var (policy, why) = Core.Control("policy");
@@ -350,6 +349,7 @@ sealed class SettingsWindow : Window
             else said.Text = problem;
         }
 
+        var computer = $"{Core.Onsay("status").answer?["device"]}";
         var form = ShareForm(l, said, Did);
         form.Visibility = Visibility.Collapsed;
         into.Children.Add(Button("Share with someone", Kind.Quiet, () => form.Visibility = Shown(form.Visibility != Visibility.Visible)));
@@ -357,29 +357,26 @@ sealed class SettingsWindow : Window
         into.Children.Add(form);
 
         into.Children.Add(Item("You, on this computer", "Always."));
-        var local = policy["local"]?["overrides"]?["access"] as JsonArray;
-        foreach (var rule in (policy["access"] as JsonArray ?? new()).OfType<JsonObject>())
+        foreach (var rule in (policy["rules"] as JsonArray ?? new()).OfType<JsonObject>())
         {
-            var lingos = rule["lingos"];
-            bool covers = lingos is JsonArray list ? list.Any(x => $"{x}" == l.Name) : $"{lingos}" is "*" || $"{lingos}" == l.Name;
-            if (!covers) continue;
-            var who = $"{rule["who"]}";
-            bool builtIn = (bool?)rule["default"] == true;
-            bool setHere = local?.Any(r => JsonNode.DeepEquals(r, rule)) == true;
-            var routes = Texts(rule["routes"]).Select(r => Core.Title(r.Trim('/'))).ToList();
-            string what = routes.Count > 0 ? $"Only {string.Join(", ", routes)}." : $"{lingos}" == "*" ? "Every app here." : "All of it.";
-            string from = builtIn ? " Built in." : setHere ? "" : " Shared from your account on onsay.dev.";
-            var stop = setHere ? Button("Stop sharing", Kind.Quiet, () => Did(Core.Control("unshare", new() { ["lingo"] = $"{lingos}", ["who"] = who }).why)) : null;
-            into.Children.Add(Item(Core.Who(who, null), what + from, stop));
+            if (!Covers(rule, l, computer)) continue;
+            var handle = $"{rule["handle"]}";
+            if (handle.Length == 0) continue;   // built-ins and addresses are under Advanced, not a share
+            var who = $"{rule["account"]}";
+            if (who.Length == 0) who = handle;
+            var stop = Button("Stop sharing", Kind.Quiet, () => Did(Core.Onsay("unshare", new JsonObject { ["who"] = who }).why));
+            var what = rule["allow"] is false ? "Kept out." : RoutesIn(rule);
+            into.Children.Add(Item(Core.Who(handle, null), what, stop));
         }
     }
 
-    // Sharing an app: their Onsay name, and all of it or one part, picked.
+    // Sharing an app: their Onsay name, and all of it or one part, picked. The rule is the account's, so onsay.dev and every
+    // computer see the same one.
     static StackPanel ShareForm(Core.Lingo l, TextBlock said, Action<string?> did)
     {
         var form = new StackPanel { Margin = new Thickness(0, 12, 0, 12) };
         var name = new TextBox { BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink };
-        form.Children.Add(Note("Their Onsay name, the one they signed up with, like james. They can use it from their own devices, and nothing else here."));
+        form.Children.Add(Note("Their Onsay name, the one they signed up with, like james or james#a1b2c3. They can use it from their own devices, and nothing else here."));
         form.Children.Add(Boxed(name));
         var part = "";
         if (l.Parts.Length > 1)
@@ -391,14 +388,16 @@ sealed class SettingsWindow : Window
         var go = Button("Share", Kind.Primary, () =>
         {
             var who = name.Text.Trim().ToLowerInvariant();
-            if (!Regex.IsMatch(who, "^[a-z0-9_]+$") || who is "public" or "me")
+            if (!Regex.IsMatch(who, "^[a-z0-9_]+(#([a-z2-7]{6}))?$") && !Regex.IsMatch(who, "^acct_[0-9a-f]{24}$"))
             {
-                said.Text = "An Onsay name is letters, digits and _, like james.";
+                said.Text = "An Onsay name is letters, digits and _, like james, or james#a1b2c3.";
                 return;
             }
-            var values = new JsonObject { ["lingo"] = l.Name, ["who"] = who };
-            if (part.Length > 0) values["route"] = part;
-            did(Core.Control("share", values).why);
+            var route = part.Length > 0 ? $"{l.Route}{part}" : l.Route;
+            var values = new JsonObject { ["who"] = who, ["routes"] = new JsonArray(route) };
+            var computer = $"{Core.Onsay("status").answer?["device"]}";
+            if (computer.Length > 0) values["devices"] = new JsonArray(computer);
+            did(Core.Onsay("share", values).why);
         });
         go.Margin = new Thickness(0, 12, 0, 0);
         form.Children.Add(go);
@@ -661,35 +660,27 @@ sealed class SettingsWindow : Window
 
     ////////// 4. PEOPLE //////////
 
-    // 4. Everyone an access rule names by their Onsay name, with what of each app they may use.
+    // 4. Everyone a rule names by their Onsay handle, with the routes they can reach and on which computers.
     UIElement People()
     {
-        var p = Page("People", "People you share an app with can use it from their own devices. They can't see or use anything else on this computer.");
+        var p = Page("People", "People you share with can use those routes from their own devices. They can't see or use anything else on your computers.");
         var (policy, why) = Core.Control("policy");
         if (policy is null)
         {
             p.Children.Add(Paragraph(why ?? Helper));
             return p;
         }
-        var local = policy["local"]?["overrides"]?["access"] as JsonArray;
-        var people = (policy["access"] as JsonArray ?? new()).OfType<JsonObject>()
-            .Where(r =>
-            {
-                var who = $"{r["who"]}";
-                bool notAPerson = who is "me" or "my devices" or "public" || who.StartsWith("ip ");
-                return !notAPerson && $"{r["lingos"]}" != "none";
-            })
-            .GroupBy(r => $"{r["who"]}");
+        var people = (policy["rules"] as JsonArray ?? new()).OfType<JsonObject>()
+            .Where(r => $"{r["handle"]}".Length > 0 && r["allow"] is not false)
+            .GroupBy(r => $"{r["handle"]}");
         foreach (var person in people)
         {
             p.Children.Add(Section(person.Key));
             foreach (var rule in person)
             {
-                var routes = Texts(rule["routes"]).Select(r => Core.Title(r.Trim('/'))).ToList();
-                bool mine = local?.Any(r => JsonNode.DeepEquals(r, rule)) == true;
-                var under = routes.Count > 0 ? $"Only {string.Join(", ", routes)}." : "All of it.";
-                if (!mine) under += " Shared from your account on onsay.dev.";
-                p.Children.Add(Item(AppsIn(rule), under, mine ? StopSharing(rule, "People") : null));
+                var devices = Texts(rule["devices"]);
+                var under = devices.Count > 0 ? $"On your {string.Join(", ", devices)}." : "On every computer.";
+                p.Children.Add(Item(RoutesIn(rule).TrimEnd('.'), under, StopSharing(rule, "People")));
             }
         }
         if (!people.Any())
@@ -705,20 +696,14 @@ sealed class SettingsWindow : Window
     // Why each decision went as it did, in words, by how the lingo client says it.
     static string Because(string why) => why switch
     {
-        "rule: my devices" => "Your devices can use your apps.",
-        "rule: me" => "Your account can use your apps.",
+        "rule: my devices" => "Your devices can reach your apps.",
+        "rule: me" => "Your account can reach your apps.",
+        "rule: onsay" => "Onsay can reach it.",
         "rule: public" => "It is open to anyone.",
         "no rule lets them in" => "Nothing is shared with them.",
-        "asked: once" => "You allowed it once.",
-        "asked: always" => "You allowed it.",
-        "asked: no" => "You said no.",
         "the ceiling" => "That is turned off for every app, under Advanced.",
         "not declared" => "The app never said it needs that.",
-        "no app to ask" => "Onsay wasn't open to ask you.",
-        "nobody answered" => "Nobody answered in time.",
-        _ when why.StartsWith("granted: ") => "You allowed it before.",
-        _ when why.StartsWith("blocked: ") => "That address is blocked, under Advanced.",
-        _ when why.EndsWith(", none") => "They are kept out.",
+        _ when why.StartsWith("deny: ") => "A rule keeps them out.",
         _ when why.StartsWith("rule: ") => "It is shared with them.",
         _ => why,
     };
@@ -731,7 +716,6 @@ sealed class SettingsWindow : Window
         var p = Page("Activity", "What your other devices, people you share with and your apps did on this computer.", Button("Refresh", Kind.Quiet, () => Go("Activity")));
         var handle = Core.Onsay("status").answer?["handle"]?.ToString();
         var (policy, _) = Core.Control("policy");
-        var local = policy?["local"]?["overrides"]?["access"] as JsonArray;
         DateTime? day = DateTime.MaxValue;
         foreach (var line in Lines(Path.Combine(Core.Home, "decisions.log"), 300))
         {
@@ -810,11 +794,14 @@ sealed class SettingsWindow : Window
             };
             var row = new DockPanel { Children = { time } };
 
-            // Someone's own device let in by sharing set here can be stopped from here.
+            // Someone's own device let in by a rule can be stopped from here.
             JsonObject? shared = null;
             if (caller.Split('.') is [_, var them] && them != handle && allowed && why == $"rule: {them}")
             {
-                shared = local?.OfType<JsonObject>().FirstOrDefault(r => $"{r["who"]}" == them && ($"{r["lingos"]}" == lingo || $"{r["lingos"]}" == "*"));
+                var path = $"{d?["route"]}";
+                shared = (policy?["rules"] as JsonArray ?? new()).OfType<JsonObject>().FirstOrDefault(r =>
+                    r["allow"] is not false && $"{r["handle"]}" == them &&
+                    (r["routes"] is not JsonArray routes || routes.Any(x => path == $"{x}" || path.StartsWith($"{x}/"))));
             }
             if (shared is not null)
             {
@@ -919,14 +906,14 @@ sealed class SettingsWindow : Window
         ["prompt"] = "Something you asked, with the chat before it",
         ["lingo"] = "An app asked Onsay for something while it ran",
         ["response"] = "An app's answer to a request that came through Onsay",
-        ["applied"] = "Your account's newest rules, as this computer put them in place, and any it wouldn't allow",
+        ["applied"] = "Your account's newest rules, as this computer put them in place",
         ["log"] = "What was allowed or refused on this computer, for your Activity",
         ["api"] = "A question to Onsay: signing in, your account's rules, your devices, or checking another of your devices",
     };
 
-    /* 7. Everything underneath, a row each in plain labels: the ceiling, the access rules and blocks in force, the account's
-          rules, this device's key and the prompt key, the folders, and the logs, each read in place: sent.log, which the
-          onsay lingo keeps in the lingo client's home, decisions.log beside it, and the lingo client's own core.log. */
+    /* 7. Everything underneath, a row each in plain labels: the ceiling, the rules in force here, this device's key and the
+          chat key, the folders, and the logs, each read in place: sent.log, which the onsay lingo keeps in the lingo
+          client's home, decisions.log beside it, and the lingo client's own core.log. */
     UIElement Advanced()
     {
         var p = Page("Advanced", "How Onsay works underneath, for anyone who wants to look. Nothing here needs changing for him to work.");
@@ -987,7 +974,7 @@ sealed class SettingsWindow : Window
         }
 
         p.Children.Add(Section("What any app may do here"));
-        Hint("Anything off, no app here can do, whatever it says or is allowed. Anything on, an app still asks you first.");
+        Hint("Anything off, no app here can do, whatever it says. Anything on is allowed: the ceiling is the one hard limit on this computer.");
         if (policy?["ceiling"] is JsonArray ceiling)
         {
             var on = ceiling.Select(n => $"{n}").ToList();
@@ -1012,36 +999,29 @@ sealed class SettingsWindow : Window
 
         p.Children.Add(Section("Who can reach this computer"));
         Hint("Anyone not listed gets nothing, as if this computer weren't there. You, on this computer, always can.");
-        var local = policy?["local"]?["overrides"]?["access"] as JsonArray;
-        foreach (var rule in (policy?["access"] as JsonArray ?? new()).OfType<JsonObject>())
+        foreach (var rule in (policy?["rules"] as JsonArray ?? new()).OfType<JsonObject>())
         {
-            var what = AppsIn(rule);
-            var routes = Texts(rule["routes"]).Select(r => Core.Title(r.Trim('/'))).ToList();
-            if (routes.Count > 0) what += $", only {string.Join(", ", routes)}";
-            if ($"{rule["lingos"]}" == "onsay") what += ", with your chat key";
-
-            string from;
-            if ((bool?)rule["default"] == true) from = "Built in.";
-            else if (local?.Any(x => JsonNode.DeepEquals(x, rule)) == true) from = "Set on this computer.";
-            else from = "From your account.";
-
-            p.Children.Add(Item(Core.Who($"{rule["who"]}", null), $"{what}. {from}"));
-        }
-        foreach (var blocked in policy?["block"] as JsonArray ?? new())
-        {
-            p.Children.Add(Item($"A computer at {blocked}", "Blocked from everything."));
+            var who = $"{rule["handle"]}";
+            if (who.Length == 0) who = $"{rule["who"]}";
+            if (who.Length == 0) who = $"{rule["ip"]}";
+            if (who.Length == 0) who = $"{rule["account"]}";
+            var what = RoutesIn(rule);
+            var devices = Texts(rule["devices"]);
+            if (devices.Count > 0) what += $" On your {string.Join(", ", devices)}.";
+            if (rule["allow"] is false) what = $"Kept out of {what.ToLowerInvariant()}";
+            p.Children.Add(Item(Core.Who(who, null), what));
         }
         var rules = Path.Combine(Core.Home, "policy.json");
         if (File.Exists(rules))
         {
-            p.Children.Add(Item("This computer's own rules", "Kept in a file in Onsay's folder.", Button("Open", Kind.Quiet, () => Native.Open(rules))));
+            p.Children.Add(Item("This computer's ceiling", "The most any app may do here, kept in a file in Onsay's folder.", Button("Open", Kind.Quiet, () => Native.Open(rules))));
         }
         if (policy is not null)
         {
             var version = policy["account"]?["version"];
             var inForce = version is null
-                ? "Your account has no rules yet, so this computer uses its own."
-                : $"Your account's rules are version {version}. This computer's own come first.";
+                ? "Your account has no rules yet, so this computer is closed to everyone but you."
+                : $"Your account's rules are version {version}, and this computer's ceiling comes first.";
             Log("Every rule in force here", inForce, () => policy.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
 
@@ -1176,20 +1156,13 @@ sealed class SettingsWindow : Window
         Child = input,
     };
 
-    // 8. The apps an access rule covers, in words.
-    static string AppsIn(JsonObject rule)
-    {
-        if (rule["lingos"] is JsonArray list) return string.Join(", ", list.Select(x => Core.Title($"{x}")));
-        var one = $"{rule["lingos"]}";
-        if (one == "*") return "Every app";
-        if (one == "none") return "Nothing: kept out";
-        return Core.Title(one);
-    }
-
-    // 8. Ends an access rule set on this computer, then shows the page named again.
+    // 8. Ends every rule naming a person, then shows the page named again.
     Border StopSharing(JsonObject rule, string page) => Button("Stop sharing", Kind.Quiet, () =>
     {
-        Core.Control("unshare", new() { ["lingo"] = $"{rule["lingos"]}", ["who"] = $"{rule["who"]}" });
+        var who = $"{rule["account"]}";
+        if (who.Length == 0) who = $"{rule["handle"]}";
+        if (who.Length == 0) who = $"{rule["who"]}";
+        Core.Onsay("unshare", new JsonObject { ["who"] = who });
         Go(page);
     });
 
