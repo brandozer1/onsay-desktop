@@ -1,9 +1,11 @@
-// ChatWindow.cs - the card that opens beside him: signing in, home, or the chat, and the look every window shares. It
-// only draws: each chat is one session of the onsay lingo on this computer, every message goes to its /onsay, which
-// works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask is
-// shown here. He is its close button (his back has an X while it is open), and Esc closes it too. Let me choose, at the
-// bottom, sends list mode, so each step is a card of ways to pick from, and while he works his steps show as they
-// happen, folded under one line once he answers.
+// ChatWindow.cs - the card that opens beside him: signing in, your to-dos, or one to-do open, and the look every window
+// shares. It only draws: each to-do is one session of the onsay lingo on this computer, every prompt goes to its /onsay,
+// which works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask
+// is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
+// it has got, and Not quite on a done one makes a new one that follows it up. Opening one shows its whole conversation,
+// and the box there replies to it. He is its close button (his back has an X while it is open), and Esc closes it too.
+// Let me choose, at the bottom, sends list mode, so each step is a card of ways to pick from, and while he works his
+// steps show as they happen, folded under one line once he answers.
 //
 // 1.  Open(body, monitor, focus)          opens, or follows him, next to his body rect in pixels, growing out of him
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
@@ -11,11 +13,13 @@
 //                                         ends whatever it was doing
 // 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
 //                                         Settings, Account, and signing out from there
-// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, Onsay turned
-//                                         off, home or chat
-// 6.  Send(), Ask(text)                   your message to /onsay in this chat's session, followed as it runs, and his
-//                                         answer or his questions
-//     To(method, path, body)              a request to /onsay, with its prompt key
+// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, the list or
+//                                         one to-do open
+// 6.  Send(), Add(text), Ask(text)        the box: a new to-do from the list, or a reply to the one open, followed as it
+//                                         runs, and his answer or his questions
+//     List(), Rows(), Item(item, newest)  every to-do, asked every second, each a row, and Fix(item), Not quite on one
+//     Load(id), Follow(...)               one to-do open, its whole conversation, and what it does as it runs
+//     ReadKey(), To(method, path, body)   the prompt key, and a request to /onsay with it
 //     Replied(...)                        his answer, with how it ended and how long it took
 //     Trial()                             once Onsay's AI trial is over, a card offering the subscription or your own key
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
@@ -26,7 +30,7 @@
 //     Asked(waiting), Lingo(kind, text)   a lingo's own: its questions (chat.ask), what it says (chat.say) and a step it
 //                                         shows (chat.step)
 //     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
-// 11. Clear()                             a new chat: a new session, and home again
+// 11. Clear()                             back to the list, nothing open
 // 12. Menu()                              the header's menu: Copy chat, from the session, and Apps and settings
 // 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
 //                                         Note, Toggle, Switch, Selectable, Right, ScaleBoth, Shown, Hover and the Thin
@@ -54,7 +58,12 @@ sealed class ChatWindow : Window
 
     public const double Shadow = 16;   // transparent room around the card for its shadow, in DIPs
     // Glyphs from Icons.
-    const string NewIcon = "\uE710";
+    const string BackIcon = "\uE72B";
+    const string CloseIcon = "\uE711";
+    const string DoneIcon = "\uE73E";
+    const string WorkingIcon = "\uE895";
+    const string AskingIcon = "\uE897";
+    const string WaitingIcon = "\uE916";
     const string MoreIcon = "\uE712";
     const string SendIcon = "\uE724";
 
@@ -64,12 +73,15 @@ sealed class ChatWindow : Window
     readonly Action<bool> setOpen;
     readonly OnsayView face = new() { Width = 32, Height = 32 };
     readonly TextBlock subtitle = new() { FontSize = 12, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly Border fresh;   // the header's new chat
+    readonly Border back;   // the header's way back to the list, while a to-do is open
     readonly Border send;
 
     // The pages. Only one shows at a time, see Page.
     readonly FrameworkElement signInPage;
-    readonly FrameworkElement homePage;
+    readonly ScrollViewer listPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    readonly StackPanel listRows = new();
+    readonly StackPanel asksPanel = new();       // a lingo's own questions, while the list shows
+    readonly FrameworkElement empty;             // the greeting, while there are no to-dos yet
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
@@ -83,6 +95,8 @@ sealed class ChatWindow : Window
     readonly TextBlock workingTime = new() { FontSize = 12, FontFamily = Mono, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
     readonly Ellipse[] dots = Enumerable.Range(0, 3).Select(_ => new Ellipse { Width = 6, Height = 6, Fill = Accent, Margin = new Thickness(0, 0, 4, 0), Opacity = 0.3 }).ToArray();
     readonly FrameworkElement input;
+    readonly Border fixingChip;                  // over the box while the next to-do follows one up
+    readonly TextBlock fixingText = new() { FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly FrameworkElement footer;
     readonly TextBox box = new()
     {
@@ -103,10 +117,16 @@ sealed class ChatWindow : Window
     // first answers.
     JsonObject? status;
     bool refreshing;
-    string? session;                             // this chat's session in the onsay lingo, named here as the onsay lingo names one
+    string? session;                             // the to-do open, its session in the onsay lingo, or null for the list
     string? promptKey;                           // the onsay lingo's prompt key, read again for each message
-    int chat;                                    // which chat this is, so an answer to one cleared away is dropped
-    bool waiting;                                // a message is out
+    int chat;                                    // which page this is, so an answer to one left behind is dropped
+    bool waiting;                                // a reply to the one open is out
+    JsonArray items = new();                     // every to-do as /onsay/sessions last gave them, the newest first
+    string? listed;                              // and as text, so the list is drawn again only when it changed
+    bool listing;
+    string? loaded;                              // the open one's status when it was last loaded
+    int watched = -1;                            // the page whose to-do is followed as it runs, see Load
+    string? fixing;                              // the to-do Not quite was pressed on, which the next one follows up
     bool stopping;                               // Stop was pressed while it was
     bool greeted;
     bool following = true;                       // the chat keeps to its bottom as new lines come
@@ -121,6 +141,7 @@ sealed class ChatWindow : Window
         public required TextBlock Head;
         public required StackPanel Body;
         public int Count;
+        public int Heard;                        // of the steps the onsay lingo kept, how many are lines here
         public double Ms;
     }
     readonly List<StepList> stepLists = new();
@@ -153,15 +174,17 @@ sealed class ChatWindow : Window
         FontFamily = Ui;
 
         // The header: him, who he is and where, and the buttons.
-        fresh = Button(NewIcon, Kind.Icon, () =>
+        back = Button(BackIcon, Kind.Icon, () =>
         {
             Clear();
             box.Focus();
-        }, "New chat");
+        }, "All your to-dos");
+        back.Margin = new Thickness(0, 0, 6, 0);
         Border more = null!;
         more = Button(MoreIcon, Kind.Icon, () => Menu(more), "More");
         var header = new DockPanel { Margin = new Thickness(10, 10, 10, 10) };
-        header.Children.Add(Right(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { fresh, more } }));
+        header.Children.Add(Right(more));
+        header.Children.Add(back);
         header.Children.Add(face);
         header.Children.Add(new StackPanel
         {
@@ -182,21 +205,19 @@ sealed class ChatWindow : Window
             },
         };
 
-        // The home page.
-        homePage = new ScrollViewer
+        // The list: every to-do, the newest at the bottom by the box, and under them a lingo's own questions. With none
+        // yet, a greeting.
+        empty = new StackPanel
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new StackPanel
+            Margin = new Thickness(8, 16, 8, 10),
+            Children =
             {
-                Margin = new Thickness(20, 26, 20, 10),
-                Children =
-                {
-                    new OnsayView { Width = 56, Height = 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 12) },
-                    new TextBlock { Text = "What can I do for you?", FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center },
-                    new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 22), Children = { readyDot, ready } },
-                },
+                new OnsayView { Width = 56, Height = 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 12) },
+                new TextBlock { Text = "What can I do for you?", FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center },
+                new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 22), Children = { readyDot, ready } },
             },
         };
+        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, listRows, asksPanel } };
 
         // The chat page follows new content only while you are at the bottom, so scrolling up to read stays put.
         chatPage.Content = lines;
@@ -229,7 +250,13 @@ sealed class ChatWindow : Window
                 Children = { new Grid { Children = { hint, box } }, send },
             },
         };
-        input = field;
+        fixingChip = new Border
+        {
+            Margin = new Thickness(12, 8, 12, 0), Padding = new Thickness(10, 0, 0, 0), CornerRadius = new CornerRadius(8),
+            Background = BlueSoft, Visibility = Visibility.Collapsed,
+            Child = new DockPanel { Children = { Right(Button(CloseIcon, Kind.Icon, () => Fix(null), "Make it a new to-do instead")), fixingText } },
+        };
+        input = new StackPanel { Children = { fixingChip, field } };
         ReadyInput();
         box.TextChanged += (_, _) => ReadyInput();
         box.PreviewKeyDown += (_, e) =>
@@ -288,7 +315,7 @@ sealed class ChatWindow : Window
         footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, choose } };
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { signInPage, homePage, chatPage } };
+        var pages = new Grid { Children = { signInPage, listPage, chatPage } };
         var layout = new Grid();
         UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input, footer };
         for (int i = 0; i < rows.Length; i++)
@@ -343,14 +370,23 @@ sealed class ChatWindow : Window
             if (Showing || status is null) Refresh();
         };
         look.Start();
+        // Every to-do, asked again every second while the card shows.
+        var poll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        poll.Tick += (_, _) =>
+        {
+            if (Showing && SignedIn) List();
+        };
+        poll.Start();
     }
 
-    // The box's hint, and Send only while something is typed and no message is out.
+    // The box's hint, and Send only while something is typed and, with a to-do open, no reply to it is out.
     void ReadyInput()
     {
-        hint.Text = Talking ? "Say something" : "Ask for something";
+        hint.Text = "Add a to-do";
+        if (fixing is not null) hint.Text = "What wasn't right?";
+        if (session is not null) hint.Text = "Reply to this one";
         hint.Visibility = Shown(box.Text.Length == 0);
-        bool any = box.Text.Trim().Length > 0 && !Busy;
+        bool any = box.Text.Trim().Length > 0 && !(session is not null && Busy);
         send.Opacity = any ? 1 : 0.4;
         send.IsHitTestVisible = any;
     }
@@ -567,19 +603,17 @@ sealed class ChatWindow : Window
         Page();
     }
 
-    // 5. Home until something is said here, and while the onsay lingo hasn't answered yet, getting ready.
-    bool Talking => lines.Children.Count > 0;
-
+    // 5. The list until a to-do is opened, and while the onsay lingo hasn't answered yet, getting ready.
     void Page()
     {
         bool known = status is not null;
         bool on = SignedIn;
-        bool talking = on && Talking;
+        bool open = on && session is not null;
         bool connected = (bool?)status?["connected"] == true;
         signInPage.Visibility = Shown(known && !on);
-        homePage.Visibility = Shown(!known || (on && !talking));
-        chatPage.Visibility = Shown(talking);
-        fresh.Visibility = Shown(talking);
+        listPage.Visibility = Shown(!known || (on && !open));
+        chatPage.Visibility = Shown(open);
+        back.Visibility = Shown(open);
         input.Visibility = Shown(on);
         footer.Visibility = Shown(on);
 
@@ -598,20 +632,220 @@ sealed class ChatWindow : Window
 
     ////////// 6. TALKING TO HIM //////////
 
-    // 6. One message at a time: Send waits while one is out.
+    // 6. From the list, as many to-dos one after another as you like. With one open, a reply to it, one at a time.
     void Send()
     {
         var text = box.Text.Trim();
-        if (text.Length == 0 || Busy || !SignedIn) return;
+        if (text.Length == 0 || !SignedIn || (session is not null && Busy)) return;
         box.Clear();
-        Ask(text);
+        if (session is not null) Ask(text);
+        else Add(text);
     }
 
-    /* 6. Shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in this chat's session, made
-          here for the first in the onsay lingo's own way so it can be followed from the start, and with Let me choose on,
-          in list mode. While it runs, what it is doing is asked of the session every moment: each new step is a line,
-          the newest one on the bar, and what it asks you is a card, answered on the same card. Its answer is his reply,
-          or questions back. */
+    /* 6. A new to-do: sent to /onsay in a session of its own, named here the onsay lingo's way so the list shows it at
+          once, following up the one Not quite was pressed on, if any. The list follows it from there. */
+    async void Add(string text)
+    {
+        var message = new JsonObject { ["prompt"] = text, ["session"] = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Random.Shared.Next(0x1000000):x6}" };
+        if (fixing is not null) message["from"] = fixing;
+        if (settings.LetMeChoose == true) message["mode"] = "list";
+        Fix(null);
+        face.React("thinking");
+        try
+        {
+            await ReadKey();
+            using var ask = To(HttpMethod.Post, "", message);
+            var sending = Http.SendAsync(ask);
+            await Task.Delay(300);
+            List();
+            using var res = await sending;
+            if (!res.IsSuccessStatusCode)
+                Tell($"{JsonNode.Parse(await res.Content.ReadAsStringAsync())?["error"] ?? "Something went wrong there. Try again in a moment."}");
+        }
+        catch (Exception) { Tell("Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."); }
+        face.React("answered");
+        List();
+        Trial();
+    }
+
+    /* 6. Every to-do, as the onsay lingo lists them: drawn again when anything changed, and the open one loaded again once
+          its status moves on, unless it is followed already. */
+    async void List()
+    {
+        if (listing) return;
+        listing = true;
+        try
+        {
+            if (promptKey is null) await ReadKey();
+            using var res = await Http.SendAsync(To(HttpMethod.Get, "/sessions"));
+            var text = await res.Content.ReadAsStringAsync();
+            if (res.IsSuccessStatusCode && text != listed && JsonNode.Parse(text) is JsonArray all)
+            {
+                listed = text;
+                items = all;
+                Rows();
+                var open = items.FirstOrDefault(i => $"{i?["session"]}" == session);
+                if (session is not null && !waiting && watched != chat && $"{open?["status"]}" != loaded) Load(session);
+            }
+        }
+        catch (Exception) { }
+        listing = false;
+    }
+
+    // 6. Oldest first, so the newest sits by the box, and the list keeps to its bottom while you are there.
+    void Rows()
+    {
+        bool bottom = listPage.VerticalOffset >= listPage.ScrollableHeight - 24;
+        listRows.Children.Clear();
+        empty.Visibility = Shown(items.Count == 0);
+        for (int i = items.Count - 1; i >= 0; i--)
+            if (items[i] is JsonObject item) listRows.Children.Add(Item(item, i == 0));
+        if (bottom) listPage.ScrollToEnd();
+    }
+
+    /* 6. One to-do: what you asked, and under it how far it has got, the step it is on, what it waits for, or the start of
+          its answer, the newest done one showing its whole answer. A click opens it, and a done one has Not quite. */
+    Border Item(JsonObject item, bool newest)
+    {
+        var id = $"{item["session"]}";
+        var now = $"{item["status"]}";
+        var answer = $"{item["text"]}".Trim();
+        var device = $"{item["waiting"]}";
+        var (icon, tint, line) = now switch
+        {
+            "working" => (WorkingIcon, Accent, $"{item["step"] ?? "Working on it"}"),
+            "asking" => (AskingIcon, Accent, "Needs you"),
+            "waiting" => (WaitingIcon, Ink3, device.Length > 0 ? $"Waiting for {device}" : "Waiting to reach Onsay"),
+            _ => (DoneIcon, Good, answer.Split('\n')[0]),
+        };
+        var body = new StackPanel();
+        if (items.FirstOrDefault(i => $"{i?["session"]}" == $"{item["from"]}") is { } before)
+            body.Children.Add(new TextBlock { Text = $"Not quite: {before["prompt"]}", FontSize = 11, Foreground = Ink4, TextTrimming = TextTrimming.CharacterEllipsis });
+        body.Children.Add(new TextBlock { Text = $"{item["prompt"]}", FontSize = 13.5, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (now == "done" && newest && answer.Length > 0)
+        {
+            var whole = His(body);
+            whole.Margin = new Thickness(0, 4, 0, 2);
+            whole.Document = Markdown.Render(answer);
+        }
+        else body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
+        var row = new DockPanel { Children = { new TextBlock { Text = icon, FontFamily = Icons, FontSize = 14, Foreground = tint, Margin = new Thickness(0, 2, 10, 0) } } };
+        if (now == "done")
+        {
+            var redo = Right(Button("Not quite", Kind.Quiet, () => Fix(item), "Make a new to-do that follows up this one"));
+            redo.Margin = new Thickness(8, 0, 0, 0);
+            redo.VerticalAlignment = VerticalAlignment.Top;
+            row.Children.Add(redo);
+        }
+        row.Children.Add(body);
+        var shown = new Border { Child = row, Padding = new Thickness(10, 8, 10, 8), CornerRadius = new CornerRadius(10), Cursor = Cursors.Hand, Background = Brushes.Transparent, Margin = new Thickness(0, 0, 0, 2) };
+        Hover(shown, Page_, Brushes.Transparent);
+        shown.MouseLeftButtonUp += (_, _) => Load(id);
+        return shown;
+    }
+
+    // 6. Not quite: the next to-do follows up this one, carrying all of it, until it is sent or put away. null puts it away.
+    void Fix(JsonObject? item)
+    {
+        fixing = item is null ? null : $"{item["session"]}";
+        fixingText.Text = $"Not quite: {item?["prompt"]}";
+        fixingChip.Visibility = Shown(fixing is not null);
+        ReadyInput();
+        if (fixing is not null) box.Focus();
+    }
+
+    /* 6. One to-do open: its whole conversation as the onsay lingo keeps it, each prompt, then its reply, or the questions
+          it ended with as a card. One working or asking shows what it does as it happens, until it stops and the list
+          loads it again. */
+    async void Load(string id)
+    {
+        Clear();
+        session = id;
+        int mine = chat;
+        var item = items.FirstOrDefault(i => $"{i?["session"]}" == id);
+        loaded = $"{item?["status"]}";
+        Page();
+        JsonArray turns;
+        try
+        {
+            using var res = await Http.SendAsync(To(HttpMethod.Get, $"/sessions/{id}"));
+            turns = JsonNode.Parse(await res.Content.ReadAsStringAsync())?["turns"] as JsonArray ?? new();
+        }
+        catch (Exception) { turns = new(); }
+        if (mine != chat) return;
+        if (items.FirstOrDefault(i => $"{i?["session"]}" == $"{item?["from"]}") is { } before)
+        {
+            var up = new TextBlock { Text = $"Not quite: {before["prompt"]}", FontSize = 12, Foreground = Ink3, Cursor = Cursors.Hand, Margin = new Thickness(0, 0, 0, 12), TextTrimming = TextTrimming.CharacterEllipsis };
+            up.MouseLeftButtonUp += (_, _) => Load($"{before["session"]}");
+            lines.Children.Add(up);
+        }
+        for (int i = 0; i < turns.Count; i++)
+        {
+            Yours($"{turns[i]?["prompt"]}");
+            if (turns[i]?["questions"] is JsonArray questions && i == turns.Count - 1 && loaded == "asking") Questions(questions);
+            else if (turns[i]?["questions"] is JsonArray asked) His().Document = Markdown.Render(string.Join("\n\n", asked.Select(q => q is JsonObject o ? $"{o["question"]}" : $"{q}")));
+            else His().Document = Markdown.Render($"{turns[i]?["text"]}");
+        }
+        if (turns.Count == 0) Yours($"{item?["prompt"]}");
+        if (loaded == "waiting")
+        {
+            var device = $"{item?["waiting"]}";
+            His().Document = Markdown.Render(device.Length > 0 ? $"Waiting for {device}. I'll do it as soon as {device} is on." : "Waiting to reach Onsay. I'll do it as soon as this computer is back online.");
+        }
+        chatPage.ScrollToEnd();
+        if (loaded is not ("working" or "asking")) return;
+        watched = mine;
+        Working($"{item?["step"] ?? "Working on it"}");
+        await Follow(mine, Steps(), CancellationToken.None, untilIdle: true);
+        if (mine != chat) return;
+        watched = -1;
+        Working(null);
+    }
+
+    /* 6. What the open to-do's prompt is doing, asked every moment until done is cancelled, it is left, or, untilIdle, it
+          stops running: each new step a line in steps, the newest on the bar, and what it asks a card, answered on the
+          same card. Gives the newest card. */
+    async Task<Border?> Follow(int mine, StepList steps, CancellationToken done, bool untilIdle)
+    {
+        string? asked = null;
+        Border? card = null;
+        while (!done.IsCancellationRequested && mine == chat)
+        {
+            try
+            {
+                await Task.Delay(400, done);
+                using var look = To(HttpMethod.Get, $"/sessions/{session}/live");
+                using var res = await Http.SendAsync(look, done);
+                if (JsonNode.Parse(await res.Content.ReadAsStringAsync(done)) is not JsonObject now || mine != chat) continue;
+                if (untilIdle && (bool?)now["running"] != true) break;
+                var got = now["steps"] as JsonArray ?? new();
+                Hear(steps, got);
+                if (got.Count > 0) Working($"{got[^1]?["text"]}");
+                if (now["questions"] is not JsonArray q) asked = null;
+                else if (q.ToJsonString() != asked)
+                {
+                    asked = q.ToJsonString();
+                    card = Questions(q, answers =>
+                    {
+                        var body = new JsonObject { ["answers"] = Strings(answers) };
+                        _ = Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/answers", body));
+                    });
+                }
+            }
+            catch (Exception) { }
+        }
+        return card;
+    }
+
+    // 6. Lines for the steps the onsay lingo kept that aren't drawn yet.
+    void Hear(StepList steps, JsonArray all)
+    {
+        for (; steps.Heard < all.Count; steps.Heard++) AddStep(steps, $"{all[steps.Heard]?["text"]}", (int?)all[steps.Heard]?["depth"] ?? 0);
+    }
+
+    /* 6. A reply to the one open: shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in
+          its session, and with Let me choose on, in list mode, followed as it runs (Follow). Its answer is his reply, or
+          questions back. */
     async void Ask(string text)
     {
         int mine = chat;
@@ -626,51 +860,13 @@ sealed class ChatWindow : Window
         var started = DateTime.Now;
         JsonObject? answer = null;
         int code = 0;
-        session ??= $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Random.Shared.Next(0x1000000):x6}";
         var steps = Steps();
-        int heard = 0;                           // of the steps Onsay sent, how many are lines here
-        Border? card = null;
         using var done = new CancellationTokenSource();
-
-        // Lines for the steps not drawn yet.
-        void Hear(JsonArray all)
-        {
-            for (; heard < all.Count; heard++) AddStep(steps, $"{all[heard]?["text"]}", (int?)all[heard]?["depth"] ?? 0);
-        }
-
+        Task<Border?>? followed = null;
         try
         {
-            var (onsaySettings, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }));
-            promptKey = $"{onsaySettings?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
-            async void Follow()
-            {
-                string? asked = null;
-                while (!done.IsCancellationRequested)
-                {
-                    try
-                    {
-                        await Task.Delay(400, done.Token);
-                        using var look = To(HttpMethod.Get, $"/sessions/{session}/live");
-                        using var res = await Http.SendAsync(look, done.Token);
-                        if (JsonNode.Parse(await res.Content.ReadAsStringAsync(done.Token)) is not JsonObject now || mine != chat) continue;
-                        var got = now["steps"] as JsonArray ?? new();
-                        Hear(got);
-                        if (got.Count > 0) Working($"{got[^1]?["text"]}");
-                        if (now["questions"] is not JsonArray q) asked = null;
-                        else if (q.ToJsonString() != asked)
-                        {
-                            asked = q.ToJsonString();
-                            card = Questions(q, answers =>
-                            {
-                                var body = new JsonObject { ["answers"] = Strings(answers) };
-                                _ = Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/answers", body));
-                            });
-                        }
-                    }
-                    catch (Exception) { }
-                }
-            }
-            Follow();
+            await ReadKey();
+            followed = Follow(mine, steps, done.Token, untilIdle: false);
             var message = new JsonObject { ["prompt"] = text, ["session"] = session };
             if (settings.LetMeChoose == true) message["mode"] = "list";
             using var ask = To(HttpMethod.Post, "", message);
@@ -680,12 +876,14 @@ sealed class ChatWindow : Window
         }
         catch (Exception) { }
         done.Cancel();
+        var card = followed is null ? null : await followed;
         if (mine != chat) return;
         waiting = false;
+        loaded = null;
         Working(null);
         if (card is not null) card.IsEnabled = false;
         // The answer has every step, for those that came while this computer was too busy to say.
-        if (answer?["steps"] is JsonArray every) Hear(every);
+        if (answer?["steps"] is JsonArray every) Hear(steps, every);
         var ms = (DateTime.Now - started).TotalMilliseconds;
         Fold(steps, ms);
         if (stopping) await Replied("Stopped.", "Stopped", ms);
@@ -695,8 +893,10 @@ sealed class ChatWindow : Window
         {
             session = $"{answer!["session"]}";
             if (answer["questions"] is JsonArray questions) Questions(questions);
+            else if (answer["waiting"] is not null) await Replied(answer["waiting"]!.ToString().Length > 0 ? $"Waiting for {answer["waiting"]}. I'll do it as soon as it's on." : "Waiting to reach Onsay. I'll do it as soon as this computer is back online.", "Waiting", ms);
             else await Replied($"{answer["text"]}", "Done", ms);
         }
+        List();
         Trial();
     }
 
@@ -726,7 +926,7 @@ sealed class ChatWindow : Window
         buttons.Children.Add(key);
         var title = new TextBlock { Text = "Your free month of Onsay AI is over", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
         var card = new StackPanel { Children = { title, Paragraph("Subscribe to keep using it, or think with an AI you already have, with its key."), buttons } };
-        lines.Children.Add(new Border
+        (session is null ? asksPanel : lines).Children.Add(new Border
         {
             Child = card,
             Background = Page_,
@@ -737,6 +937,14 @@ sealed class ChatWindow : Window
             Margin = new Thickness(0, 2, 24, 12),
         });
         chatPage.ScrollToEnd();
+        listPage.ScrollToEnd();
+    }
+
+    // 6. The onsay lingo's prompt key, read again for each prompt.
+    async Task ReadKey()
+    {
+        var (onsaySettings, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }));
+        promptKey = $"{onsaySettings?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
     }
 
     // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.
@@ -846,8 +1054,9 @@ sealed class ChatWindow : Window
         });
     }
 
-    // His sit left on the card, the whole width, read only but selectable, with its links and Copy buttons live.
-    RichTextBox His()
+    // His sit left on the card, the whole width, read only but selectable, with its links and Copy buttons live: in the
+    // conversation, or into another panel, like a row of the list.
+    RichTextBox His(Panel? into = null)
     {
         var shown = new RichTextBox
         {
@@ -860,7 +1069,7 @@ sealed class ChatWindow : Window
             Margin = new Thickness(0, 2, 0, 12),
             Document = new System.Windows.Documents.FlowDocument(),
         };
-        lines.Children.Add(shown);
+        (into ?? lines).Children.Add(shown);
         return shown;
     }
 
@@ -883,8 +1092,8 @@ sealed class ChatWindow : Window
            which sends Skipped. other and skip false leave those out. Send lights up once
            every one is answered, and sends them all as the next message in this session, a line each: the question, then
            its answer. Or, asked while a message runs, to send, its answers in order. Once sent, the card keeps only each
-           question and its answer. Gives the card. */
-    Border Questions(JsonArray questions, Action<string[]>? send = null)
+           question and its answer. Gives the card, in the conversation or into another panel. */
+    Border Questions(JsonArray questions, Action<string[]>? send = null, Panel? into = null)
     {
         var asked = questions.Select(q =>
         {
@@ -990,7 +1199,7 @@ sealed class ChatWindow : Window
             Padding = new Thickness(14, 12, 14, 14),
             Margin = new Thickness(0, 2, 24, 12),
         };
-        lines.Children.Add(shown);
+        (into ?? lines).Children.Add(shown);
         face.Mood("calm");
         face.React("answered");
         return shown;
@@ -998,7 +1207,7 @@ sealed class ChatWindow : Window
 
     /* 10. The questions a lingo waits on the person for (chat.ask), as the lingo client keeps them: each a card here, the
            chat opening for it, its answers sent back to the lingo client in order. A card whose question is no longer
-           waited for, answered or given up on, is left as it is and can't be sent. */
+           waited for, answered or given up on, is left as it is and can't be sent. Under the list while it shows. */
     public void Asked(List<JsonNode?> waiting)
     {
         var gone = lingoCards.Where(c => !waiting.Any(a => (double?)a?["id"] == c.Key)).ToList();
@@ -1014,16 +1223,23 @@ sealed class ChatWindow : Window
             lingoCards[id] = Questions(questions, answers =>
             {
                 Task.Run(() => Core.Control("answer", new() { ["id"] = id, ["answer"] = Strings(answers) }));
-            });
+            }, session is null ? asksPanel : lines);
+            listPage.ScrollToEnd();
             Page();
         }
     }
 
     /* 10. What a lingo says while it works (chat.say), his line in the chat, or a step it shows (chat.step): under the
            message running, a step further in than Onsay's own, and on the bar, else with the steps that came on their
-           own. Neither opens the chat, so the work never loses the keyboard. */
+           own. Neither opens the chat, so the work never loses the keyboard. While the list shows, what it says is the
+           banner, and its steps are the rows'. */
     public void Lingo(string kind, string text)
     {
+        if (session is null)
+        {
+            if (kind == "say") Tell(text);
+            return;
+        }
         if (kind == "say") _ = Say(text);
         else
         {
@@ -1097,13 +1313,14 @@ sealed class ChatWindow : Window
         list.Body.Visibility = Shown(StepsOpen);
     }
 
-    ////////// 11. A NEW CHAT //////////
+    ////////// 11. BACK TO THE LIST //////////
 
-    // 11. An answer still on its way is dropped when it comes.
+    // 11. An answer still on its way to the one that was open is dropped when it comes.
     void Clear()
     {
         lines.Children.Clear();
         stepLists.Clear();
+        foreach (var card in lingoCards.Values) (card.Parent as Panel)?.Children.Remove(card);
         lingoCards.Clear();
         session = null;
         waiting = false;
@@ -1162,7 +1379,7 @@ sealed class ChatWindow : Window
             },
         };
         // The chat as the onsay lingo keeps it in its session: each message, then his reply or his questions.
-        if (Talking && session is not null) rows.Children.Add(Row("Copy chat", "The whole chat, as text", async () =>
+        if (session is not null) rows.Children.Add(Row("Copy chat", "The whole chat, as text", async () =>
         {
             menu.IsOpen = false;
             try
