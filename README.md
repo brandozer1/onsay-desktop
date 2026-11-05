@@ -65,9 +65,15 @@ message running; neither opens the chat, so the work keeps the keyboard.
 His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings and his panel, and the chat
 lines, come as lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his
 pointer glides to each click and ripples, and turns into a text cursor that ticks where he types (`HandWindow.cs`).
-That shows only with Show where he clicks on, in Settings, which is off at first: then he flies along with it and the
-chat steps aside. Work in the background, off at first, has him click and type in apps without bringing them to the
-front or moving your mouse, and says so when an app doesn't allow it. Both are kept by the lingo client (`input.modes`).
+That shows only with Hide where he clicks off, in Settings: then he flies along with it and the chat steps aside.
+Work in the background has him click and type in apps without bringing them to the front or moving your mouse, and
+brings an app forward for one action when it doesn't allow that, saying why. Both are on at first, so he works unseen
+until he must show something or you ask to see, and both are kept by the lingo client (`input.modes`).
+
+**Screens** are pictures a lingo draws as it works, like the browser's tab, with `screen.open`, `screen.show` and
+`screen.close`. Each to-do that opened some shows them in a small strip under its row, and above the box when it is
+open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. They come
+from the lingo client as a stream, `/onsay/screens`, kept by `Screens.cs` and drawn by `ScreensWindow.cs`.
 
 **What an app may do is decided in one place.** The ceiling in Advanced is the one hard limit on this computer:
 anything on it is allowed to every app that says it needs it, and anything off is refused. Nothing asks per request,
@@ -132,7 +138,8 @@ next quits (`src/System/Updates.cs`).
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), a lingo's questions (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`) and his panel (`PanelWindow`) |
+| `src/Core/Screens.cs` | the screens lingos draw on, watched as the onsay lingo streams them from `/onsay/screens` |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), a lingo's questions (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), his panel (`PanelWindow`) and the screens, a strip under each to-do and full screen (`ScreensWindow`) |
 | `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 

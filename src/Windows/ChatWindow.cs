@@ -17,7 +17,8 @@
 //                                         one to-do open
 // 6.  Send(), Add(text), Ask(text)        the box: a new to-do from the list, or a reply to the one open, followed as it
 //                                         runs, and his answer or his questions
-//     List(), Rows(), Item(item, newest)  every to-do, asked every second, each a row, and Fix(item), Not quite on one
+//     List(), Rows(), Item(item, newest)  every to-do, asked every second, each a row with the screens it opened, and
+//                                         Fix(item), Not quite on one. Named(id) is one by what was asked
 //     Load(id), Follow(...)               one to-do open, its whole conversation, and what it does as it runs
 //     ReadKey(), To(method, path, body)   the prompt key, and a request to /onsay with it
 //     Replied(...)                        his answer, with how it ended and how long it took
@@ -82,6 +83,8 @@ sealed class ChatWindow : Window
     readonly ScrollViewer listPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel listRows = new();
     readonly StackPanel asksPanel = new();       // a lingo's own questions, while the list shows
+    readonly Border screensButton;               // Screens, above the list while any are open
+    readonly Border screensBar = new() { Margin = new Thickness(14, 8, 14, 0) };   // the open to-do's screens, over the box
     readonly FrameworkElement empty;             // the greeting, while there are no to-dos yet
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
@@ -218,7 +221,13 @@ sealed class ChatWindow : Window
                 new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 22), Children = { readyDot, ready } },
             },
         };
-        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, asksPanel, listRows } };
+        screensButton = Button("Screens", Kind.Quiet, () => ScreensWindow.Open(Named, () => promptKey), "Every screen open, what your apps are showing as they work");
+        screensButton.HorizontalAlignment = HorizontalAlignment.Right;
+        screensButton.Margin = new Thickness(0, 0, 2, 6);
+        void ScreensOpen() => screensButton.Visibility = Shown(Screens.All.Count > 0);
+        Screens.Changed += ScreensOpen;
+        ScreensOpen();
+        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { screensButton, empty, asksPanel, listRows } };
 
         // The chat page follows new content only while you are at the bottom, so scrolling up to read stays put.
         chatPage.Content = lines;
@@ -318,7 +327,7 @@ sealed class ChatWindow : Window
         // Everything stacked: the pages share the one row that grows.
         var pages = new Grid { Children = { signInPage, listPage, chatPage } };
         var layout = new Grid();
-        UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input, footer };
+        UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, screensBar, input, footer };
         for (int i = 0; i < rows.Length; i++)
         {
             layout.RowDefinitions.Add(new RowDefinition { Height = rows[i] == pages ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
@@ -364,6 +373,11 @@ sealed class ChatWindow : Window
         new WindowInteropHelper(this).EnsureHandle();
         Page();
         Core.Start(settings);
+        Screens.Watch(async () =>
+        {
+            await ReadKey();
+            return promptKey;
+        });
         // Whether this computer is signed in and connected, asked again every few seconds while the card shows.
         var look = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         look.Tick += (_, _) =>
@@ -731,6 +745,9 @@ sealed class ChatWindow : Window
             whole.Document = Markdown.Render(answer);
         }
         else body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
+        var strip = ScreensWindow.Strip(id, 48, Named, () => promptKey);
+        strip.Margin = new Thickness(0, 6, 0, 0);
+        body.Children.Add(strip);
         var mark = new TextBlock
         {
             Text = icon, FontFamily = Icons, FontSize = 14, Foreground = tint, Margin = new Thickness(0, 2, 10, 0),
@@ -764,6 +781,9 @@ sealed class ChatWindow : Window
         if (fixing is not null) box.Focus();
     }
 
+    // 6. A to-do's name by its session, what was asked, for the screens it opened.
+    string Named(string id) => $"{items.FirstOrDefault(i => $"{i?["session"]}" == id)?["prompt"] ?? "A to-do"}";
+
     /* 6. One to-do open: its whole conversation as the onsay lingo keeps it, each prompt, then its reply, or the questions
           it ended with as a card. One working or asking shows what it does as it happens, until it stops and the list
           loads it again. */
@@ -771,6 +791,7 @@ sealed class ChatWindow : Window
     {
         Clear();
         session = id;
+        screensBar.Child = ScreensWindow.Strip(id, 64, Named, () => promptKey);
         int mine = chat;
         var item = items.FirstOrDefault(i => $"{i?["session"]}" == id);
         loaded = $"{item?["status"]}";
@@ -1333,6 +1354,7 @@ sealed class ChatWindow : Window
         foreach (var card in lingoCards.Values) (card.Parent as Panel)?.Children.Remove(card);
         lingoCards.Clear();
         session = null;
+        screensBar.Child = null;
         waiting = false;
         chat++;
         Working(null);
