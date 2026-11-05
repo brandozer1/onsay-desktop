@@ -64,6 +64,7 @@ sealed class ChatWindow : Window
     const string WorkingIcon = "\uE895";
     const string AskingIcon = "\uE897";
     const string WaitingIcon = "\uE916";
+    const string RedoIcon = "\uE72C";
     const string MoreIcon = "\uE712";
     const string SendIcon = "\uE724";
 
@@ -123,6 +124,7 @@ sealed class ChatWindow : Window
     bool waiting;                                // a reply to the one open is out
     JsonArray items = new();                     // every to-do as /onsay/sessions last gave them, the newest first
     string? listed;                              // and as text, so the list is drawn again only when it changed
+    string? newest;                              // the newest to-do drawn, so the list goes back to the top for a new one
     bool listing;
     string? loaded;                              // the open one's status when it was last loaded
     int watched = -1;                            // the page whose to-do is followed as it runs, see Load
@@ -205,8 +207,7 @@ sealed class ChatWindow : Window
             },
         };
 
-        // The list: every to-do, the newest at the bottom by the box, and under them a lingo's own questions. With none
-        // yet, a greeting.
+        // The list: a lingo's own questions, then every to-do, the newest at the top. With none yet, a greeting.
         empty = new StackPanel
         {
             Margin = new Thickness(8, 16, 8, 10),
@@ -217,7 +218,7 @@ sealed class ChatWindow : Window
                 new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 22), Children = { readyDot, ready } },
             },
         };
-        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, listRows, asksPanel } };
+        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, asksPanel, listRows } };
 
         // The chat page follows new content only while you are at the bottom, so scrolling up to read stays put.
         chatPage.Content = lines;
@@ -692,15 +693,16 @@ sealed class ChatWindow : Window
         listing = false;
     }
 
-    // 6. Oldest first, so the newest sits by the box, and the list keeps to its bottom while you are there.
+    // 6. The newest at the top, and the list goes back to the top whenever a new one comes.
     void Rows()
     {
-        bool bottom = listPage.VerticalOffset >= listPage.ScrollableHeight - 24;
         listRows.Children.Clear();
         empty.Visibility = Shown(items.Count == 0);
-        for (int i = items.Count - 1; i >= 0; i--)
+        for (int i = 0; i < items.Count; i++)
             if (items[i] is JsonObject item) listRows.Children.Add(Item(item, i == 0));
-        if (bottom) listPage.ScrollToEnd();
+        var top = items.Count > 0 ? $"{items[0]?["session"]}" : null;
+        if (top != newest) listPage.ScrollToHome();
+        newest = top;
     }
 
     /* 6. One to-do: what you asked, and under it how far it has got, the step it is on, what it waits for, or the start of
@@ -729,10 +731,18 @@ sealed class ChatWindow : Window
             whole.Document = Markdown.Render(answer);
         }
         else body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
-        var row = new DockPanel { Children = { new TextBlock { Text = icon, FontFamily = Icons, FontSize = 14, Foreground = tint, Margin = new Thickness(0, 2, 10, 0) } } };
+        var mark = new TextBlock
+        {
+            Text = icon, FontFamily = Icons, FontSize = 14, Foreground = tint, Margin = new Thickness(0, 2, 10, 0),
+            VerticalAlignment = VerticalAlignment.Top, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new RotateTransform(),
+        };
+        // A working one's mark turns while it works.
+        if (now == "working")
+            mark.RenderTransform.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.2)) { RepeatBehavior = RepeatBehavior.Forever });
+        var row = new DockPanel { Children = { mark } };
         if (now == "done")
         {
-            var redo = Right(Button("Not quite", Kind.Quiet, () => Fix(item), "Make a new to-do that follows up this one"));
+            var redo = Right(Button(RedoIcon, Kind.Icon, () => Fix(item), "Not quite: make a new to-do that follows up this one"));
             redo.Margin = new Thickness(8, 0, 0, 0);
             redo.VerticalAlignment = VerticalAlignment.Top;
             row.Children.Add(redo);
@@ -937,7 +947,7 @@ sealed class ChatWindow : Window
             Margin = new Thickness(0, 2, 24, 12),
         });
         chatPage.ScrollToEnd();
-        listPage.ScrollToEnd();
+        listPage.ScrollToHome();
     }
 
     // 6. The onsay lingo's prompt key, read again for each prompt.
@@ -1224,7 +1234,7 @@ sealed class ChatWindow : Window
             {
                 Task.Run(() => Core.Control("answer", new() { ["id"] = id, ["answer"] = Strings(answers) }));
             }, session is null ? asksPanel : lines);
-            listPage.ScrollToEnd();
+            listPage.ScrollToHome();
             Page();
         }
     }

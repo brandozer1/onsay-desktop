@@ -5,7 +5,8 @@
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
 // 2. Apps        a list of apps, each opening to a page with tabs for what it can do, who can reach it and its settings,
 //                and a map of every address on this computer and what can be asked for there
-//    Fields      an app's own settings, as its openapi.json declares them
+//    Fields      an app's own settings, as its openapi.json declares them, each with Copy, Show for a secret, and
+//                Required marked
 // 3. Devices     the computers on the account, online or not
 // 4. People      who each route is shared with, and Stop sharing
 // 5. Activity    what reached this computer and what apps were allowed or refused, by day, newest first
@@ -21,6 +22,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Run = System.Windows.Documents.Run;
 using static Onsay.Desktop.ChatWindow;
 
@@ -87,6 +89,26 @@ sealed class SettingsWindow : Window
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) Close();
+        };
+
+        // The wheel scrolls the page wherever the pointer is, over a text box too, which would otherwise keep it. A box that
+        // scrolls on its own, like a log, scrolls first, and the page once it reaches its end.
+        page.PreviewMouseWheel += (_, e) =>
+        {
+            bool up = e.Delta > 0;
+            var under = e.OriginalSource as DependencyObject;
+            while (under is not null && under != page)
+            {
+                if (under is ScrollViewer inner && inner.ScrollableHeight > 0)
+                {
+                    if (up && inner.VerticalOffset > 0) return;
+                    if (!up && inner.VerticalOffset < inner.ScrollableHeight) return;
+                }
+                if (under is Visual) under = VisualTreeHelper.GetParent(under);
+                else under = LogicalTreeHelper.GetParent(under);
+            }
+            page.ScrollToVerticalOffset(page.VerticalOffset - e.Delta / 3.0);
+            e.Handled = true;
         };
     }
 
@@ -535,8 +557,9 @@ sealed class SettingsWindow : Window
     }
 
     /* 2. An app's settings as its openapi.json declares them, each with its value now, kept on this computer wherever the
-          app keeps them. A secret is never shown, only whether it is set, and left empty it stays as it is. Saving writes
-          only what changed, and an empty one goes back to its default. */
+          app keeps them. Each is its name, marked Required when the app needs it, a line on what it is, then its box with
+          Copy, and Show for a secret, which stays hidden until asked. A required one left empty has a red edge until filled.
+          Saving writes only what changed, and an empty one goes back to its default. */
     static void Fields(StackPanel form, string lingo)
     {
         var (got, why) = Core.Control("settings", new() { ["lingo"] = lingo });
@@ -552,7 +575,7 @@ sealed class SettingsWindow : Window
             form.Children.Add(none);
             return;
         }
-        var read = new List<(string name, bool secret, string? value, Func<string> now)>();
+        var read = new List<(string name, string? value, Func<string> now)>();
         foreach (var f in fields)
         {
             string? Text(string key)
@@ -563,50 +586,96 @@ sealed class SettingsWindow : Window
             }
 
             bool secret = (bool?)f?["secret"] == true;
+            bool required = (bool?)f?["required"] == true;
             var name = Text("name") ?? "";
             var value = Text("value");
             var fallback = Text("default");
 
-            var title = Text("title") ?? name;
-            if ((bool?)f?["required"] == true) title += " (needed)";
-            form.Children.Add(Label(title));
+            var title = Label(Text("title") ?? name);
+            title.Margin = new Thickness(0);
+            var needed = new TextBlock { Text = "Required", FontSize = 12, Margin = new Thickness(8, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(title, System.Windows.Controls.Dock.Left);
+            var head = new DockPanel { Margin = new Thickness(0, 18, 0, 3), Children = { title } };
+            if (required) head.Children.Add(needed);
+            form.Children.Add(head);
 
             var under = $"{Text("about")}";
             if (fallback is not null) under += $" Left empty, it is {fallback}.";
-            if (secret && value is not null) under += " One is set: type a new one to replace it.";
             under = under.Trim();
             if (under.Length > 0) form.Children.Add(Note(under));
 
-            UIElement input;
-            Func<string> now;
+            var shown = new TextBox { Text = value ?? "", BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, Foreground = Ink, VerticalAlignment = VerticalAlignment.Center };
+            var hidden = new PasswordBox { Password = value ?? "", BorderThickness = new Thickness(0), FontSize = 13, Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0) };
+            var input = new Grid { Children = { shown } };
+            Func<string> now = () => shown.Text;
             if (secret)
             {
-                var pw = new PasswordBox { BorderThickness = new Thickness(0), FontSize = 13 };
-                input = pw;
-                now = () => pw.Password;
+                shown.Visibility = Visibility.Collapsed;
+                input.Children.Add(hidden);
+                now = () => hidden.Visibility == Visibility.Visible ? hidden.Password : shown.Text;
+                Border eye = null!;
+                eye = Button("\uE7B3", Kind.Icon, () =>
+                {
+                    bool show = shown.Visibility != Visibility.Visible;
+                    if (show) shown.Text = hidden.Password;
+                    else hidden.Password = shown.Text;
+                    shown.Visibility = Shown(show);
+                    hidden.Visibility = Shown(!show);
+                    ((TextBlock)eye.Child).Text = show ? "\uED1A" : "\uE7B3";
+                    eye.ToolTip = show ? "Hide it" : "Show it";
+                }, "Show it");
+                buttons.Children.Add(eye);
             }
-            else
+
+            Border copy = null!;
+            copy = Button("\uE8C8", Kind.Icon, () =>
             {
-                var tb = new TextBox { Text = value ?? "", BorderThickness = new Thickness(0), FontSize = 13 };
-                input = tb;
-                now = () => tb.Text;
+                if (now().Length == 0) return;
+                Clipboard.SetText(now());
+                var icon = (TextBlock)copy.Child;
+                icon.Text = "\uE73E";
+                icon.Foreground = Good;
+                copy.ToolTip = "Copied";
+                var back = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+                back.Tick += (_, _) =>
+                {
+                    back.Stop();
+                    icon.Text = "\uE8C8";
+                    icon.Foreground = Ink2;
+                    copy.ToolTip = "Copy";
+                };
+                back.Start();
+            }, "Copy");
+            buttons.Children.Add(copy);
+
+            var box = Boxed(new DockPanel { Children = { Right(buttons), input } });
+            box.Padding = new Thickness(8, 2, 2, 2);
+            void Mark()
+            {
+                bool empty = required && now().Length == 0;
+                box.BorderBrush = empty ? Bad : Edge_;
+                needed.Foreground = empty ? Bad : Ink3;
             }
-            read.Add((name, secret, value, now));
-            form.Children.Add(Boxed(input));
+            shown.TextChanged += (_, _) => Mark();
+            hidden.PasswordChanged += (_, _) => Mark();
+            Mark();
+            form.Children.Add(box);
+            read.Add((name, value, now));
         }
         var status = Note("");
         status.Margin = new Thickness(10, 0, 0, 0);
         status.VerticalAlignment = VerticalAlignment.Center;
         var save = Button("Save", Kind.Primary, () =>
         {
-            var changed = read.Where(x => x.secret ? x.now().Length > 0 : x.now() != (x.value ?? "")).ToList();
+            var changed = read.Where(x => x.now() != (x.value ?? "")).ToList();
             var problem = changed
                 .Select(x => Core.Control("set", new() { ["lingo"] = lingo, ["key"] = x.name, ["value"] = x.now().Length == 0 ? null : x.now() }).why)
                 .FirstOrDefault(e => e is not null);
             var done = changed.Count == 0 ? "Nothing changed." : "Saved. The app reads them the next time it runs.";
             status.Text = problem ?? done;
         });
-        form.Children.Add(new DockPanel { Margin = new Thickness(0, 12, 0, 0), Children = { save, status } });
+        form.Children.Add(new DockPanel { Margin = new Thickness(0, 20, 0, 0), Children = { save, status } });
     }
 
     ////////// 3. DEVICES //////////
