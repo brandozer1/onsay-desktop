@@ -947,7 +947,7 @@ sealed class SettingsWindow : Window
             void Keep(JsonArray values) => said.Text = Core.Control("call", new() { ["fn"] = "input.modes", ["values"] = values }).why ?? "";
             var background = Toggle((bool?)modes["headless"] == true, on => Keep(new JsonArray(on)));
             var follow = Toggle((bool?)modes["no_follow"] == false, on => Keep(new JsonArray(null, !on)));
-            p.Children.Add(Item("Work in the background", "He clicks and types in apps behind your other windows, without moving your mouse or bringing them to the front. Some apps don't allow it, and he tells you when one doesn't.", background));
+            p.Children.Add(Item("Work in the background", "He clicks and types in apps behind your other windows, without moving your mouse or bringing them to the front. When an app doesn't allow it, he brings it forward for that one step, tells you why, and gives you back the window you were in.", background));
             p.Children.Add(Item("Show where he clicks", "His pointer goes to each click and he flies along with it, and the chat steps aside while he works.", follow));
             p.Children.Add(said);
         }
