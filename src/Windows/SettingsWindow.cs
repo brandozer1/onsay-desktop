@@ -10,7 +10,8 @@
 // 3. Devices     the computers on the account, online or not
 // 4. People      who each route is shared with, and Stop sharing
 // 5. Activity    what reached this computer and what apps were allowed or refused, by day, newest first
-// 6. Settings    the account, starting with Windows, his look, updates and removing Onsay
+// 6. Settings    the account, starting with Windows, how he uses the mouse and keyboard, his look, updates and
+//                removing Onsay
 // 7. Advanced    the most any app may do, who can reach this computer, the account, folders, and the logs to read
 // 8. Pieces      Section, a heading; Item, a row; Boxed, an input in its border; RoutesIn, a rule's routes in words;
 //                StopSharing, its button; Lines, a log's newest lines
@@ -931,6 +932,25 @@ sealed class SettingsWindow : Window
 
         p.Children.Add(Section("On this computer"));
         p.Children.Add(Item("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Toggle(Startup.IsOn, Startup.Set)));
+
+        /* 6. How he uses the mouse and keyboard, as the lingo client keeps it: input.modes(headless, no_follow), each
+              changed alone. Without no follow, his pointer's lines come and he and the chat follow it (Overlay.cs). */
+        p.Children.Add(Section("When he uses your computer"));
+        var (modes, notNow) = Core.Control("call", new() { ["fn"] = "input.modes" });
+        if (modes is null)
+        {
+            p.Children.Add(Paragraph(notNow ?? Helper));
+        }
+        else
+        {
+            var said = Problem();
+            void Keep(JsonArray values) => said.Text = Core.Control("call", new() { ["fn"] = "input.modes", ["values"] = values }).why ?? "";
+            var background = Toggle((bool?)modes["headless"] == true, on => Keep(new JsonArray(on)));
+            var follow = Toggle((bool?)modes["no_follow"] == false, on => Keep(new JsonArray(null, !on)));
+            p.Children.Add(Item("Work in the background", "He clicks and types in apps behind your other windows, without moving your mouse or bringing them to the front. Some apps don't allow it, and he tells you when one doesn't.", background));
+            p.Children.Add(Item("Show where he clicks", "His pointer goes to each click and he flies along with it, and the chat steps aside while he works.", follow));
+            p.Children.Add(said);
+        }
 
         // 6. The same picker as setting him up, with him beside it. He on the taskbar changes too.
         p.Children.Add(Section("His look"));

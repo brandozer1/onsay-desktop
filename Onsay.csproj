@@ -31,4 +31,15 @@
     <None Include="..\lingo-client\core\bin\lingos\*.lingo" Link="lingos\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The lingos only the app ships, not the lingo client: browser, LibreWolf driven over WebDriver BiDi. Each is packed
+       from ..\lingo-client\lingo-library by the lingo client as the app builds. -->
+  <Target Name="PackLingos" BeforeTargets="AssignTargetPaths" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')">
+    <MakeDir Directories="$(IntermediateOutputPath)lingos" />
+    <Exec Command="&quot;..\lingo-client\core\bin\onsay-core.exe&quot; &quot;..\lingo-client\core\obj\pack.json&quot; pack &quot;..\lingo-client\lingo-library\browser&quot; &quot;$(IntermediateOutputPath)lingos&quot;" />
+    <ItemGroup>
+      <Packed Include="$(IntermediateOutputPath)lingos\*.lingo" />
+      <None Include="@(Packed)" Link="lingos\%(Packed.Filename)%(Packed.Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
 </Project>

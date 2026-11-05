@@ -65,6 +65,9 @@ message running; neither opens the chat, so the work keeps the keyboard.
 His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings and his panel, and the chat
 lines, come as lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his
 pointer glides to each click and ripples, and turns into a text cursor that ticks where he types (`HandWindow.cs`).
+That shows only with Show where he clicks on, in Settings, which is off at first: then he flies along with it and the
+chat steps aside. Work in the background, off at first, has him click and type in apps without bringing them to the
+front or moving your mouse, and says so when an app doesn't allow it. Both are kept by the lingo client (`input.modes`).
 
 **What an app may do is decided in one place.** The ceiling in Advanced is the one hard limit on this computer:
 anything on it is allowed to every app that says it needs it, and anything off is refused. Nothing asks per request,
@@ -79,7 +82,7 @@ card, and your answer goes back through `/.lingo/answer`. With the app closed, t
 | Devices | the computers on the account, online or when last seen (`onsay.devices`) |
 | People | everyone an app is shared with, and what of it, with Stop sharing |
 | Activity | the lingo client's `decisions.log` in words, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
-| Settings | sections of one setting a row: the account and signing in and out, starting with Windows, his look, updates and Uninstall Onsay |
+| Settings | sections of one setting a row: the account and signing in and out, starting with Windows, Work in the background and Show where he clicks, his look, updates and Uninstall Onsay |
 | Advanced | the same rows, in plain labels: the ceiling, every rule in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: everything sent to Onsay (`sent.log`), `decisions.log` as written, and the lingo client's `core.log` |
 
 **What it ships.** Every `.lingo` file in `..\lingo-client\core\bin\lingos`, today only `agent`, copied into the lingos

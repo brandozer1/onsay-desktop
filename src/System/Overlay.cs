@@ -12,7 +12,9 @@
 //   {"show":"unpanel"}                                          his panel goes
 //   {"show":"say","text":".."}                                  he says that in the chat while the work goes on (chat.say)
 //   {"show":"step","text":".."}                                 a step line in the chat, under the message running (chat.step)
-// Positions are real pixels on the whole desktop. Each window is made once, on first use, and kept. chat.ask's questions
+// glide, press and type come only while no follow is off (input.modes, set in Settings), so with it on his pointer never
+// shows, he stays where he is and the chat stays open: BuddyWindow and the chat follow Hand. Positions are real pixels
+// on the whole desktop. Each window is made once, on first use, and kept. chat.ask's questions
 // come another way, as the lingo client's questions for the app, see AskWindow.cs.
 //
 // 1. Line(text)    one line from the lingo client, on any thread
