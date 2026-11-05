@@ -1,9 +1,9 @@
 // Screens.cs - the screens lingos draw on, as the onsay lingo on this computer streams them from /onsay/screens: a
-// WebSocket to the lingo client that gives every screen first, then each change, kept here for the to-do list and the
-// Screens window (ScreensWindow.cs). Each screen is a picture a lingo drew, never video.
+// WebSocket to the lingo client that gives every screen first, then each batch of instructions as it is drawn, kept
+// here for the to-do list and the Screens window (ScreensWindow.cs), and drawn here (Drawing.cs). Never video.
 //
 // 1. All, Of(session)     every open screen, oldest first, or those of one to-do
-//    Changed              raised on the UI thread whenever one opens, shows a new picture or closes
+//    Changed              raised on the UI thread whenever one opens, is drawn on or closes
 // 2. Watch(key)           keeps the stream open while the app runs, back again after the lingo client restarts. key
 //                         gives the prompt key, read again before each try
 // 3. Close(id, key)       the person closing one
@@ -11,11 +11,13 @@ using System.IO;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text.Json.Nodes;
-using System.Windows.Media.Imaging;
+using System.Windows.Media;
 
 namespace Onsay.Desktop;
 
-sealed record Screen(long Id, string Session, string Title, BitmapSource? Picture);
+// A screen: its picture as drawn here, null before anything is drawn on it, its size, and its instructions since its
+// last clear.
+sealed record Screen(long Id, string Session, string Title, ImageSource? Picture, double Width, double Height, List<JsonNode?> Drawn);
 
 static class Screens
 {
@@ -31,8 +33,9 @@ static class Screens
 
     ////////// 2. THE STREAM //////////
 
-    // 2. Each message is {screens: [...]}, a closed one {screen, closed: true}. The first has every screen, so what was
-    //    kept from before is let go.
+    /* 2. Each message is {screens: [...]}, each {screen, session, title, draw, fresh}, draw a batch of instructions, in
+          place of what was drawn when fresh, else after it, or a closed one {screen, closed: true}. The first has every
+          screen, so what was kept from before is let go. */
     public static async void Watch(Func<Task<string?>> key)
     {
         if (watching) return;
@@ -57,13 +60,21 @@ static class Screens
                     } while (!got.EndOfMessage && got.MessageType != WebSocketMessageType.Close);
                     if (got.MessageType == WebSocketMessageType.Close) break;
                     var said = JsonNode.Parse(whole.ToArray())?["screens"] as JsonArray ?? new();
-                    var drawn = await Task.Run(() => said.Select(Read).ToList());
                     if (first) open.Clear();
                     first = false;
-                    foreach (var (id, screen) in drawn)
+                    foreach (var s in said)
                     {
-                        if (screen is null) open.Remove(id);
-                        else open[id] = screen with { Picture = screen.Picture ?? open.GetValueOrDefault(id)?.Picture };
+                        long id = (long?)s?["screen"] ?? 0;
+                        if ((bool?)s?["closed"] == true)
+                        {
+                            open.Remove(id);
+                            continue;
+                        }
+                        var drawn = new List<JsonNode?>();
+                        if ((bool?)s?["fresh"] != true && open.TryGetValue(id, out var was)) drawn.AddRange(was.Drawn);
+                        drawn.AddRange(s?["draw"] as JsonArray ?? new());
+                        var (picture, width, height) = await Task.Run(() => Drawing.Draw(drawn));
+                        open[id] = new Screen(id, $"{s?["session"]}", $"{s?["title"]}", drawn.Count > 0 ? picture : null, width, height, drawn);
                     }
                     Changed?.Invoke();
                 }
@@ -76,29 +87,6 @@ static class Screens
             }
             await Task.Delay(2000);
         }
-    }
-
-    // 2. One screen as the stream says it, its picture made ready to draw here, or null for one closed.
-    static (long, Screen?) Read(JsonNode? s)
-    {
-        long id = (long?)s?["screen"] ?? 0;
-        if ((bool?)s?["closed"] == true) return (id, null);
-        BitmapSource? picture = null;
-        try
-        {
-            if (s?["picture"] is JsonValue p && $"{p}".Length > 0)
-            {
-                var image = new BitmapImage();
-                image.BeginInit();
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.StreamSource = new MemoryStream(Convert.FromBase64String($"{p}"));
-                image.EndInit();
-                image.Freeze();
-                picture = image;
-            }
-        }
-        catch (Exception) { }
-        return (id, new Screen(id, $"{s?["session"]}", $"{s?["title"]}", picture));
     }
 
     ////////// 3. CLOSING ONE //////////

@@ -66,7 +66,7 @@ sealed class ScreensWindow : Window
     // A screen's picture in a rounded frame, height tall, as wide as its picture is for that, or 16:10 before it has one.
     static Border Picture(Screen s, double height)
     {
-        double wide = s.Picture is { } p && p.PixelHeight > 0 ? height * p.PixelWidth / p.PixelHeight : height * 1.6;
+        double wide = s.Picture is not null && s.Height > 0 ? height * s.Width / s.Height : height * 1.6;
         return new Border
         {
             Width = wide,
