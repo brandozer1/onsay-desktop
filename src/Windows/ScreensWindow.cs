@@ -32,11 +32,18 @@ sealed class ScreensWindow : Window
 
     ////////// 1. THE STRIP //////////
 
-    // 1. Drawn again whenever a screen changes, while it is on screen.
+    // 1. Drawn again whenever a screen changes, while it is on screen. More than fit scroll sideways, the wheel too while
+    //    over them.
     public static FrameworkElement Strip(string session, double height, Func<string, string> named, Func<string?> key)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        var strip = new ScrollViewer { Content = row, HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        var strip = new ScrollViewer { Content = row, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        strip.PreviewMouseWheel += (_, e) =>
+        {
+            if (strip.ScrollableWidth <= 0) return;
+            strip.ScrollToHorizontalOffset(strip.HorizontalOffset - e.Delta);
+            e.Handled = true;
+        };
         void Draw()
         {
             row.Children.Clear();

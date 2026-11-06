@@ -17,7 +17,8 @@
 //                                         one to-do open
 // 6.  Send(), Add(text), Ask(text)        the box: a new to-do from the list, or a reply to the one open, followed as it
 //                                         runs, and his answer or his questions
-//     List(), Rows(), Item(item, newest)  every to-do, asked every second, each a row with the screens it opened, and
+//     List(), Rows(), Item(item)          every to-do, asked every second, each a row of one height with the screens it
+//                                         opened in a row along its bottom, and
 //                                         Fix(item), Not quite on one. Named(id) is one by what was asked
 //     Load(id), Follow(...)               one to-do open, its whole conversation, and what it does as it runs
 //     ReadKey(), To(method, path, body)   the prompt key, and a request to /onsay with it
@@ -728,15 +729,16 @@ sealed class ChatWindow : Window
         listRows.Children.Clear();
         empty.Visibility = Shown(items.Count == 0);
         for (int i = 0; i < items.Count; i++)
-            if (items[i] is JsonObject item) listRows.Children.Add(Item(item, i == 0));
+            if (items[i] is JsonObject item) listRows.Children.Add(Item(item));
         var top = items.Count > 0 ? $"{items[0]?["session"]}" : null;
         if (top != newest) listPage.ScrollToHome();
         newest = top;
     }
 
-    /* 6. One to-do: what you asked, and under it how far it has got, the step it is on, what it waits for, or the start of
-          its answer, the newest done one showing its whole answer. A click opens it, and a done one has Not quite. */
-    Border Item(JsonObject item, bool newest)
+    /* 6. One to-do, always the same height: what you asked, and under it how far it has got, the step it is on, what it
+          waits for, or the first line of its answer, each one line. Only its screens, in a row along its bottom, add to
+          it. A click opens it, and a done one has Not quite. */
+    Border Item(JsonObject item)
     {
         var id = $"{item["session"]}";
         var now = $"{item["status"]}";
@@ -750,16 +752,8 @@ sealed class ChatWindow : Window
             _ => (DoneIcon, Good, answer.Split('\n')[0]),
         };
         var body = new StackPanel();
-        if (items.FirstOrDefault(i => $"{i?["session"]}" == $"{item["from"]}") is { } before)
-            body.Children.Add(new TextBlock { Text = $"Not quite: {before["prompt"]}", FontSize = 11, Foreground = Ink4, TextTrimming = TextTrimming.CharacterEllipsis });
         body.Children.Add(new TextBlock { Text = $"{item["prompt"]}", FontSize = 13.5, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis });
-        if (now == "done" && newest && answer.Length > 0)
-        {
-            var whole = His(body);
-            whole.Margin = new Thickness(0, 4, 0, 2);
-            whole.Document = Markdown.Render(answer);
-        }
-        else body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
+        body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
         var strip = ScreensWindow.Strip(id, 48, Named, () => promptKey);
         strip.Margin = new Thickness(0, 6, 0, 0);
         body.Children.Add(strip);
@@ -1110,9 +1104,8 @@ sealed class ChatWindow : Window
         });
     }
 
-    // His sit left on the card, the whole width, read only but selectable, with its links and Copy buttons live: in the
-    // conversation, or into another panel, like a row of the list.
-    RichTextBox His(Panel? into = null)
+    // His sit left on the card, the whole width, read only but selectable, with its links and Copy buttons live.
+    RichTextBox His()
     {
         var shown = new RichTextBox
         {
@@ -1125,7 +1118,7 @@ sealed class ChatWindow : Window
             Margin = new Thickness(0, 2, 0, 12),
             Document = new System.Windows.Documents.FlowDocument(),
         };
-        (into ?? lines).Children.Add(shown);
+        lines.Children.Add(shown);
         return shown;
     }
 
