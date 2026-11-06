@@ -104,7 +104,7 @@ started (`Started` in `desktop.json`), so one you turn off stays off.
 
 Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` (the lingo client's home, and a port
 when one is written there) and `core.log` for the lingo client, `core\` for its home (lingos, settings, storage and
-`sent.log`), and `panel\` for his panel's browser storage. A test sets `ONSAY_DATA` to a folder of its own before he
+`sent.log`), `panel\` for his panel's browser storage, and `crash.log`, every error nothing caught, with its whole stack. A test sets `ONSAY_DATA` to a folder of its own before he
 starts, so it never touches yours. Uninstalling, from his settings or Windows' Installed apps, first stops everything
 running from Onsay, the lingo client and the browser he uses included, so its folder goes whole, then asks whether this
 folder and the browser's (`%LocalAppData%\lingo-browser`) go too, and keeps them unless you say so, since most who
