@@ -1,10 +1,12 @@
-// ScreensWindow.cs - the screens lingos draw on, shown: a strip of small ones under a to-do, and one window, full screen,
-// that shows every screen of one to-do full size, one at a time, or every screen open in a grid, each named with its
-// to-do. What is open comes from Screens.cs. A lingo has no say in where its screen shows.
+// ScreensWindow.cs - the screens lingos draw on, shown: a strip of small ones along a to-do, a grid of every screen open
+// for the chat's Screens page, and one window, full screen, that shows one to-do's screens full size, one at a time. What
+// is open comes from Screens.cs. A lingo has no say in where its screen shows.
 //
-// 1. Strip(session, height, named, key)     the small screens of one to-do in a row, kept up to date, hidden with none.
-//                                           A click opens that one full size
-// 2. Open(named, key, session, screen)      the window: one to-do's screens from screen, or with no session the grid
+// 1. Strip(session, height, named, key)     the small screens of one to-do in a row, hidden with none. A click shows
+//                                           that one full screen
+//    Every(named, key)                      every screen open, a card each with its title and its to-do, or a line
+//                                           saying there are none. A click shows that one full screen
+// 2. Open(named, key, session, screen)      the window: one to-do's screens, from screen
 //    Esc, the arrows, Close                 put it away, go through them, close the one showing
 using System.Windows;
 using System.Windows.Controls;
@@ -18,23 +20,18 @@ sealed class ScreensWindow : Window
 {
     static ScreensWindow? shown;
     static readonly SolidColorBrush Backdrop = Hex("#16171F");
-    static readonly SolidColorBrush Dim = Hex("#9A9DB0");
     static readonly SolidColorBrush Blank = Hex("#2A2C38");
 
     readonly Func<string, string> named;   // a to-do's name by its session, what was asked
     readonly Func<string?> key;            // the prompt key, for closing one
     readonly Grid body = new();
     readonly TextBlock title = new() { FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly Border backToGrid;
-    string? session;   // the to-do whose screens show one at a time, or null for the grid
-    long screen;       // the one showing full size
-    bool fromGrid;     // opened from the grid, so Back goes there
-    readonly Dictionary<long, List<(Border picture, double height)>> live = new();   // each picture showing, by its screen
+    string session = "";   // the to-do whose screens show, "" for those of none
+    long screen;           // the one showing full size
 
-    ////////// 1. THE STRIP //////////
+    ////////// 1. SMALL SCREENS //////////
 
-    // 1. Drawn again whenever a screen changes, while it is on screen. More than fit scroll sideways, the wheel too while
-    //    over them.
+    // 1. More than fit scroll sideways, the wheel too while over them.
     public static FrameworkElement Strip(string session, double height, Func<string, string> named, Func<string?> key)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -45,38 +42,82 @@ sealed class ScreensWindow : Window
             strip.ScrollToHorizontalOffset(strip.HorizontalOffset - e.Delta);
             e.Handled = true;
         };
-        var tiles = new Dictionary<long, Border>();
+        Keep(row, () => Screens.Of(session), s =>
+        {
+            var small = Picture(s, height);
+            small.Margin = new Thickness(0, 0, 6, 0);
+            small.ToolTip = s.Title;
+            small.Cursor = Cursors.Hand;
+            small.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                Open(named, key, session, s.Id);
+            };
+            return (small, small, height);
+        }, any => strip.Visibility = Shown(any));
+        return strip;
+    }
+
+    // 1. Two cards to a row on the chat.
+    public static FrameworkElement Every(Func<string, string> named, Func<string?> key)
+    {
+        var cards = new WrapPanel();
+        var none = new TextBlock
+        {
+            Text = "No screens are open. When an app works in the background, like the browser or a video, what it shows appears here.",
+            FontSize = 13, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 8, 8, 0),
+        };
+        Keep(cards, () => Screens.All, s =>
+        {
+            var picture = Picture(s, 112);
+            picture.Width = 176;
+            var card = new StackPanel
+            {
+                Width = 176, Margin = new Thickness(6), Cursor = Cursors.Hand, Background = Brushes.Transparent,
+                Children =
+                {
+                    picture,
+                    new TextBlock { Text = s.Title, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(2, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis },
+                    new TextBlock { Text = s.Session.Length > 0 ? named(s.Session) : "Not part of a to-do", FontSize = 11.5, Foreground = Ink3, Margin = new Thickness(2, 1, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis },
+                },
+            };
+            card.MouseLeftButtonUp += (_, _) => Open(named, key, s.Session, s.Id);
+            return (card, picture, 0);
+        }, any => none.Visibility = Shown(!any));
+        return new StackPanel { Children = { none, cards } };
+    }
+
+    /* Screens kept up to date in a panel while it is on screen: made again, by make, when one opens, closes or joins a
+       to-do, and only its picture painted again when what one shows changes, as each frame of a video does. make gives
+       what goes in the panel, the picture in it and its height for Paint. any says whether there are any. */
+    static void Keep(Panel into, Func<IReadOnlyList<Screen>> which, Func<Screen, (UIElement shown, Border picture, double height)> make, Action<bool> any)
+    {
+        var pictures = new Dictionary<long, (Border picture, double height)>();
         void Draw()
         {
-            row.Children.Clear();
-            tiles.Clear();
-            var mine = Screens.Of(session);
-            strip.Visibility = Shown(mine.Count > 0);
-            foreach (var s in mine)
+            into.Children.Clear();
+            pictures.Clear();
+            var all = which();
+            any(all.Count > 0);
+            foreach (var s in all)
             {
-                var small = Picture(s, height);
-                tiles[s.Id] = small;
-                small.Margin = new Thickness(0, 0, 6, 0);
-                small.ToolTip = s.Title;
-                small.Cursor = Cursors.Hand;
-                small.MouseLeftButtonUp += (_, e) =>
-                {
-                    e.Handled = true;
-                    Open(named, key, session, s.Id);
-                };
-                row.Children.Add(small);
+                var (shown, picture, height) = make(s);
+                pictures[s.Id] = (picture, height);
+                into.Children.Add(shown);
             }
         }
-        // Only what one screen shows changed: its picture is painted again, and another to-do's is no business of this one.
         void Changed(long? id)
         {
             if (id is null) Draw();
-            else if (tiles.TryGetValue(id.Value, out var tile) && Screens.Get(id.Value) is { } s) Paint(tile, s, height);
+            else if (pictures.TryGetValue(id.Value, out var p) && Screens.Get(id.Value) is { } s) Paint(p.picture, s, p.height);
         }
-        strip.Loaded += (_, _) => Screens.Changed += Changed;
-        strip.Unloaded += (_, _) => Screens.Changed -= Changed;
+        into.Loaded += (_, _) =>
+        {
+            Screens.Changed += Changed;
+            Draw();
+        };
+        into.Unloaded += (_, _) => Screens.Changed -= Changed;
         Draw();
-        return strip;
     }
 
     // A screen's picture in a rounded frame, height tall, as wide as its picture is for that, or 16:10 before it has one.
@@ -97,13 +138,12 @@ sealed class ScreensWindow : Window
     // A screen's picture, whole, or a plain grey until its app shows one.
     static Brush Fill(Screen s) => s.Picture is null ? Blank : new ImageBrush(s.Picture) { Stretch = Stretch.Uniform };
 
-    ////////// 2. THE WINDOW //////////
+    ////////// 2. FULL SCREEN //////////
 
     // 2. One window at a time: opened again, it shows what was asked for.
-    public static void Open(Func<string, string> named, Func<string?> key, string? session = null, long screen = 0)
+    public static void Open(Func<string, string> named, Func<string?> key, string session, long screen)
     {
         shown ??= new ScreensWindow(named, key);
-        shown.fromGrid = session is not null && shown.IsVisible && shown.session is null;
         shown.session = session;
         shown.screen = screen;
         shown.Draw();
@@ -121,14 +161,8 @@ sealed class ScreensWindow : Window
         ShowInTaskbar = true;
         Background = Backdrop;
         FontFamily = Ui;
-        backToGrid = Dark("", () =>
-        {
-            session = null;
-            Draw();
-        }, "Every screen");
         var head = new DockPanel { Margin = new Thickness(20, 14, 14, 10) };
-        head.Children.Add(Right(Dark("", Close, "Close (Esc)")));
-        head.Children.Add(backToGrid);
+        head.Children.Add(Right(Dark("", Close, "Close (Esc)")));
         head.Children.Add(title);
         var layout = new Grid { RowDefinitions = { new RowDefinition { Height = GridLength.Auto }, new RowDefinition() } };
         Grid.SetRow(body, 1);
@@ -152,6 +186,8 @@ sealed class ScreensWindow : Window
         };
     }
 
+    readonly Dictionary<long, List<(Border picture, double height)>> live = new();   // each picture showing, by its screen
+
     // 2. Only what one screen shows changed: each picture of it is painted again, and nothing else is made again.
     void Changed(long? id)
     {
@@ -168,64 +204,23 @@ sealed class ScreensWindow : Window
         return picture;
     }
 
-    // 2. A to-do with no screens left goes back to the grid, and the grid with none says so.
+    // 2. One screen as big as the window lets it, the arrows either side, and every screen of the to-do along the bottom.
+    //    With none left it goes.
     void Draw()
     {
         body.Children.Clear();
         live.Clear();
-        var mine = session is null ? new List<Screen>() : Screens.Of(session).ToList();
-        if (session is not null && mine.Count == 0) session = null;
-        backToGrid.Visibility = Shown(session is not null && fromGrid);
-        if (session is null) Every();
-        else Gallery(mine);
-    }
-
-    // 2. Every screen open, each a card with its title and its to-do. A click shows that to-do's screens full size.
-    void Every()
-    {
-        var all = Screens.All;
-        title.Text = all.Count == 1 ? "1 screen" : $"{all.Count} screens";
-        if (all.Count == 0)
+        var mine = Screens.Of(session).ToList();
+        if (mine.Count == 0)
         {
-            body.Children.Add(new TextBlock { Text = "No screens are open. When an app works in the background, like the browser, what it shows appears here.", Foreground = Dim, FontSize = 14, Margin = new Thickness(20), TextWrapping = TextWrapping.Wrap });
+            Close();
             return;
         }
-        var cards = new WrapPanel { Margin = new Thickness(14, 0, 14, 14) };
-        foreach (var s in all)
-        {
-            var picture = Live(s, Picture(s, 220), 0);
-            picture.Width = 352;
-            picture.BorderThickness = new Thickness(0);
-            var card = new StackPanel
-            {
-                Margin = new Thickness(6, 6, 6, 10), Width = 352, Cursor = Cursors.Hand, Background = Brushes.Transparent,
-                Children =
-                {
-                    picture,
-                    new TextBlock { Text = s.Title, Foreground = Brushes.White, FontSize = 13, FontWeight = FontWeights.SemiBold, Margin = new Thickness(2, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis },
-                    new TextBlock { Text = s.Session.Length > 0 ? named(s.Session) : "Not part of a to-do", Foreground = Dim, FontSize = 12, Margin = new Thickness(2, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis },
-                },
-            };
-            card.MouseLeftButtonUp += (_, _) =>
-            {
-                fromGrid = true;
-                session = s.Session;
-                screen = s.Id;
-                Draw();
-            };
-            cards.Children.Add(card);
-        }
-        body.Children.Add(new ScrollViewer { Content = cards, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-    }
-
-    // 2. One screen as big as the window lets it, the arrows either side, and every screen of the to-do along the bottom.
-    void Gallery(List<Screen> mine)
-    {
         int at = Math.Max(0, mine.FindIndex(s => s.Id == screen));
         var s = mine[at];
         screen = s.Id;
-        title.Text = mine.Count > 1 ? $"{s.Title}  ·  {at + 1} of {mine.Count}  ·  {named(s.Session)}" : $"{s.Title}  ·  {named(s.Session)}";
-        if (s.Session.Length == 0) title.Text = s.Title;
+        var of = session.Length > 0 ? $"  ·  {named(session)}" : "";
+        title.Text = mine.Count > 1 ? $"{s.Title}  ·  {at + 1} of {mine.Count}{of}" : $"{s.Title}{of}";
         var big = Live(s, new Border { Background = Fill(s), Margin = new Thickness(64, 0, 64, 0) }, 0);
         var shelf = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 16) };
         foreach (var one in mine)
@@ -249,8 +244,8 @@ sealed class ScreensWindow : Window
         var middle = new Grid { Children = { big } };
         if (mine.Count > 1)
         {
-            var left = Dark("", () => Step(-1), "The one before (Left)");
-            var right = Dark("", () => Step(1), "The next one (Right)");
+            var left = Dark("", () => Step(-1), "The one before (Left)");
+            var right = Dark("", () => Step(1), "The next one (Right)");
             left.Margin = new Thickness(16, 0, 0, 0);
             right.Margin = new Thickness(0, 0, 16, 0);
             right.HorizontalAlignment = HorizontalAlignment.Right;
@@ -267,7 +262,6 @@ sealed class ScreensWindow : Window
     // 2. The one before or after, round from the ends.
     void Step(int by)
     {
-        if (session is null) return;
         var mine = Screens.Of(session).ToList();
         if (mine.Count < 2) return;
         int at = mine.FindIndex(s => s.Id == screen);

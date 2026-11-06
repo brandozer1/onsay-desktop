@@ -13,8 +13,8 @@
 //                                         ends whatever it was doing
 // 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
 //                                         Settings, Account, and signing out from there
-// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, the list or
-//                                         one to-do open
+// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, the list,
+//                                         one to-do open, or Screens, every screen open
 // 6.  Send(), Add(text), Ask(text)        the box: a new to-do from the list, or a reply to the one open, followed as it
 //                                         runs, and his answer or his questions
 //     List(), Rows(), Item(item)          every to-do, asked every second, each a row of one height with the screens it
@@ -87,6 +87,7 @@ sealed class ChatWindow : Window
     readonly Border screensBar = new() { Margin = new Thickness(14, 8, 14, 0) };   // the open to-do's screens, over the box
     readonly FrameworkElement empty;             // the greeting, while there are no to-dos yet
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    readonly ScrollViewer screensPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };   // every screen open, a card each
     readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
     readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
     readonly Ellipse readyDot = new() { Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0) };
@@ -122,6 +123,7 @@ sealed class ChatWindow : Window
     JsonObject? status;
     bool refreshing;
     string? session;                             // the to-do open, its session in the onsay lingo, or null for the list
+    bool showingScreens;                         // the Screens page shows, over the list or the to-do open
     string? promptKey;                           // the onsay lingo's prompt key, read again for each message
     int chat;                                    // which page this is, so an answer to one left behind is dropped
     bool waiting;                                // a reply to the one open is out
@@ -196,9 +198,11 @@ sealed class ChatWindow : Window
         // The header: him, who he is and where, and the buttons.
         back = Button(BackIcon, Kind.Icon, () =>
         {
-            Clear();
+            if (showingScreens) showingScreens = false;
+            else Clear();
+            Page();
             box.Focus();
-        }, "All your to-dos");
+        }, "Back");
         back.Margin = new Thickness(0, 0, 6, 0);
         Border more = null!;
         more = Button(MoreIcon, Kind.Icon, () => Menu(more), "More");
@@ -237,6 +241,17 @@ sealed class ChatWindow : Window
             },
         };
         listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, asksPanel, listRows } };
+
+        // The Screens page: every screen open, a card each, a click showing it full screen.
+        screensPage.Content = new StackPanel
+        {
+            Margin = new Thickness(10, 10, 10, 6),
+            Children =
+            {
+                new TextBlock { Text = "Screens", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(8, 0, 0, 4) },
+                ScreensWindow.Every(Named, () => promptKey),
+            },
+        };
 
         // The chat page follows new content only while you are at the bottom, so scrolling up to read stays put.
         chatPage.Content = lines;
@@ -290,7 +305,11 @@ sealed class ChatWindow : Window
         // The bottom line: what he may do here, every screen open, Let me choose, and the stop key, written the way a
         // keyboard shortcut is.
         var apps = Button("Apps", Kind.Quiet, () => SettingsWindow.Open(settings, this), "Turn apps on or off, and see what each may do");
-        var screens = Button("Screens", Kind.Quiet, () => ScreensWindow.Open(Named, () => promptKey), "Every screen open, what your apps are showing as they work");
+        var screens = Button("Screens", Kind.Quiet, () =>
+        {
+            showingScreens = true;
+            Page();
+        }, "Every screen open, what your apps are showing as they work");
         var knob = new Ellipse { Width = 12, Height = 12, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
         var track = new Border { Width = 30, Height = 16, CornerRadius = new CornerRadius(8), Child = knob, Margin = new Thickness(0, 0, 6, 0) };
         void Choosing()
@@ -336,7 +355,7 @@ sealed class ChatWindow : Window
         footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, screens, choose } };
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { signInPage, listPage, chatPage } };
+        var pages = new Grid { Children = { signInPage, listPage, chatPage, screensPage } };
         var layout = new Grid();
         UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, screensBar, input, footer };
         for (int i = 0; i < rows.Length; i++)
@@ -637,9 +656,10 @@ sealed class ChatWindow : Window
         bool open = on && session is not null;
         bool connected = (bool?)status?["connected"] == true;
         signInPage.Visibility = Shown(known && !on);
-        listPage.Visibility = Shown(!known || (on && !open));
-        chatPage.Visibility = Shown(open);
-        back.Visibility = Shown(open);
+        listPage.Visibility = Shown(!known || (on && !open && !showingScreens));
+        chatPage.Visibility = Shown(open && !showingScreens);
+        screensPage.Visibility = Shown(on && showingScreens);
+        back.Visibility = Shown(open || (on && showingScreens));
         input.Visibility = Shown(on);
         footer.Visibility = Shown(on);
 
@@ -794,6 +814,7 @@ sealed class ChatWindow : Window
     async void Load(string id)
     {
         Clear();
+        showingScreens = false;
         session = id;
         screensBar.Child = ScreensWindow.Strip(id, 64, Named, () => promptKey);
         int mine = chat;
