@@ -140,10 +140,11 @@ static class Core
             catch (IOException) { }   // still open somewhere: the one there stays until next time
         var p = new Process
         {
+            // In its home, never the app's folder, so nothing it starts holds that folder open through an update or an uninstall.
             StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\"")
             {
                 CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
-                StandardOutputEncoding = Encoding.UTF8,
+                StandardOutputEncoding = Encoding.UTF8, WorkingDirectory = Home,
             },
             EnableRaisingEvents = true,
         };
@@ -229,6 +230,7 @@ static class Core
         {
             CreateNoWindow = true,
             UseShellExecute = false,
+            WorkingDirectory = Directory.Exists(Home) ? Home : Settings.Folder,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,

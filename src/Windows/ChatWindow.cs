@@ -160,6 +160,21 @@ sealed class ChatWindow : Window
     bool offeredSubscription;
 
     public bool Busy => waiting;                    // a message sent from here is being answered
+
+    /* Whether nothing is happening that a restart would cut short, so an update may go in: the card put away, which a
+       lingo's question opens, and no to-do working, as the onsay lingo lists them. Not knowing counts as busy. */
+    public async Task<bool> Idle()
+    {
+        if (Showing || waiting) return false;
+        try
+        {
+            await ReadKey();
+            using var res = await Http.SendAsync(To(HttpMethod.Get, "/sessions"));
+            if (JsonNode.Parse(await res.Content.ReadAsStringAsync()) is not JsonArray all) return false;
+            return all.All(i => $"{i?["status"]}" != "working");
+        }
+        catch (Exception) { return false; }
+    }
     bool Showing => IsVisible && !closing;          // open, and not on its way out
     bool SignedIn => (bool?)status?["signed_in"] == true;
 

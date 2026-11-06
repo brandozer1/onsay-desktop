@@ -1,79 +1,68 @@
-// Updates.cs - keeping Onsay up to date, and removing it. Built with Velopack (release.ps1 makes the installer): a
-// minute after he starts, and every six hours after, he looks for a newer version, downloads it quietly, and it goes
-// in when he next quits, so he never restarts on you. A build that was never installed (start.ps1's) does nothing here.
+// Updates.cs - keeping Onsay up to date, and removing it. Built with Velopack (release.ps1 makes the installer). Half a
+// minute after he starts, and every hour after, he asks Onsay's server for a newer version (api.onsay.dev/updates, which
+// hands out this repo's newest GitHub release) and downloads it quietly. It goes in by itself the next time he isn't
+// busy, his card put away and no to-do working: he blinks out and back on the newer version, and nobody presses
+// anything. Quit before then, and it goes in as he next starts. A build that was never installed (start.ps1's) does
+// nothing here.
 //
 // The updater itself almost never changes: Velopack installs a tiny separate program that applies updates, and that is
 // what updates everything else, so a new version of Onsay is a normal update, never a reinstall. Keep it that way:
 // nothing the updater needs lives in the app's own update logic.
 //
-// 1. Start()                  the background checks, from startup
-// 2. CheckNow()               looks now, on request, and says what it found, in plain words
-// 3. Installed, Version       whether this copy was installed (so it updates and can be removed), and its version
-// 4. Shortcut(where, on)      his desktop or Start menu shortcut: whether it is there, and making or removing it
-// 5. Uninstall()              removes Onsay, its shortcuts and its startup, through the uninstaller Windows registered
-//    Uninstalling()           as it is removed: no more starting with Windows, and what it keeps goes too if the person
-//                             says so
+// 1. Start(idle)              the checks, from startup. idle says whether nothing is happening that a restart would cut
+//                             short
+// 2. Installed, Version       whether this copy was installed (so it updates and can be removed), and its version
+// 3. Shortcut(where, on)      his desktop or Start menu shortcut: whether it is there, and making or removing it
+// 4. Uninstall()              removes Onsay, its shortcuts and its startup, through the uninstaller Windows registered
+//    Uninstalling()           as it is removed: everything running from it stopped, so its folder goes whole, no more
+//                             starting with Windows, and what it keeps goes too if the person says so
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using Velopack;
 using Velopack.Locators;
-using Velopack.Sources;
 using Velopack.Windows;
 
 namespace Onsay.Desktop;
 
 static class Updates
 {
-    // Where the releases live: this repo's GitHub releases, which .github/workflows/release.yml makes. Velopack reads
-    // them natively, so the repo must be public.
-    const string Feed = "https://github.com/brandozer1/onsay-desktop";
+    // Where installed copies ask for a newer version: Onsay's own server, which hands out this repo's GitHub releases
+    // (onsay's server/routes/updates.js), so where they live can change without changing a copy already installed.
+    const string Feed = "https://api.onsay.dev/updates";
 
-    static UpdateManager Manager => new(new GithubSource(Feed, null, false));
+    static UpdateManager Manager => new(Feed);
 
-    ////////// 1-2. LOOKING FOR A NEWER VERSION //////////
+    ////////// 1. A NEWER VERSION //////////
 
-    // A newer version downloaded, to go in when he next quits: its version, or null when this one is the newest.
-    static async Task<string?> Fetch()
-    {
-        var um = Manager;
-        if (await um.CheckForUpdatesAsync() is not { } newer) return null;
-        await um.DownloadUpdatesAsync(newer);
-        um.WaitExitThenApplyUpdates(newer.TargetFullRelease, silent: true, restart: false);
-        return newer.TargetFullRelease.Version.ToString();
-    }
-
-    // 1. A check that fails, offline or with nothing published yet, is tried again next time.
-    public static async void Start()
+    // 1. A check that fails, offline or with nothing published yet, is tried again the next hour. Once one is downloaded,
+    //    whether he may go in is asked every minute.
+    public static async void Start(Func<Task<bool>> idle)
     {
         if (!Installed) return;
-        await Task.Delay(TimeSpan.FromMinutes(1));
+        await Task.Delay(TimeSpan.FromSeconds(30));
         while (true)
         {
-            try { if (await Fetch() is not null) return; } catch (Exception) { }
-            await Task.Delay(TimeSpan.FromHours(6));
+            try
+            {
+                var um = Manager;
+                if (await um.CheckForUpdatesAsync() is { } newer)
+                {
+                    await um.DownloadUpdatesAsync(newer);
+                    while (!await idle()) await Task.Delay(TimeSpan.FromMinutes(1));
+                    um.ApplyUpdatesAndRestart(newer.TargetFullRelease);
+                    return;
+                }
+            }
+            catch (Exception) { }
+            await Task.Delay(TimeSpan.FromHours(1));
         }
     }
 
-    // 2. Only for an installed copy. Never throws: the message says what happened.
-    public static async Task<string> CheckNow()
-    {
-        try
-        {
-            var version = await Fetch();
-            if (version is null) return "Onsay is up to date.";
-            return $"Version {version} is ready, and goes in next time you quit Onsay.";
-        }
-        catch (Exception e)
-        {
-            return $"Couldn't check just now: {e.Message}";
-        }
-    }
+    ////////// 2-3. THIS COPY //////////
 
-    ////////// 3-4. THIS COPY //////////
-
-    // 3.
+    // 2.
     public static bool Installed
     {
         get
@@ -92,7 +81,7 @@ static class Updates
         }
     }
 
-    // 4. Velopack's own shortcuts, so they point at the copy that updates and go when he is uninstalled. Only for an
+    // 3. Velopack's own shortcuts, so they point at the copy that updates and go when he is uninstalled. Only for an
     //    installed copy.
     public static bool Shortcut(ShortcutLocation where)
     {
@@ -118,9 +107,9 @@ static class Updates
         catch { }
     }
 
-    ////////// 5. REMOVING IT //////////
+    ////////// 4. REMOVING IT //////////
 
-    // 5. Through the uninstaller Velopack registered with Windows (the same one Windows' Installed apps uses), so it
+    // 4. Through the uninstaller Velopack registered with Windows (the same one Windows' Installed apps uses), so it
     //    removes everything, startup included. If Windows has none for it, opens Windows' Installed apps instead.
     public static void Uninstall()
     {
@@ -138,27 +127,35 @@ static class Updates
         try { Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true }); } catch { }
     }
 
-    /* 5. However it is removed, from his settings or Windows' Installed apps. Everything he keeps, in Settings.Folder, stays
-          unless the person says to delete it, since most who uninstall mean to install again. It is deleted once Onsay and
-          the lingo client are closed, so nothing holds a file open. Velopack gives this half a minute: no answer by then
-          keeps it all. */
+    // The browser lingo's own folder, where it keeps LibreWolf and its profile, unless its folder setting moved it.
+    static readonly string BrowserFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "lingo-browser");
+
+    /* 4. However it is removed, from his settings or Windows' Installed apps. First everything running from Onsay is
+          stopped, the lingo client and its browser included, so no file in its folder is held open and the folder goes
+          whole. Everything he keeps, in Settings.Folder and the browser's folder, stays unless the person says to delete
+          it, since most who uninstall mean to install again. Velopack gives this half a minute: no answer by then keeps it
+          all. */
     public static void Uninstalling()
     {
         Startup.Set(false);
-        var answer = MessageBox.Show(
-            "Delete your Onsay data too? Your settings, sign in, AI keys, apps and chats on this computer will be gone.\n\nChoose No to keep them if you'll install Onsay again.",
-            "Uninstall Onsay", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
-        if (answer != MessageBoxResult.Yes) return;
-        foreach (var p in Process.GetProcessesByName("onsay-core").Concat(Process.GetProcessesByName("Onsay")))
+        var mine = new[] { AppContext.BaseDirectory, BrowserFolder };
+        foreach (var p in Process.GetProcesses())
         {
             if (p.Id == Environment.ProcessId) continue;
             try
             {
-                p.Kill();
+                var file = p.MainModule?.FileName ?? "";
+                if (!mine.Any(folder => file.StartsWith(folder, StringComparison.OrdinalIgnoreCase))) continue;
+                p.Kill(entireProcessTree: true);
                 p.WaitForExit(3000);
             }
-            catch { }
+            catch { }   // another person's, or gone already
         }
-        try { Directory.Delete(Settings.Folder, recursive: true); } catch { }
+        var answer = MessageBox.Show(
+            "Delete your Onsay data too? Your settings, sign in, AI keys, apps, chats and the browser he uses on this computer will be gone.\n\nChoose No to keep them if you'll install Onsay again.",
+            "Uninstall Onsay", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+        foreach (var folder in new[] { Settings.Folder, BrowserFolder })
+            try { Directory.Delete(folder, recursive: true); } catch { }
     }
 }

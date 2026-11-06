@@ -105,8 +105,10 @@ started (`Started` in `desktop.json`), so one you turn off stays off.
 Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` (the lingo client's home, and a port
 when one is written there) and `core.log` for the lingo client, `core\` for its home (lingos, settings, storage and
 `sent.log`), and `panel\` for his panel's browser storage. A test sets `ONSAY_DATA` to a folder of its own before he
-starts, so it never touches yours. Uninstalling, from his settings or Windows' Installed apps, asks whether this folder
-goes too, and keeps it unless you say so, since most who uninstall mean to install again.
+starts, so it never touches yours. Uninstalling, from his settings or Windows' Installed apps, first stops everything
+running from Onsay, the lingo client and the browser he uses included, so its folder goes whole, then asks whether this
+folder and the browser's (`%LocalAppData%\lingo-browser`) go too, and keeps them unless you say so, since most who
+uninstall mean to install again.
 
 ## Building
 
@@ -123,8 +125,10 @@ client and the app, packs them with Velopack (`release.ps1`), and puts them on t
 `Onsay-win-Setup.exe`, the portable zip, and the packages installed copies update from. It needs no secrets.
 
 The installer puts him in `%LocalAppData%\Onsay` for that person alone, with no admin rights, and opens him. Installed
-copies look for a newer release a minute after starting and every six hours, download it quietly, and it goes in when he
-next quits (`src/System/Updates.cs`).
+copies ask Onsay's server for a newer release half a minute after starting and every hour (`api.onsay.dev/updates`,
+which hands out this repo's newest release, onsay's `server/routes/updates.js`), download it quietly, and put it in by
+themselves the next time he isn't busy, his card put away and no to-do working, or as he next starts
+(`src/System/Updates.cs`). Nobody presses anything.
 
 ## Layout
 

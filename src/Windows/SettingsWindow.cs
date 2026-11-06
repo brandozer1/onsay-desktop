@@ -969,13 +969,7 @@ sealed class SettingsWindow : Window
             p.Children.Add(Item("Built on this computer", "This copy doesn't update itself."));
             return p;
         }
-        var checking = Note("");
-        p.Children.Add(Item($"Version {Updates.Version}", "A newer version downloads quietly and goes in the next time you quit.", Button("Check now", Kind.Quiet, async () =>
-        {
-            checking.Text = "Checking...";
-            checking.Text = await Updates.CheckNow();
-        })));
-        p.Children.Add(checking);
+        p.Children.Add(Item($"Version {Updates.Version}", "Updates by itself: a newer version downloads quietly and goes in while he isn't busy."));
         p.Children.Add(Section("Remove Onsay"));
         p.Children.Add(Item("Uninstall Onsay", "Takes the app, its shortcuts and its startup off this computer, and asks whether your settings and chats go too.", Button("Uninstall", Kind.Danger, () =>
         {
