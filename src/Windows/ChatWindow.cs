@@ -793,6 +793,7 @@ sealed class ChatWindow : Window
         session = id;
         screensBar.Child = ScreensWindow.Strip(id, 64, Named, () => promptKey);
         int mine = chat;
+        watched = mine;   // while it loads and runs, the list never loads it again over itself
         var item = items.FirstOrDefault(i => $"{i?["session"]}" == id);
         loaded = $"{item?["status"]}";
         Page();
@@ -824,8 +825,11 @@ sealed class ChatWindow : Window
             His().Document = Markdown.Render(device.Length > 0 ? $"Waiting for {device}. I'll do it as soon as {device} is on." : "Waiting to reach Onsay. I'll do it as soon as this computer is back online.");
         }
         chatPage.ScrollToEnd();
-        if (loaded is not ("working" or "asking")) return;
-        watched = mine;
+        if (loaded is not ("working" or "asking"))
+        {
+            watched = -1;
+            return;
+        }
         Working($"{item?["step"] ?? "Working on it"}");
         await Follow(mine, Steps(), CancellationToken.None, untilIdle: true);
         if (mine != chat) return;
@@ -910,7 +914,6 @@ sealed class ChatWindow : Window
         var card = followed is null ? null : await followed;
         if (mine != chat) return;
         waiting = false;
-        loaded = null;
         Working(null);
         if (card is not null) card.IsEnabled = false;
         // The answer has every step, for those that came while this computer was too busy to say.
@@ -927,6 +930,10 @@ sealed class ChatWindow : Window
             else if (answer["waiting"] is not null) await Replied(answer["waiting"]!.ToString().Length > 0 ? $"Waiting for {answer["waiting"]}. I'll do it as soon as it's on." : "Waiting to reach Onsay. I'll do it as soon as this computer is back online.", "Waiting", ms);
             else await Replied($"{answer["text"]}", "Done", ms);
         }
+        // What the list says of it now, so the reply just drawn is never loaded again over itself.
+        loaded = "done";
+        if (answer?["questions"] is not null) loaded = "asking";
+        if (answer?["waiting"] is not null) loaded = "waiting";
         List();
         Trial();
     }
@@ -1010,12 +1017,15 @@ sealed class ChatWindow : Window
     void Working(string? text)
     {
         ReadyInput();
+        bool was = working.Visibility == Visibility.Visible;
         if (text is not null && text != workingText.Text) doingSince = DateTime.Now;
         working.Visibility = Shown(text is not null);
         workingText.Text = text ?? "";
-        workingTime.Text = text is null ? "" : Took(0, live: true);
+        workingTime.Text = text is null ? "" : Took((DateTime.Now - doingSince).TotalMilliseconds, live: true);
         if (text is null) tick.Stop();
         else tick.Start();
+        // Asked again with the bar already showing, the dots keep their beat.
+        if (was == (text is not null)) return;
         for (int i = 0; i < dots.Length; i++)
         {
             if (text is null)
