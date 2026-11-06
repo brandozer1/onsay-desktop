@@ -29,6 +29,7 @@ sealed class ScreensWindow : Window
     string? session;   // the to-do whose screens show one at a time, or null for the grid
     long screen;       // the one showing full size
     bool fromGrid;     // opened from the grid, so Back goes there
+    readonly Dictionary<long, List<(Border picture, double height)>> live = new();   // each picture showing, by its screen
 
     ////////// 1. THE STRIP //////////
 
@@ -44,14 +45,17 @@ sealed class ScreensWindow : Window
             strip.ScrollToHorizontalOffset(strip.HorizontalOffset - e.Delta);
             e.Handled = true;
         };
+        var tiles = new Dictionary<long, Border>();
         void Draw()
         {
             row.Children.Clear();
+            tiles.Clear();
             var mine = Screens.Of(session);
             strip.Visibility = Shown(mine.Count > 0);
             foreach (var s in mine)
             {
                 var small = Picture(s, height);
+                tiles[s.Id] = small;
                 small.Margin = new Thickness(0, 0, 6, 0);
                 small.ToolTip = s.Title;
                 small.Cursor = Cursors.Hand;
@@ -63,7 +67,12 @@ sealed class ScreensWindow : Window
                 row.Children.Add(small);
             }
         }
-        void Changed() => Draw();
+        // Only what one screen shows changed: its picture is painted again, and another to-do's is no business of this one.
+        void Changed(long? id)
+        {
+            if (id is null) Draw();
+            else if (tiles.TryGetValue(id.Value, out var tile) && Screens.Get(id.Value) is { } s) Paint(tile, s, height);
+        }
         strip.Loaded += (_, _) => Screens.Changed += Changed;
         strip.Unloaded += (_, _) => Screens.Changed -= Changed;
         Draw();
@@ -73,16 +82,16 @@ sealed class ScreensWindow : Window
     // A screen's picture in a rounded frame, height tall, as wide as its picture is for that, or 16:10 before it has one.
     static Border Picture(Screen s, double height)
     {
-        double wide = s.Picture is not null && s.Height > 0 ? height * s.Width / s.Height : height * 1.6;
-        return new Border
-        {
-            Width = wide,
-            Height = height,
-            CornerRadius = new CornerRadius(6),
-            BorderBrush = Edge_,
-            BorderThickness = new Thickness(1),
-            Background = Fill(s),
-        };
+        var b = new Border { Height = height, CornerRadius = new CornerRadius(6), BorderBrush = Edge_, BorderThickness = new Thickness(1) };
+        Paint(b, s, height);
+        return b;
+    }
+
+    // What a screen shows now, on a picture of it already made. height 0 leaves its size as it is.
+    static void Paint(Border b, Screen s, double height)
+    {
+        b.Background = Fill(s);
+        if (height > 0) b.Width = s.Picture is not null && s.Height > 0 ? height * s.Width / s.Height : height * 1.6;
     }
 
     // A screen's picture, whole, or a plain grey until its app shows one.
@@ -135,18 +144,35 @@ sealed class ScreensWindow : Window
             else return;
             e.Handled = true;
         };
-        Screens.Changed += Draw;
+        Screens.Changed += Changed;
         Closed += (_, _) =>
         {
-            Screens.Changed -= Draw;
+            Screens.Changed -= Changed;
             shown = null;
         };
+    }
+
+    // 2. Only what one screen shows changed: each picture of it is painted again, and nothing else is made again.
+    void Changed(long? id)
+    {
+        if (id is null) Draw();
+        else if (live.TryGetValue(id.Value, out var pictures) && Screens.Get(id.Value) is { } s)
+            foreach (var (picture, height) in pictures) Paint(picture, s, height);
+    }
+
+    // What a screen shows, kept up to date as it changes.
+    Border Live(Screen s, Border picture, double height)
+    {
+        if (!live.TryGetValue(s.Id, out var pictures)) live[s.Id] = pictures = new();
+        pictures.Add((picture, height));
+        return picture;
     }
 
     // 2. A to-do with no screens left goes back to the grid, and the grid with none says so.
     void Draw()
     {
         body.Children.Clear();
+        live.Clear();
         var mine = session is null ? new List<Screen>() : Screens.Of(session).ToList();
         if (session is not null && mine.Count == 0) session = null;
         backToGrid.Visibility = Shown(session is not null && fromGrid);
@@ -167,7 +193,7 @@ sealed class ScreensWindow : Window
         var cards = new WrapPanel { Margin = new Thickness(14, 0, 14, 14) };
         foreach (var s in all)
         {
-            var picture = Picture(s, 220);
+            var picture = Live(s, Picture(s, 220), 0);
             picture.Width = 352;
             picture.BorderThickness = new Thickness(0);
             var card = new StackPanel
@@ -200,11 +226,11 @@ sealed class ScreensWindow : Window
         screen = s.Id;
         title.Text = mine.Count > 1 ? $"{s.Title}  ·  {at + 1} of {mine.Count}  ·  {named(s.Session)}" : $"{s.Title}  ·  {named(s.Session)}";
         if (s.Session.Length == 0) title.Text = s.Title;
-        var big = new Border { Background = Fill(s), Margin = new Thickness(64, 0, 64, 0) };
+        var big = Live(s, new Border { Background = Fill(s), Margin = new Thickness(64, 0, 64, 0) }, 0);
         var shelf = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 16) };
         foreach (var one in mine)
         {
-            var small = Picture(one, 56);
+            var small = Live(one, Picture(one, 56), 56);
             small.Margin = new Thickness(4, 0, 4, 0);
             small.Cursor = Cursors.Hand;
             small.BorderBrush = one.Id == s.Id ? Accent : Brushes.Transparent;

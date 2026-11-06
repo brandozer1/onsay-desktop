@@ -115,18 +115,25 @@ sealed class AskWindow : Window
                 var who = Core.Who(caller, handle is null ? null : $"{handle}");
                 words.Text = $"{who} wants {app} to {does} here.";
             }
-            Show();
         }
 
-        // Beside him, wherever he is now, clear of his chat when it is open.
-        UpdateLayout();
-        double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        // Beside him, wherever he is now, clear of his chat when it is open. Worked out before it shows, from the size its
+        // card asks for, so it never draws a frame anywhere else first.
+        var card = (FrameworkElement)Content;
+        card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var at = body();
         var monitor = MonitorAt(at.Center, MONITOR_DEFAULTTONEAREST);
-        int width = (int)Math.Round(ActualWidth * scale);
-        int height = (int)Math.Round(ActualHeight * scale);
+        double scale = ScaleAt(monitor.rcMonitor.Center);
+        int width = (int)Math.Round(card.DesiredSize.Width * scale);
+        int height = (int)Math.Round(card.DesiredSize.Height * scale);
         int gap = (int)Math.Round((6 - Shadow) * scale);
         var spot = Dock.Beside(monitor, at, width, height, gap, null, out _, chat.SideNow);
+        if (!IsVisible)
+        {
+            Left = spot.X / scale;
+            Top = spot.Y / scale;
+            Show();
+        }
         Place(new System.Windows.Interop.WindowInteropHelper(this).Handle, spot);
     }
 

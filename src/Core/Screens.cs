@@ -2,8 +2,9 @@
 // WebSocket to the lingo client that gives every screen first, then each batch of instructions as it is drawn, kept
 // here for the to-do list and the Screens window (ScreensWindow.cs), and drawn here (Drawing.cs). Never video.
 //
-// 1. All, Of(session)     every open screen, oldest first, or those of one to-do
-//    Changed              raised on the UI thread whenever one opens, is drawn on or closes
+// 1. All, Of(session)     every open screen, oldest first, or those of one to-do, and Get(id) one by its id
+//    Changed(id)          raised on the UI thread: with an id when only what that screen shows changed, so only its
+//                         pictures need painting again, and null when one opened, closed or moved to a to-do
 // 2. Watch(key)           keeps the stream open while the app runs, back again after the lingo client restarts. key
 //                         gives the prompt key, read again before each try
 // 3. Close(id, key)       the person closing one
@@ -29,7 +30,8 @@ static class Screens
     // 1.
     public static IReadOnlyList<Screen> All => open.Values.OrderBy(s => s.Id).ToList();
     public static IReadOnlyList<Screen> Of(string session) => All.Where(s => s.Session == session).ToList();
-    public static event Action? Changed;
+    public static Screen? Get(long id) => open.GetValueOrDefault(id);
+    public static event Action<long?>? Changed;
 
     ////////// 2. THE STREAM //////////
 
@@ -60,6 +62,8 @@ static class Screens
                     } while (!got.EndOfMessage && got.MessageType != WebSocketMessageType.Close);
                     if (got.MessageType == WebSocketMessageType.Close) break;
                     var said = JsonNode.Parse(whole.ToArray())?["screens"] as JsonArray ?? new();
+                    bool moved = first;   // whether one opened, closed or changed to-do, not only what it shows
+                    var painted = new List<long>();
                     if (first) open.Clear();
                     first = false;
                     foreach (var s in said)
@@ -67,23 +71,27 @@ static class Screens
                         long id = (long?)s?["screen"] ?? 0;
                         if ((bool?)s?["closed"] == true)
                         {
-                            open.Remove(id);
+                            moved |= open.Remove(id);
                             continue;
                         }
                         var drawn = new List<JsonNode?>();
                         if ((bool?)s?["fresh"] != true && open.TryGetValue(id, out var was)) drawn.AddRange(was.Drawn);
                         drawn.AddRange(s?["draw"] as JsonArray ?? new());
                         var (picture, width, height) = await Task.Run(() => Drawing.Draw(drawn));
-                        open[id] = new Screen(id, $"{s?["session"]}", $"{s?["title"]}", drawn.Count > 0 ? picture : null, width, height, drawn);
+                        var now = new Screen(id, $"{s?["session"]}", $"{s?["title"]}", drawn.Count > 0 ? picture : null, width, height, drawn);
+                        if (open.TryGetValue(id, out var before) && before.Session == now.Session && before.Title == now.Title) painted.Add(id);
+                        else moved = true;
+                        open[id] = now;
                     }
-                    Changed?.Invoke();
+                    if (moved) Changed?.Invoke(null);
+                    else foreach (var id in painted) Changed?.Invoke(id);
                 }
             }
             catch (Exception) { }
             if (open.Count > 0)
             {
                 open.Clear();
-                Changed?.Invoke();
+                Changed?.Invoke(null);
             }
             await Task.Delay(2000);
         }

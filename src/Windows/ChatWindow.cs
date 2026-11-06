@@ -84,7 +84,6 @@ sealed class ChatWindow : Window
     readonly ScrollViewer listPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel listRows = new();
     readonly StackPanel asksPanel = new();       // a lingo's own questions, while the list shows
-    readonly Border screensButton;               // Screens, above the list while any are open
     readonly Border screensBar = new() { Margin = new Thickness(14, 8, 14, 0) };   // the open to-do's screens, over the box
     readonly FrameworkElement empty;             // the greeting, while there are no to-dos yet
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -237,13 +236,7 @@ sealed class ChatWindow : Window
                 new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 22), Children = { readyDot, ready } },
             },
         };
-        screensButton = Button("Screens", Kind.Quiet, () => ScreensWindow.Open(Named, () => promptKey), "Every screen open, what your apps are showing as they work");
-        screensButton.HorizontalAlignment = HorizontalAlignment.Right;
-        screensButton.Margin = new Thickness(0, 0, 2, 6);
-        void ScreensOpen() => screensButton.Visibility = Shown(Screens.All.Count > 0);
-        Screens.Changed += ScreensOpen;
-        ScreensOpen();
-        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { screensButton, empty, asksPanel, listRows } };
+        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, asksPanel, listRows } };
 
         // The chat page follows new content only while you are at the bottom, so scrolling up to read stays put.
         chatPage.Content = lines;
@@ -294,8 +287,10 @@ sealed class ChatWindow : Window
         box.GotKeyboardFocus += (_, _) => field.BorderBrush = Accent;
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
-        // The bottom line: what he may do here, Let me choose, and the stop key, written the way a keyboard shortcut is.
+        // The bottom line: what he may do here, every screen open, Let me choose, and the stop key, written the way a
+        // keyboard shortcut is.
         var apps = Button("Apps", Kind.Quiet, () => SettingsWindow.Open(settings, this), "Turn apps on or off, and see what each may do");
+        var screens = Button("Screens", Kind.Quiet, () => ScreensWindow.Open(Named, () => promptKey), "Every screen open, what your apps are showing as they work");
         var knob = new Ellipse { Width = 12, Height = 12, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
         var track = new Border { Width = 30, Height = 16, CornerRadius = new CornerRadius(8), Child = knob, Margin = new Thickness(0, 0, 6, 0) };
         void Choosing()
@@ -338,7 +333,7 @@ sealed class ChatWindow : Window
                 },
             },
         };
-        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, choose } };
+        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, screens, choose } };
 
         // Everything stacked: the pages share the one row that grows.
         var pages = new Grid { Children = { signInPage, listPage, chatPage } };
