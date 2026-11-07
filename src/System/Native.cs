@@ -14,6 +14,7 @@
 // 11. EndsWithThis(process)     a program that ends when this app does, however this app ends. What it starts goes on
 // 12. Reserve(hwnd, edge, want)  keeps a strip of the screen for a window, the way the taskbar does, so other windows
 //                               make room for it. Gives the strip Windows agreed to. Unreserve(hwnd) gives it back
+// 13. Tray(hwnd, on, tip)       his face in the notification area, or taken out. Clicks come to hwnd as TrayClicked
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -309,5 +310,62 @@ static class Native
         var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = hwnd };
         SHAppBarMessage(1, ref data);   // ABM_REMOVE
         Reserved = null;
+    }
+
+    ////////// 13. THE NOTIFICATION AREA //////////
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct NOTIFYICONDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public int uID;
+        public int uFlags;
+        public int uCallbackMessage;
+        public IntPtr hIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szTip;
+        public int dwState;
+        public int dwStateMask;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string szInfo;
+        public int uVersion;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string szInfoTitle;
+        public int dwInfoFlags;
+        public Guid guidItem;
+        public IntPtr hBalloonIcon;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern bool Shell_NotifyIcon(int message, ref NOTIFYICONDATA data);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern uint ExtractIconEx(string file, int index, IntPtr[]? large, IntPtr[] small, uint count);
+
+    public const int TrayClicked = 0x8001;   // WM_APP + 1, with the mouse message in lParam
+    public const int WM_LBUTTONUP = 0x202;
+    public const int WM_RBUTTONUP = 0x205;
+    // Sent to every window when Explorer starts again, which empties the notification area. Add it back then.
+    public static readonly uint TrayCreated = RegisterWindowMessage("TaskbarCreated");
+    static IntPtr face;
+
+    // 13. His face is the app's own icon, at the small size.
+    public static void Tray(IntPtr hwnd, bool on, string tip)
+    {
+        if (face == IntPtr.Zero && Environment.ProcessPath is { } exe)
+        {
+            var small = new IntPtr[1];
+            ExtractIconEx(exe, 0, null, small, 1);
+            face = small[0];
+        }
+        var data = new NOTIFYICONDATA
+        {
+            cbSize = Marshal.SizeOf<NOTIFYICONDATA>(),
+            hWnd = hwnd,
+            uID = 1,
+            uFlags = 1 | 2 | 4,   // NIF_MESSAGE, NIF_ICON, NIF_TIP
+            uCallbackMessage = TrayClicked,
+            hIcon = face,
+            szTip = tip,
+            szInfo = "",
+            szInfoTitle = "",
+        };
+        Shell_NotifyIcon(2, ref data);   // NIM_DELETE, so adding again never makes two
+        if (on) Shell_NotifyIcon(0, ref data);   // NIM_ADD
     }
 }

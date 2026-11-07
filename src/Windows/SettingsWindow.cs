@@ -933,7 +933,7 @@ sealed class SettingsWindow : Window
 
         p.Children.Add(Section("On this computer"));
         p.Children.Add(Item("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Toggle(Startup.IsOn, Startup.Set)));
-        p.Children.Add(Item("Quit Onsay", "Closing him leaves Onsay running, so your devices can still use this computer. Quitting stops it until you open Onsay again.", Button("Quit", Kind.Quiet, () => Application.Current.MainWindow?.Close())));
+        p.Children.Add(Item("Quit Onsay", "Closing him puts him by the clock and leaves Onsay running, so your devices can still use this computer. Quitting stops it until you open Onsay again.", Button("Quit", Kind.Quiet, () => Application.Current.MainWindow?.Close())));
 
         /* 6. How he uses the mouse and keyboard, as the lingo client keeps it: input.modes(headless, no_follow), each
               changed alone. Without no follow, his pointer's lines come and he and the chat follow it (Overlay.cs). */

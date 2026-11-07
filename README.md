@@ -30,8 +30,9 @@ Onsay on.
 
 He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O stops him at any time, from any app.
 While something has the whole screen he steps aside. Right click him for Open chat, Apps, Settings, Put him back and
-Close Onsay. Closed, he goes but Onsay keeps running, so your devices and apps can still use this computer; opening
-Onsay again, from the Start menu, brings him back. Quit Onsay, in Settings, stops it all.
+Close Onsay. Closed, he goes to the notification area by the clock and Onsay keeps running, so your devices and apps
+can still use this computer. Click his face there, or open Onsay again, to bring him back. Quit Onsay, from there or in
+Settings, stops it all.
 
 **Where the chat sits** is yours to choose, the way a browser's developer tools dock: next to him, moving with him, or
 docked along the left, right or bottom of his screen. Docked, it keeps that strip of the screen the way the taskbar does,

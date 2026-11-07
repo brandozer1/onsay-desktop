@@ -7,7 +7,8 @@
 // 5. OnPress / OnDrag / OnRelease    a click opens or closes the chat, a drag carries him
 // 6. Look()                          he follows the cursor, or his own pointer while it shows, and dozes when still
 // 7. StepAside(on), Away(on)         hides while something is fullscreen, or while closed, and comes back
-// 8. BuildMenu()                     right click: open the chat, apps, settings, put him back, close
+// 8. BuildMenu(tray)                 right click: open the chat, apps, settings, put him back, close, or on his face in
+//                                    the notification area while closed: bring him back, quit
 // 9. Follow(), Fly                   while his own pointer shows, he flies beside it, then goes home, and the chat comes back
 //                                    if it was open
 using System.Diagnostics;
@@ -115,6 +116,7 @@ sealed class BuddyWindow : Window
         };
         Closed += (_, _) =>
         {
+            Tray(hwnd, false, "");
             Core.Stop();
             Application.Current.Shutdown();
         };
@@ -157,6 +159,14 @@ sealed class BuddyWindow : Window
             return MA_NOACTIVATE;
         }
         if (msg == WM_HOTKEY && wParam == StopHotKey) chat.Stop();
+        if (msg == TrayClicked && (int)lParam == WM_LBUTTONUP) Away(false);
+        if (msg == TrayClicked && (int)lParam == WM_RBUTTONUP)
+        {
+            var menu = BuildMenu(tray: true);
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+            menu.IsOpen = true;
+        }
+        if (msg == TrayCreated && away) Tray(hwnd, true, "Onsay is running. Click to bring him back.");
         // The taskbar moved or resized, or a monitor came or went. Let Windows finish first.
         // The chat docking or coming off changes the work area too, so he walks off its strip or back home.
         bool workMoved = msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam == SPI_SETWORKAREA);
@@ -389,12 +399,13 @@ sealed class BuddyWindow : Window
         if (!away) Hidden(on);
     }
 
-    // 7. Closed, he goes until Onsay is opened again, from the Start menu or as Windows starts (Program.cs), and the lingo
-    //    client keeps running, so your devices and apps can still use this computer. Quit, in Settings, stops it all.
+    // 7. Closed, he goes to the notification area until clicked there, or Onsay is opened again (Program.cs), and the
+    //    lingo client keeps running, so your devices and apps can still use this computer. Quit stops it all.
     internal void Away(bool on)
     {
         if (on == away) return;
         away = on;
+        Tray(hwnd, on, "Onsay is running. Click to bring him back.");
         if (!aside) Hidden(on);
         if (!on) Park(dropped: false);
     }
@@ -412,13 +423,23 @@ sealed class BuddyWindow : Window
 
     ////////// 8. MENU //////////
 
-    ContextMenu BuildMenu()
+    ContextMenu BuildMenu(bool tray = false)
     {
         static MenuItem Item(string header, Action click)
         {
             var item = new MenuItem { Header = header };
             item.Click += (_, _) => click();
             return item;
+        }
+        if (tray)
+        {
+            return new ContextMenu
+            {
+                Style = (Style)Menus["Menu"],
+                FontFamily = Ui,
+                Resources = Menus,
+                Items = { Item("Bring him back", () => Away(false)), new Separator(), Item("Quit Onsay", Close) },
+            };
         }
         return new ContextMenu
         {
