@@ -10,7 +10,6 @@ using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Onsay.Character;
 using static Onsay.Desktop.ChatWindow;
@@ -51,18 +50,14 @@ sealed class AskWindow : Window
             b.Margin = new Thickness(0, 0, 8, 0);
             buttons.Children.Add(b);
         }
-        Content = new Border
+        var card = Lifted(new Border
         {
             Width = Wide - Shadow * 2,
-            Margin = new Thickness(Shadow),
             Padding = new Thickness(16, 14, 16, 16),
-            Background = Card,
-            BorderBrush = Edge_,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Effect = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 6, Direction = 270, Opacity = 0.18 },
             Child = new StackPanel { Children = { new DockPanel { Children = { face, words } }, buttons } },
-        };
+        }, Shadow / 2);
+        card.Margin = new Thickness(Shadow / 2, Shadow / 2, Shadow, Shadow);
+        Content = card;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         timer.Tick += (_, _) => Poll();
         timer.Start();

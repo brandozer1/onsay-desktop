@@ -8,8 +8,6 @@
 //                                                               moment it goes on
 //   {"show":"point","x":..,"y":..,"w":..,"h":..,"say":"..","seconds":n}   a ring around that box, him beside it
 //   {"show":"clear"}                                            the ring goes
-//   {"show":"panel","html":"..","title":"..","w":n,"h":n}       his panel shows that page, see PanelWindow.cs
-//   {"show":"unpanel"}                                          his panel goes
 //   {"show":"say","text":".."}                                  he says that in the chat while the work goes on (chat.say)
 //   {"show":"step","text":".."}                                 a step line in the chat, under the message running (chat.step)
 // glide, press and type come only while no follow is off (input.modes, set in Settings), so with it on his pointer never
@@ -30,7 +28,6 @@ static class Overlay
 {
     static HandWindow? hand;
     static RingWindow? ring;
-    static PanelWindow? panel;
     public static ChatWindow? Chat;   // the chat, for what a lingo says or shows in it
 
     // 1.
@@ -82,12 +79,6 @@ static class Overlay
                 break;
             case "clear":
                 ring?.Clear();
-                break;
-            case "panel":
-                (panel ??= new PanelWindow()).Show(Text(m, "html"), Text(m, "title"), Int(m, "w"), Int(m, "h"));
-                break;
-            case "unpanel":
-                panel?.Hide();
                 break;
             case "say" or "step":
                 Chat?.Lingo(kind, Text(m, "text"));

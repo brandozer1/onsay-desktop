@@ -42,6 +42,12 @@ sealed class Settings
     public bool? LetMeChoose { get; set; }
     // Whether a message's steps stay open under it once it is answered, rather than folded under one line.
     public bool? ShowSteps { get; set; }
+    // Where the chat sits: null beside him, moving with him, or docked along the Left, Right or Bottom of his screen,
+    // keeping that strip so windows make room (ChatWindow.Sit). DockSize is the docked chat's width, or height at the
+    // bottom, in DIPs, null for the usual.
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public Edge? Docked { get; set; }
+    public double? DockSize { get; set; }
 
     // His folder, %AppData%\Onsay. A test sets ONSAY_DATA to a folder of its own before he starts, so it never touches the
     // person's.

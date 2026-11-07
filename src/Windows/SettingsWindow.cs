@@ -158,8 +158,9 @@ sealed class SettingsWindow : Window
         head.Children.Add(new TextBlock
         {
             Text = title,
-            FontSize = 22,
-            FontWeight = FontWeights.SemiBold,
+            FontFamily = Display,
+            FontSize = 24,
+            FontWeight = FontWeights.Bold,
             Foreground = Ink,
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -434,7 +435,7 @@ sealed class SettingsWindow : Window
     {
         ["files"] = "Files and folders", ["commands"] = "Programs and commands", ["window"] = "Windows", ["controls"] = "Buttons and boxes",
         ["input"] = "Mouse and keyboard", ["look"] = "Reading the screen", ["clipboard"] = "Clipboard", ["notify"] = "Notifications",
-        ["panel"] = "Onsay's panel", ["chat"] = "Chat", ["http"] = "The web", ["store"] = "Onsay's own storage", ["compute"] = "Time and the log",
+        ["chat"] = "Chat", ["http"] = "The web", ["store"] = "Onsay's own storage", ["compute"] = "Time and the log",
         ["std"] = "Text and lists", ["settings"] = "App settings", ["lingo"] = "Asking Onsay", ["native"] = "Advanced", ["onsay"] = "This computer on Onsay",
     };
 
@@ -1177,7 +1178,9 @@ sealed class SettingsWindow : Window
     static TextBlock Section(string text)
     {
         var heading = Label(text);
-        heading.FontSize = 15;
+        heading.FontFamily = Display;
+        heading.FontWeight = FontWeights.Bold;
+        heading.FontSize = 16;
         heading.Margin = new Thickness(0, 24, 0, 2);
         return heading;
     }

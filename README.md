@@ -32,6 +32,15 @@ He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O s
 While something has the whole screen he steps aside. Right click him for Open chat, Apps, Settings, Put him back and
 Quit.
 
+**Where the chat sits** is yours to choose, the way a browser's developer tools dock: next to him, moving with him, or
+docked along the left, right or bottom of his screen. Docked, it keeps that strip of the screen the way the taskbar does,
+so your windows make room instead of sitting under it, and it stays open while he works. The button beside the menu in
+its top bar shows the four as small pictures of a screen. Dragging the top bar does the same: it carries him and the
+card together, and dropped on a side of the screen, which lights up as you get near, the card docks there and he walks
+back to where he was. Drag a docked one's top bar away and it comes off, with him, and its inner edge drags to make it
+wider or taller. It is kept as `Docked` and `DockSize` in `desktop.json`, and Windows gets the strip back when the
+card closes or the app ends.
+
 **The chat only draws; the onsay lingo does the work.** Each chat is a session of the onsay lingo. A message goes to
 `/onsay` on the lingo client with its prompt key, read from the onsay lingo's settings, in a session the app names when
 the chat starts, the way the onsay lingo names one, with `mode` for Let me choose. The onsay lingo works it through as
@@ -45,9 +54,9 @@ starts the lingo client again, which ends whatever it was doing.
 moment, the way it asks for the questions waiting: each step is a line in plain words under your message, like
 "Understanding what you asked", "Found 8 ways to do it", "Picked: Move the mouse pointer" and "Running it on your
 laptop", what a step asked indented under it, and the newest on the bar. Once he answers they fold under one line,
-"▸ 4 steps · 3.1s"; a click opens or folds them all, and he remembers which (`ShowSteps` in `desktop.json`).
+"4 steps, 3.1s"; a click opens or folds them all, and he remembers which (`ShowSteps` in `desktop.json`).
 
-**Let me choose**, a switch under the box, has him ask before every step he takes (`LetMeChoose` in `desktop.json`,
+**Let me choose**, a switch in the box, has him ask before every step he takes (`LetMeChoose` in `desktop.json`,
 sent as `mode: "list"`): before each call, a card asks "Which should I do?" with each way, what it does and where,
 and None of these, which stops him. A value a call needs that nobody gave is asked for on a card too, with or without
 it. Your answers go to `/onsay/sessions/<session>/answers`, and the card keeps only each question and its answer.
@@ -62,7 +71,7 @@ your answers go back through `/.lingo/answer`, so the lingo, like the agent, car
 (`AskWindow.cs` hands them to `ChatWindow.Asked`). `chat.say` adds his line to the chat and `chat.step` a step under the
 message running; neither opens the chat, so the work keeps the keyboard.
 
-His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings and his panel, and the chat
+His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings, and the chat
 lines, come as lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his
 pointer glides to each click and ripples, and turns into a text cursor that ticks where he types (`HandWindow.cs`).
 That shows only with Hide where he clicks off, in Settings: then he flies along with it and the chat steps aside.
@@ -104,8 +113,8 @@ started (`Started` in `desktop.json`), so one you turn off stays off.
 
 Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` (the lingo client's home, and a port
 when one is written there) and `core.log` for the lingo client, `core\` for its home (lingos, settings, storage and
-`sent.log`), `panel\` for his panel's browser storage, and `crash.log`, every error nothing caught, with its whole stack. A test sets `ONSAY_DATA` to a folder of its own before he
-starts, so it never touches yours. Uninstalling, from his settings or Windows' Installed apps, first stops everything
+`sent.log`), and `crash.log`, every error nothing caught, with its whole stack. A test sets `ONSAY_DATA` to a folder of its own before he
+starts, so it never touches yours, and runs beside yours, with its own port written in that folder's `core.json`. Uninstalling, from his settings or Windows' Installed apps, first stops everything
 running from Onsay, the lingo client and the browser he uses included, so its folder goes whole, then asks whether this
 folder and the browser's (`%LocalAppData%\lingo-browser`) go too, and keeps them unless you say so, since most who
 uninstall mean to install again.
@@ -137,13 +146,14 @@ themselves the next time he isn't busy, his card put away and no to-do working, 
 | `Onsay.csproj` | the build, with the lingo client and its lingos copied in from `..\lingo-client` |
 | `app.manifest` | tells Windows the app is per monitor DPI aware |
 | `onsay.ico`, `splash.png` | his face as the app and installer icon, and what the installer shows while it copies |
+| `fonts/` | the website's fonts, Gabarito and IBM Plex, which every window uses, with their license (`OFL.txt`) |
 | `start.ps1` | builds and starts the app, closing a running one first |
 | `release.ps1` | a release: the installer and update packages, in `Releases\` |
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
 | `src/Core/Screens.cs` | the screens lingos draw on, watched as the onsay lingo streams them from `/onsay/screens` |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), a lingo's questions (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), his panel (`PanelWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), a lingo's questions (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
 | `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 

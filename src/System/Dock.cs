@@ -4,7 +4,7 @@
 // 1. EdgeOf(m)                              which edge the taskbar is on
 // 2. Place(m, along, w, h, margin, inset)   his window for a point along the bar
 // 3. AlongOf(m, topLeft, w, h, margin)      the other way: how far along the bar a window is
-// 4. Beside(m, body, w, h, gap, prefer)     a panel next to him, off the bar side if it fits there, kept on screen
+// 4. Beside(m, body, w, h, gap, prefer)     a card next to him, toward the middle of the screen, sliding along him
 // 5. OnBar(m, body, near)                   whether his body was dropped on the bar, or within near of it
 using static Onsay.Desktop.Native;
 
@@ -56,27 +56,28 @@ static class Dock
         return span <= 0 ? 0.5 : Math.Clamp((double)at / span, 0, 1);
     }
 
-    /* 4. Away from the bar first, the way he faces when docked. Put somewhere else on the screen there may be no room on
-          that side, so it tries the other sides in turn and takes the first it fits on whole, never covering him. Only
-          where it fits on none, on a small screen, it takes the one with most room and may overlap him. side is the one it
-          went to. prefer keeps it on that side while it still fits there, so moving him along never flips the panel to the
-          other side of him and back. avoid is a side taken already, like the chat's, left alone while another fits. */
+    /* 4. Toward the middle of the screen, the way a tooltip opens: above him on the lower half, below him on the upper
+          half, or, where neither fits whole, beside him toward the middle. Along him it slides smoothly with where he is:
+          at the left of the screen it reaches right from him, at the right it reaches left, in the middle it is centred,
+          so it is always on screen without being pushed and never jumps as he moves. side is the one it went to. prefer
+          keeps it on that side while it still fits there, so dragging him never flips it back and forth. avoid is a side
+          taken already, like the chat's, left alone while another fits. Only where it fits on no side, on a small
+          screen, it takes the one with most room and may overlap him. */
     public static POINT Beside(MONITORINFO m, RECT body, int w, int h, int gap, Side? prefer, out Side side, Side? avoid = null)
     {
         var work = m.rcWork;
-        int cx = (body.Left + body.Right - w) / 2;
-        int cy = (body.Top + body.Bottom - h) / 2;
-        var above = (side: Side.Above, p: new POINT(cx, body.Top - gap - h), room: body.Top - gap - work.Top - h);
-        var below = (side: Side.Below, p: new POINT(cx, body.Bottom + gap), room: work.Bottom - body.Bottom - gap - h);
-        var right = (side: Side.Right, p: new POINT(body.Right + gap, cy), room: work.Right - body.Right - gap - w);
-        var left = (side: Side.Left, p: new POINT(body.Left - gap - w, cy), room: body.Left - gap - work.Left - w);
-        var order = EdgeOf(m) switch
-        {
-            Edge.Bottom => new[] { above, below, right, left },
-            Edge.Top => new[] { below, above, right, left },
-            Edge.Left => new[] { right, left, above, below },
-            _ => new[] { left, right, above, below },
-        };
+        var him = body.Center;
+        double across = Math.Clamp((double)(him.X - work.Left) / Math.Max(1, work.Width), 0, 1);
+        double down = Math.Clamp((double)(him.Y - work.Top) / Math.Max(1, work.Height), 0, 1);
+        int x = him.X - (int)Math.Round(w * across);
+        int y = him.Y - (int)Math.Round(h * down);
+        var above = (side: Side.Above, p: new POINT(x, body.Top - gap - h), room: body.Top - gap - work.Top - h);
+        var below = (side: Side.Below, p: new POINT(x, body.Bottom + gap), room: work.Bottom - body.Bottom - gap - h);
+        var right = (side: Side.Right, p: new POINT(body.Right + gap, y), room: work.Right - body.Right - gap - w);
+        var left = (side: Side.Left, p: new POINT(body.Left - gap - w, y), room: body.Left - gap - work.Left - w);
+        var vertical = down > 0.5 ? new[] { above, below } : new[] { below, above };
+        var sideways = across > 0.5 ? new[] { left, right } : new[] { right, left };
+        var order = vertical.Concat(sideways).ToArray();
         if (avoid is not null && order.Any(s => s.side != avoid && s.room >= 0)) order = order.Where(s => s.side != avoid).ToArray();
         var kept = order.FirstOrDefault(s => s.side == prefer && s.room >= 0);
         var pick = kept.side == prefer && prefer is not null ? kept : order.FirstOrDefault(s => s.room >= 0, order.MaxBy(s => s.room));

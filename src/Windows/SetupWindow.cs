@@ -78,14 +78,14 @@ sealed class SetupWindow : Window
         {
             Width = 320,
             Background = Page_,
-            CornerRadius = new CornerRadius(16, 0, 0, 16),
+            CornerRadius = new CornerRadius(9, 0, 0, 9),
             BorderBrush = Rule,
             BorderThickness = new Thickness(0, 0, 1, 0),
             Child = new Grid
             {
                 Children =
                 {
-                    new Border { Background = dot, CornerRadius = new CornerRadius(16, 0, 0, 16), Opacity = 0.9 },
+                    new Border { Background = dot, CornerRadius = new CornerRadius(9, 0, 0, 9), Opacity = 0.9 },
                     new StackPanel
                     {
                         VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 0),
@@ -119,16 +119,9 @@ sealed class SetupWindow : Window
         var holder = new ContentControl { Content = body, Margin = new Thickness(40, 54, 40, 10) };
         var right = new DockPanel { Children = { bottom, new Grid { Children = { holder, close } } } };
 
-        var card = new Border
-        {
-            Background = Card,
-            CornerRadius = new CornerRadius(16),
-            BorderBrush = Edge_,
-            BorderThickness = new Thickness(1),
-            Margin = new Thickness(24),
-            Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.22 },
-            Child = new DockPanel { Children = { stage, right } },
-        };
+        var card = new Border { Child = new DockPanel { Children = { stage, right } } };
+        var lifted = Lifted(card, 6);
+        lifted.Margin = new Thickness(24, 24, 18, 18);
         // Dragged by its empty background alone, never by a swatch, chip or switch, which are borders too.
         var floor = (Grid)stage.Child;
         var surfaces = new HashSet<object> { card, stage, floor, floor.Children[0], right, bottom };
@@ -136,7 +129,7 @@ sealed class SetupWindow : Window
         {
             if (surfaces.Contains(e.OriginalSource)) DragMove();
         };
-        Content = card;
+        Content = lifted;
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) Skip();

@@ -1,13 +1,21 @@
-// ChatWindow.cs - the card that opens beside him: signing in, your to-dos, or one to-do open, and the look every window
-// shares. It only draws: each to-do is one session of the onsay lingo on this computer, every prompt goes to its /onsay,
+// ChatWindow.cs - the card that opens beside him, or docked along a side of his screen: signing in, your to-dos, or one
+// to-do open, and the look every window shares. It only draws: each to-do is one session of the onsay lingo on this computer, every prompt goes to its /onsay,
 // which works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask
 // is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
 // it has got, and Not quite on a done one makes a new one that follows it up. Opening one shows its whole conversation,
-// and the box there replies to it. He is its close button (his back has an X while it is open), and Esc closes it too.
-// Let me choose, at the bottom, sends list mode, so each step is a card of ways to pick from, and while he works his
-// steps show as they happen, folded under one line once he answers.
+// and the box there replies to it. Its X closes it, and so do he (his back has an X while it is open) and Esc. Let me
+// choose, in the box, sends list mode, so each step is a card of ways to pick from, and while he works his steps show as
+// they happen, folded under one line once he answers. It sits beside him and moves with him, or docked to the left,
+// right or bottom of his screen, which keeps that strip so windows make room, the way a browser's developer tools dock.
+// Its top bar dragged carries him and the card, and dropped on a side of the screen docks it there.
 //
-// 1.  Open(body, monitor, focus)          opens, or follows him, next to his body rect in pixels, growing out of him
+// 1.  Open(body, monitor, focus)          opens, or follows him, next to his body rect in pixels, growing out of him, or
+//                                         in its strip when docked
+//     Spot(body, monitor)                 where it goes beside him, for him to move both in one go
+//     Pin(), Strip(edge, monitor, scale)  docked, the strip of the screen it keeps, asked of Windows
+//     Sit(edge), Dress()                  where it sits, null beside him, and its look for that
+//     Resize()                            the docked card's inner edge dragged
+//     Grab, Carry, LetGo, Preview         its top bar dragged, carrying him, and the strip it would dock to
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
 // 3.  Stop()                              Stop, or Alt+Shift+O from any thread: the lingo client starts again, which
 //                                         ends whatever it was doing
@@ -33,10 +41,11 @@
 //                                         shows (chat.step)
 //     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
 // 11. Clear()                             back to the list, nothing open
-// 12. Menu()                              the header's menu: Copy chat, from the session, and Apps and settings
-// 13. The look every window shares        Brand and the colour tokens, Hex, and the pieces: Button, Paragraph, Label,
-//                                         Note, Toggle, Switch, Selectable, Right, ScaleBoth, Shown, Hover and the Thin
-//                                         scrollbar
+// 12. Menu(), SitMenu()                   the header's menu: Copy chat, from the session, and Apps and settings, and
+//                                         where the chat sits, as four small pictures of a screen. Pop is a menu, Row its row
+// 13. The look every window shares        Brand, the colour tokens and the fonts, Hex, and the pieces: Lifted, Button,
+//                                         Paragraph, Label, Note, Toggle, Switch, Selectable, Right, ScaleBoth, Shown,
+//                                         Hover, the Menus of a right click and the Thin scrollbar
 using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -50,6 +59,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Onsay.Character;
+using static Onsay.Desktop.Native;
 using Ellipse = System.Windows.Shapes.Ellipse;
 
 namespace Onsay.Desktop;
@@ -58,65 +68,75 @@ sealed class ChatWindow : Window
 {
     ////////// SIZES AND ICONS //////////
 
-    public const double Shadow = 16;   // transparent room around the card for its shadow, in DIPs
+    public const double Shadow = 8;      // transparent room around the card for its offset shadow, in DIPs
+    const double Wide = 420;             // the card's size beside him, in DIPs
+    const double Tall = 600;
+    const double Near = 28;              // how close to a side of the screen its top bar is dropped to dock there, in DIPs
+    const double Column = 760;           // the widest the words get, docked along the bottom, so lines stay easy to read
     // Glyphs from Icons.
-    const string BackIcon = "\uE72B";
-    const string CloseIcon = "\uE711";
-    const string DoneIcon = "\uE73E";
-    const string WorkingIcon = "\uE895";
-    const string AskingIcon = "\uE897";
-    const string WaitingIcon = "\uE916";
-    const string RedoIcon = "\uE72C";
-    const string MoreIcon = "\uE712";
-    const string SendIcon = "\uE724";
+    const string BackIcon = "";
+    const string CloseIcon = "";
+    const string DoneIcon = "";
+    const string WorkingIcon = "";
+    const string AskingIcon = "";
+    const string WaitingIcon = "";
+    const string RedoIcon = "";
+    const string MoreIcon = "";
+    const string SendIcon = "";
+    const string SitIcon = "";
+    const string OpenIcon = "";
+    const string FoldedIcon = "";
 
     ////////// STATE //////////
 
     readonly Settings settings;
     readonly Action<bool> setOpen;
-    readonly OnsayView face = new() { Width = 32, Height = 32 };
-    readonly TextBlock subtitle = new() { FontSize = 12, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
+    readonly BuddyWindow him;                    // his window, carried along while the card's top bar is dragged
+    readonly OnsayView face = new() { Width = 28, Height = 28 };
+    readonly TextBlock subtitle = new() { FontSize = 11.5, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly Border back;   // the header's way back to the list, while a to-do is open
-    readonly Border send;
+    readonly Border screensButton;
 
     // The pages. Only one shows at a time, see Page.
     readonly FrameworkElement signInPage;
     readonly ScrollViewer listPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel listRows = new();
     readonly StackPanel asksPanel = new();       // a lingo's own questions, while the list shows
-    readonly Border screensBar = new() { Margin = new Thickness(14, 8, 14, 0) };   // the open to-do's screens, over the box
+    readonly Border screensBar = new() { Margin = new Thickness(14, 8, 14, 0), MaxWidth = Column };   // the open to-do's screens, over the box
     readonly FrameworkElement empty;             // the greeting, while there are no to-dos yet
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly ScrollViewer screensPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };   // every screen open, a card each
-    readonly StackPanel lines = new() { Margin = new Thickness(16, 14, 16, 6) };
-    readonly TextBlock ready = new() { FontSize = 12, Foreground = Ink3 };
-    readonly Ellipse readyDot = new() { Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0) };
+    readonly StackPanel lines = new() { Margin = new Thickness(18, 16, 18, 6), MaxWidth = Column };
+    readonly TextBlock ready = new() { FontSize = 12.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap };
+    readonly Ellipse readyDot = new() { Width = 7, Height = 7, Margin = new Thickness(0, 0, 8, 0) };
 
-    // The banner across the top, the bar while he works, the box, and the line at the bottom.
-    readonly Border banner = new() { Visibility = Visibility.Collapsed, Padding = new Thickness(14, 8, 14, 8), Background = Butter };
-    readonly TextBlock bannerText = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Foreground = Ink2 };
-    readonly DockPanel working = new() { Margin = new Thickness(14, 6, 14, 0), Visibility = Visibility.Collapsed };
-    readonly TextBlock workingText = new() { FontSize = 12, Foreground = Ink2, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly TextBlock workingTime = new() { FontSize = 12, FontFamily = Mono, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+    // The banner across the top, the bar while he works, and the box.
+    readonly Border banner = new() { Visibility = Visibility.Collapsed, Padding = new Thickness(16, 8, 16, 8), Background = Butter };
+    readonly TextBlock bannerText = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Foreground = Ink };
+    readonly DockPanel working = new() { Margin = new Thickness(16, 8, 12, 0), Visibility = Visibility.Collapsed, MaxWidth = Column };
+    readonly TextBlock workingText = new() { FontSize = 12.5, Foreground = Ink2, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    readonly TextBlock workingTime = new() { FontSize = 12, FontFamily = Mono, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 10, 0) };
     readonly Ellipse[] dots = Enumerable.Range(0, 3).Select(_ => new Ellipse { Width = 6, Height = 6, Fill = Accent, Margin = new Thickness(0, 0, 4, 0), Opacity = 0.3 }).ToArray();
     readonly FrameworkElement input;
     readonly Border fixingChip;                  // over the box while the next to-do follows one up
     readonly TextBlock fixingText = new() { FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    readonly FrameworkElement footer;
+    readonly Border send;
+    readonly TextBlock sendGlyph = new() { Text = SendIcon, FontFamily = Icons, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBox box = new()
     {
         BorderThickness = new Thickness(0),
         Background = Brushes.Transparent,
         FontSize = 14,
         Foreground = Ink,
-        VerticalContentAlignment = VerticalAlignment.Center,
+        CaretBrush = Accent,
         AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap,
-        MinHeight = 30,
-        MaxHeight = 116,
+        MinHeight = 24,
+        MaxHeight = 140,
+        Padding = new Thickness(0),
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
-    readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 0, 0) };
+    readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, Margin = new Thickness(2, 0, 0, 0) };
 
     // The onsay lingo's status: {signed_in, signing_in, failed, running, connected, handle, device, key}. Null until it
     // first answers.
@@ -180,22 +200,41 @@ sealed class ChatWindow : Window
     bool Showing => IsVisible && !closing;          // open, and not on its way out
     bool SignedIn => (bool?)status?["signed_in"] == true;
 
+    // Where the card sits, and how it gets there.
     readonly Grid whole;                            // the card and its shadow, which open and close as one
+    readonly Border card;
+    readonly Border clip;
+    readonly Border drop;                           // the offset shadow under the card
+    readonly Border grip;                           // the docked card's inner edge, dragged to make it wider or taller
     readonly ScaleTransform zoom = new(1, 1);
+    readonly IntPtr hwnd;
     Side? side;                                     // where it sits beside him while open, kept so it never flips
-    public Side? SideNow => Showing ? side : null;  // that side while it shows, so a card beside him keeps clear of it
+    public Side? SideNow => Showing && Docked is null ? side : null;   // so a card beside him keeps clear of it
+    public Edge? Docked => settings.Docked;         // the side of his screen it is docked along, or null beside him
+    double DockSize => settings.DockSize ?? (Docked == Edge.Bottom ? 320 : Wide);
+    RECT? pinned;                                   // the strip last asked of Windows, so asking the same again is skipped
     bool closing;                                   // fading out, and hidden once it has
+    // Its top bar dragged: where the pointer and he were when it started, and the side of the screen it would dock to.
+    bool carrying;
+    bool carried;
+    POINT grabbed;
+    POINT start;
+    RECT home;
+    Edge? landing;
+    Window? preview;                                // the strip it would dock to, shown while dragged near a side
 
-    public ChatWindow(Settings settings, Action<bool> setOpen)
+    public ChatWindow(Settings settings, Action<bool> setOpen, BuddyWindow him)
     {
         this.settings = settings;
         this.setOpen = setOpen;
+        this.him = him;
         Native.Bare(this);
-        Width = 420 + Shadow * 2;
-        Height = 600 + Shadow * 2;
+        Width = Wide + Shadow * 2;
+        Height = Tall + Shadow * 2;
         FontFamily = Ui;
 
-        // The header: him, who he is and where, and the buttons.
+        // The header: him and who he is, every screen open, where the card sits, the menu and close. Dragged, it carries
+        // him and the card together, and dropped on a side of the screen, it docks there.
         back = Button(BackIcon, Kind.Icon, () =>
         {
             if (showingScreens) showingScreens = false;
@@ -203,18 +242,34 @@ sealed class ChatWindow : Window
             Page();
             box.Focus();
         }, "Back");
-        back.Margin = new Thickness(0, 0, 6, 0);
+        back.Margin = new Thickness(0, 0, 4, 0);
+        screensButton = Button("Screens", Kind.Ghost, () =>
+        {
+            showingScreens = true;
+            Page();
+        }, "Every screen open, what your apps are showing as they work");
+        screensButton.Margin = new Thickness(0, 0, 2, 0);
+        Border sit = null!;
+        sit = Button(SitIcon, Kind.Icon, () => SitMenu(sit), "Where the chat sits");
         Border more = null!;
         more = Button(MoreIcon, Kind.Icon, () => Menu(more), "More");
-        var header = new DockPanel { Margin = new Thickness(10, 10, 10, 10) };
+        var close = Button(CloseIcon, Kind.Icon, () => setOpen(false), "Close (Esc)");
+        var header = new DockPanel { Margin = new Thickness(12, 10, 8, 10), Background = Brushes.Transparent };
+        header.Children.Add(Right(close));
         header.Children.Add(Right(more));
+        header.Children.Add(Right(sit));
+        header.Children.Add(Right(screensButton));
         header.Children.Add(back);
         header.Children.Add(face);
         header.Children.Add(new StackPanel
         {
             Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            Children = { new TextBlock { Text = "Onsay", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Ink }, subtitle },
+            Children = { new TextBlock { Text = "Onsay", FontFamily = Display, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Ink }, subtitle },
         });
+        header.MouseLeftButtonDown += (_, _) => Grab(header);
+        header.MouseMove += (_, _) => Carry();
+        header.MouseLeftButtonUp += (_, _) => LetGo(header);
+        header.LostMouseCapture += (_, _) => LetGo(header);
         banner.Child = bannerText;
 
         // The sign in page.
@@ -223,7 +278,7 @@ sealed class ChatWindow : Window
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(28, 0, 28, 20),
             Children =
             {
-                new OnsayView { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
+                new OnsayView { Width = 64, Height = 64, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) },
                 Paragraph("Sign in so I can help on this computer.", centre: true),
                 SignInBox(centre: true),
             },
@@ -232,15 +287,16 @@ sealed class ChatWindow : Window
         // The list: a lingo's own questions, then every to-do, the newest at the top. With none yet, a greeting.
         empty = new StackPanel
         {
-            Margin = new Thickness(8, 16, 8, 10),
+            Margin = new Thickness(10, 18, 10, 12),
             Children =
             {
-                new OnsayView { Width = 56, Height = 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 12) },
-                new TextBlock { Text = "What can I do for you?", FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = Ink, HorizontalAlignment = HorizontalAlignment.Center },
-                new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 22), Children = { readyDot, ready } },
+                new TextBlock { Text = "What can I do for you?", FontFamily = Display, FontSize = 22, FontWeight = FontWeights.Bold, Foreground = Ink },
+                new DockPanel { Margin = new Thickness(0, 8, 0, 4), Children = { readyDot, ready } },
             },
         };
-        listPage.Content = new StackPanel { Margin = new Thickness(8, 8, 8, 6), Children = { empty, asksPanel, listRows } };
+        readyDot.VerticalAlignment = VerticalAlignment.Top;
+        readyDot.Margin = new Thickness(0, 6, 8, 0);
+        listPage.Content = new StackPanel { Margin = new Thickness(8, 4, 8, 6), MaxWidth = Column, Children = { empty, asksPanel, listRows } };
 
         // The Screens page: every screen open, a card each, a click showing it full screen.
         screensPage.Content = new StackPanel
@@ -248,7 +304,7 @@ sealed class ChatWindow : Window
             Margin = new Thickness(10, 10, 10, 6),
             Children =
             {
-                new TextBlock { Text = "Screens", FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(8, 0, 0, 4) },
+                new TextBlock { Text = "Screens", FontFamily = Display, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Ink, Margin = new Thickness(8, 0, 0, 4) },
                 ScreensWindow.Every(Named, () => promptKey),
             },
         };
@@ -261,8 +317,15 @@ sealed class ChatWindow : Window
             else if (following) chatPage.ScrollToEnd();
         };
 
-        // The bar while he works: the dots, what he is doing, for how long, and Stop.
-        working.Children.Add(Right(Button("Stop", Kind.Danger, Stop, "Stop him now. Alt+Shift+O does the same from anywhere")));
+        // The bar while he works: the dots, what he is doing, for how long, and Stop with the key that does it anywhere.
+        working.Children.Add(Right(Button("Stop", Kind.Danger, Stop, "Stop him now. Alt+Shift+O does the same from any app")));
+        working.Children.Add(Right(new Border
+        {
+            Background = Page_, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(5, 0, 5, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Stops him from any app, at any time",
+            Child = new TextBlock { Text = "Alt+Shift+O", FontSize = 10.5, FontFamily = Mono, Foreground = Ink3 },
+        }));
         working.Children.Add(Right(workingTime));
         var doing = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var d in dots) doing.Children.Add(d);
@@ -270,27 +333,64 @@ sealed class ChatWindow : Window
         working.Children.Add(doing);
         tick.Tick += (_, _) => workingTime.Text = Took((DateTime.Now - doingSince).TotalMilliseconds, live: true);
 
-        // The box. Enter sends, Shift+Enter starts a new line, and it grows to a few lines before it scrolls.
-        send = Button(SendIcon, Kind.Icon, Send, "Send");
-        send.VerticalAlignment = VerticalAlignment.Bottom;
-        Grid.SetColumn(send, 1);
+        /* The box: what you type on top, and under it Let me choose and Send. Enter sends, Shift+Enter starts a new line,
+           and it grows to a few lines before it scrolls. A click anywhere in it puts the cursor in the text. */
+        send = new Border
+        {
+            Width = 30, Height = 30, CornerRadius = new CornerRadius(7), Cursor = Cursors.Hand, ToolTip = "Send (Enter)",
+            HorizontalAlignment = HorizontalAlignment.Right, Child = sendGlyph,
+        };
+        send.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            Send();
+        };
+        var knob = new Ellipse { Width = 12, Height = 12, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
+        var track = new Border { Width = 28, Height = 16, CornerRadius = new CornerRadius(8), Child = knob, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
+        void Choosing()
+        {
+            bool on = settings.LetMeChoose == true;
+            track.Background = on ? Accent : Edge_;
+            ((TranslateTransform)knob.RenderTransform).X = on ? 12 : 0;
+        }
+        var choose = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand,
+            Background = Brushes.Transparent,
+            ToolTip = "On: I show you the ways I found, and you pick what I do",
+            Children = { track, new TextBlock { Text = "Let me choose", FontSize = 12, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center } },
+        };
+        choose.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            settings.LetMeChoose = settings.LetMeChoose != true;
+            settings.Save();
+            Choosing();
+        };
+        Choosing();
         var field = new Border
         {
             BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
-            Margin = new Thickness(12, 8, 12, 8), Padding = new Thickness(10, 3, 3, 3), Background = Card,
-            Child = new Grid
+            Margin = new Thickness(12, 8, 12, 12), Padding = new Thickness(12, 10, 8, 8), Background = Card, Cursor = Cursors.IBeam,
+            Child = new StackPanel
             {
-                ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } },
-                Children = { new Grid { Children = { hint, box } }, send },
+                Children =
+                {
+                    new Grid { Children = { hint, box }, Margin = new Thickness(0, 0, 4, 6) },
+                    new DockPanel { Cursor = Cursors.Arrow, Children = { Right(send), choose } },
+                },
             },
         };
+        field.MouseLeftButtonUp += (_, _) => box.Focus();
         fixingChip = new Border
         {
-            Margin = new Thickness(12, 8, 12, 0), Padding = new Thickness(10, 0, 0, 0), CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(12, 8, 12, 0), Padding = new Thickness(10, 0, 0, 0), CornerRadius = new CornerRadius(7),
             Background = BlueSoft, Visibility = Visibility.Collapsed,
             Child = new DockPanel { Children = { Right(Button(CloseIcon, Kind.Icon, () => Fix(null), "Make it a new to-do instead")), fixingText } },
         };
-        input = new StackPanel { Children = { fixingChip, field } };
+        input = new StackPanel { MaxWidth = Column, Children = { fixingChip, field } };
         ReadyInput();
         box.TextChanged += (_, _) => ReadyInput();
         box.PreviewKeyDown += (_, e) =>
@@ -302,62 +402,10 @@ sealed class ChatWindow : Window
         box.GotKeyboardFocus += (_, _) => field.BorderBrush = Accent;
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
-        // The bottom line: what he may do here, every screen open, Let me choose, and the stop key, written the way a
-        // keyboard shortcut is.
-        var apps = Button("Apps", Kind.Quiet, () => SettingsWindow.Open(settings, this), "Turn apps on or off, and see what each may do");
-        var screens = Button("Screens", Kind.Quiet, () =>
-        {
-            showingScreens = true;
-            Page();
-        }, "Every screen open, what your apps are showing as they work");
-        var knob = new Ellipse { Width = 12, Height = 12, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
-        var track = new Border { Width = 30, Height = 16, CornerRadius = new CornerRadius(8), Child = knob, Margin = new Thickness(0, 0, 6, 0) };
-        void Choosing()
-        {
-            bool on = settings.LetMeChoose == true;
-            track.Background = on ? Accent : Edge_;
-            ((TranslateTransform)knob.RenderTransform).X = on ? 14 : 0;
-        }
-        var choose = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0),
-            Cursor = Cursors.Hand,
-            Background = Brushes.Transparent,
-            ToolTip = "On: I show you the ways I found, and you pick what I do",
-            Children = { track, new TextBlock { Text = "Let me choose", FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center } },
-        };
-        choose.MouseLeftButtonUp += (_, _) =>
-        {
-            settings.LetMeChoose = settings.LetMeChoose != true;
-            settings.Save();
-            Choosing();
-        };
-        Choosing();
-        var stopKey = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, ToolTip = "Stops him from any app, at any time",
-            Children =
-            {
-                new TextBlock { Text = "Stop anytime", FontSize = 11, Foreground = Ink4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) },
-                new Border
-                {
-                    Background = Page_,
-                    BorderBrush = Rule,
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(5, 0, 5, 1),
-                    Child = new TextBlock { Text = "Alt+Shift+O", FontSize = 10.5, FontFamily = Mono, Foreground = Ink3 },
-                },
-            },
-        };
-        footer = new DockPanel { Margin = new Thickness(12, 0, 12, 10), LastChildFill = false, Children = { Right(stopKey), apps, screens, choose } };
-
         // Everything stacked: the pages share the one row that grows.
         var pages = new Grid { Children = { signInPage, listPage, chatPage, screensPage } };
         var layout = new Grid();
-        UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, screensBar, input, footer };
+        UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, screensBar, input };
         for (int i = 0; i < rows.Length; i++)
         {
             layout.RowDefinitions.Add(new RowDefinition { Height = rows[i] == pages ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
@@ -365,26 +413,31 @@ sealed class ChatWindow : Window
             layout.Children.Add(rows[i]);
         }
 
-        /* The card, with its shadow drawn once on a layer of its own behind it. A blurred shadow on the card itself was worked
-           out again whenever anything in it moved, his face or the dots, which is what made the card stutter. The two grow
-           and fade as one when it opens and closes, see Appear. */
-        var shadow = new Border
+        /* The card on its offset shadow, the brand's lifted look, which costs nothing to draw however much moves in it. The
+           two grow and fade as one when it opens and closes, see Appear. Docked, it is a flat strip with a line on its
+           inner edge, which is dragged to resize it. */
+        clip = new Border { ClipToBounds = true, Child = layout };
+        card = new Border { Background = Card, BorderBrush = Edge_, Child = clip };
+        drop = new Border { Background = DropSoft, Margin = new Thickness(Shadow / 2, Shadow / 2, -Shadow / 2, -Shadow / 2) };
+        grip = new Border { Background = Brushes.Transparent };
+        grip.MouseLeftButtonDown += (_, e) =>
         {
-            Background = Card,
-            CornerRadius = new CornerRadius(14),
-            CacheMode = new BitmapCache(),
-            Effect = new DropShadowEffect { BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.18 },
+            e.Handled = true;
+            grip.CaptureMouse();
         };
-        var card = new Border
+        grip.MouseMove += (_, _) =>
         {
-            Background = Card,
-            BorderBrush = Edge_,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Child = new Border { CornerRadius = new CornerRadius(14), ClipToBounds = true, Child = layout },
+            if (grip.IsMouseCaptured) Resize();
         };
-        whole = new Grid { Margin = new Thickness(Shadow), Children = { shadow, card }, RenderTransform = zoom };
+        grip.MouseLeftButtonUp += (_, _) => grip.ReleaseMouseCapture();
+        grip.LostMouseCapture += (_, _) =>
+        {
+            settings.Save();
+            Pin();
+        };
+        whole = new Grid { Children = { drop, card, grip }, RenderTransform = zoom };
         Content = whole;
+        Dress();
 
         PreviewKeyDown += (_, e) =>
         {
@@ -392,15 +445,24 @@ sealed class ChatWindow : Window
             e.Handled = true;
             setOpen(false);
         };
-        // Alt+F4 puts the card away rather than destroying it. The app closing still closes it.
+        // Alt+F4 puts the card away rather than destroying it. The app closing still closes it, and gives back its strip.
         Closing += (_, e) =>
         {
             if (!IsVisible || Application.Current.MainWindow?.IsVisible != true) return;
             e.Cancel = true;
             setOpen(false);
         };
+        Closed += (_, _) => Native.Unreserve(hwnd);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => Native.Unreserve(hwnd);
         Resources.MergedDictionaries.Add(Thin);
-        new WindowInteropHelper(this).EnsureHandle();
+        hwnd = new WindowInteropHelper(this).EnsureHandle();
+        // Something else moved the strips about, like the taskbar or a screen: its strip is worked out again.
+        HwndSource.FromHwnd(hwnd).AddHook((IntPtr window, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+        {
+            bool moved = (msg == (int)Native.StripMoved && wParam == 1) || msg == Native.WM_DISPLAYCHANGE;
+            if (moved && Showing) Dispatcher.BeginInvoke(Pin);
+            return IntPtr.Zero;
+        });
         Page();
         Core.Start(settings);
         Screens.Watch(async () =>
@@ -424,38 +486,47 @@ sealed class ChatWindow : Window
         poll.Start();
     }
 
-    // The box's hint, and Send only while something is typed and, with a to-do open, no reply to it is out.
+    // The box's hint, and Send lit up only while something is typed and, with a to-do open, no reply to it is out.
     void ReadyInput()
     {
         hint.Text = "Add a to-do";
         if (fixing is not null) hint.Text = "What wasn't right?";
-        if (session is not null) hint.Text = "Reply to this one";
+        if (session is not null) hint.Text = "Reply";
         hint.Visibility = Shown(box.Text.Length == 0);
         bool any = box.Text.Trim().Length > 0 && !(session is not null && Busy);
-        send.Opacity = any ? 1 : 0.4;
+        send.Background = any ? Accent : Page_;
+        sendGlyph.Foreground = any ? Brushes.White : Ink4;
         send.IsHitTestVisible = any;
     }
 
-    ////////// 1-3. OPEN, CLOSE, STOP //////////
+    ////////// 1-3. OPEN, CLOSE, WHERE IT SITS, STOP //////////
 
     /* 1. focus false shows it without taking the keyboard, as when he comes back from using the computer. It is put where it
-          belongs before it shows, so it never draws a frame where it last was, and then grows out of him. */
-    public void Open(Native.RECT body, Native.MONITORINFO monitor, bool focus)
+          belongs before it shows, so it never draws a frame where it last was, and then grows out of him. Docked, it takes
+          its strip of the screen as it shows. */
+    public void Open(RECT body, MONITORINFO monitor, bool focus)
     {
         bool appearing = !Showing;
-        var (hwnd, p) = Spot(body, monitor);
-        double scale = Native.ScaleAt(monitor.rcMonitor.Center);
+        if (Docked is null)
+        {
+            var (_, p) = Spot(body, monitor);
+            double scale = Native.ScaleAt(monitor.rcMonitor.Center);
+            if (appearing)
+            {
+                Left = p.X / scale;
+                Top = p.Y / scale;
+            }
+            Native.Place(hwnd, p);
+        }
         if (appearing)
         {
-            Left = p.X / scale;
-            Top = p.Y / scale;
             ShowActivated = focus;
             Show();
             ShowActivated = true;
             Appear();
             Refresh();
         }
-        Native.Place(hwnd, p);
+        Pin();
         if (!focus) return;
         Activate();
         box.Focus();
@@ -469,21 +540,215 @@ sealed class ChatWindow : Window
         });
     }
 
-    // Where it goes beside him, without moving it, so he can move both in one go. Its shadow room is most of the gap.
+    // 1. Where it goes beside him, without moving it, so he can move both in one go. Its shadow room is most of the gap.
     // While open it keeps to its side for as long as that fits. Sized by the scaling of the monitor it lands on, never
     // his, which may still be another monitor's as he crosses between two.
-    public (IntPtr hwnd, Native.POINT p) Spot(Native.RECT body, Native.MONITORINFO monitor)
+    public (IntPtr hwnd, POINT p) Spot(RECT body, MONITORINFO monitor)
     {
         double scale = Native.ScaleAt(monitor.rcMonitor.Center);
         int width = (int)Math.Round(Width * scale);
         int height = (int)Math.Round(Height * scale);
-        int gap = (int)Math.Round((6 - Shadow) * scale);
+        int gap = (int)Math.Round((8 - Shadow) * scale);
         var p = Dock.Beside(monitor, body, width, height, gap, Showing ? side : null, out var s);
         side = s;
-        return (new WindowInteropHelper(this).Handle, p);
+        return (hwnd, p);
     }
 
-    // 2. It shrinks back into him as it fades, then hides.
+    /* 1. Docked, its strip: the whole height of the side of his screen, or its whole width at the bottom, kept by Windows
+          so other windows make room, on the screen he is on. */
+    void Pin()
+    {
+        if (Docked is not { } edge) return;
+        var spot = him.BodyRect().Center;
+        var strip = Strip(edge, Native.MonitorAt(spot, Native.MONITOR_DEFAULTTONEAREST), Native.ScaleAt(spot));
+        if (pinned is not { } last || !last.Equals(strip) || Native.Reserved is null)
+        {
+            pinned = strip;
+            strip = Native.Reserve(hwnd, edge, strip);
+        }
+        else strip = Native.Reserved.Value;
+        Native.Place(hwnd, new POINT(strip.Left, strip.Top), (strip.Width, strip.Height));
+    }
+
+    // 1. The strip along a side of the monitor's work area, DockSize wide, or tall at the bottom, but never more than half.
+    RECT Strip(Edge edge, MONITORINFO monitor, double scale)
+    {
+        var work = monitor.rcWork;
+        int across = edge == Edge.Bottom ? work.Height : work.Width;
+        int size = Math.Min((int)Math.Round(DockSize * scale), across / 2);
+        return edge switch
+        {
+            Edge.Left => new RECT { Left = work.Left, Top = work.Top, Right = work.Left + size, Bottom = work.Bottom },
+            Edge.Right => new RECT { Left = work.Right - size, Top = work.Top, Right = work.Right, Bottom = work.Bottom },
+            _ => new RECT { Left = work.Left, Top = work.Bottom - size, Right = work.Right, Bottom = work.Bottom },
+        };
+    }
+
+    /* 1. Where the card sits: null beside him, moving with him, or docked along a side of his screen. Kept for next time,
+          and the card moves there at once if it shows. */
+    void Sit(Edge? edge)
+    {
+        if (edge == Docked) return;
+        settings.Docked = edge;
+        settings.Save();
+        Dress();
+        if (!Showing) return;
+        if (edge is not null)
+        {
+            Pin();
+            return;
+        }
+        Native.Unreserve(hwnd);
+        pinned = null;
+        side = null;
+        Width = Wide + Shadow * 2;
+        Height = Tall + Shadow * 2;
+        var body = him.BodyRect();
+        var (_, p) = Spot(body, Native.MonitorAt(body.Center, Native.MONITOR_DEFAULTTONEAREST));
+        Native.Place(hwnd, p);
+    }
+
+    // 1. Its look for where it sits: lifted and rounded beside him, flat and square with its inner edge to drag docked.
+    void Dress()
+    {
+        var edge = Docked;
+        bool docked = edge is not null;
+        whole.Margin = new Thickness(docked ? 0 : Shadow);
+        drop.Visibility = Shown(!docked);
+        card.CornerRadius = new CornerRadius(docked ? 0 : 10);
+        clip.CornerRadius = new CornerRadius(docked ? 0 : 9);
+        card.BorderThickness = edge switch
+        {
+            Edge.Left => new Thickness(0, 0, 1, 0),
+            Edge.Right => new Thickness(1, 0, 0, 0),
+            Edge.Bottom => new Thickness(0, 1, 0, 0),
+            _ => new Thickness(1),
+        };
+        grip.Visibility = Shown(docked);
+        grip.Width = edge == Edge.Bottom ? double.NaN : 6;
+        grip.Height = edge == Edge.Bottom ? 6 : double.NaN;
+        grip.HorizontalAlignment = edge switch
+        {
+            Edge.Left => HorizontalAlignment.Right,
+            Edge.Right => HorizontalAlignment.Left,
+            _ => HorizontalAlignment.Stretch,
+        };
+        grip.VerticalAlignment = edge == Edge.Bottom ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        grip.Cursor = edge == Edge.Bottom ? Cursors.SizeNS : Cursors.SizeWE;
+    }
+
+    // 1. The docked card's inner edge follows the pointer, between a narrow chat and half the screen. Windows is asked
+    // for the new strip once it is let go.
+    void Resize()
+    {
+        if (Docked is not { } edge || Native.Reserved is not { } now) return;
+        Native.GetCursorPos(out var c);
+        var work = Native.MonitorAt(now.Center, Native.MONITOR_DEFAULTTONEAREST).rcWork;
+        double scale = Native.ScaleAt(now.Center);
+        int px = edge switch
+        {
+            Edge.Left => c.X - now.Left,
+            Edge.Right => now.Right - c.X,
+            _ => now.Bottom - c.Y,
+        };
+        int most = (edge == Edge.Bottom ? work.Height : work.Width) / 2;
+        int least = (int)Math.Round((edge == Edge.Bottom ? 200 : 320) * scale);
+        px = Math.Clamp(px, least, Math.Max(least, most));
+        settings.DockSize = px / scale;
+        var r = now;
+        if (edge == Edge.Left) r.Right = r.Left + px;
+        if (edge == Edge.Right) r.Left = r.Right - px;
+        if (edge == Edge.Bottom) r.Top = r.Bottom - px;
+        Native.Place(hwnd, new POINT(r.Left, r.Top), (r.Width, r.Height));
+    }
+
+    /* 1. The top bar pressed: dragged, it carries him and the card together, the card on his side as always. Docked, the
+          card comes off its side first and he comes to the pointer with it. Near a side of the screen the strip it would
+          take shows, and let go there it docks and he walks back to where he was. A click is only a click. */
+    void Grab(FrameworkElement bar)
+    {
+        carrying = true;
+        carried = false;
+        landing = null;
+        Native.GetCursorPos(out grabbed);
+        home = him.Frame();
+        start = new POINT(home.Left, home.Top);
+        bar.CaptureMouse();
+    }
+
+    void Carry()
+    {
+        if (!carrying) return;
+        Native.GetCursorPos(out var c);
+        double scale = Native.ScaleAt(c);
+        if (!carried && Math.Abs(c.X - grabbed.X) + Math.Abs(c.Y - grabbed.Y) < 6 * scale) return;
+        if (!carried)
+        {
+            carried = true;
+            if (Docked is not null)
+            {
+                Sit(null);
+                start = new POINT(c.X - home.Width / 2, c.Y - home.Height / 2);
+                grabbed = c;
+            }
+        }
+        // His body stays on the screen, his window's room around it may hang off.
+        var monitor = Native.MonitorAt(c, Native.MONITOR_DEFAULTTONEAREST);
+        var work = monitor.rcWork;
+        int room = (home.Width - him.BodyRect().Width) / 2;
+        int x = Math.Clamp(start.X + c.X - grabbed.X, work.Left - room, work.Right - home.Width + room);
+        int y = Math.Clamp(start.Y + c.Y - grabbed.Y, work.Top - room, work.Bottom - home.Height + room);
+        him.Put(new POINT(x, y));
+        int near = (int)Math.Round(Near * scale);
+        landing = null;
+        if (c.X <= work.Left + near) landing = Edge.Left;
+        else if (c.X >= work.Right - near) landing = Edge.Right;
+        else if (c.Y >= work.Bottom - near) landing = Edge.Bottom;
+        Preview(landing is { } edge ? Strip(edge, monitor, scale) : null);
+    }
+
+    void LetGo(FrameworkElement bar)
+    {
+        if (!carrying) return;
+        carrying = false;
+        if (bar.IsMouseCaptured) bar.ReleaseMouseCapture();
+        Preview(null);
+        if (!carried) return;
+        if (landing is not { } edge)
+        {
+            him.Park(dropped: true);
+            return;
+        }
+        Sit(edge);
+        him.MoveTo(new POINT(home.Left, home.Top), slide: true);
+    }
+
+    // 1. A see-through strip in the brand colour where the card would dock, or null to hide it. Never clicked.
+    void Preview(RECT? strip)
+    {
+        if (strip is not { } r)
+        {
+            preview?.Hide();
+            return;
+        }
+        if (preview is null)
+        {
+            preview = new Window();
+            Native.Bare(preview);
+            preview.Content = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0x26, Accent.Color.R, Accent.Color.G, Accent.Color.B)),
+                BorderBrush = Accent,
+                BorderThickness = new Thickness(2),
+            };
+            Native.ClickThrough(preview);
+        }
+        preview.Show();
+        Native.Place(new WindowInteropHelper(preview).Handle, new POINT(r.Left, r.Top), (r.Width, r.Height));
+        Native.Raise(new WindowInteropHelper(preview).Handle);
+    }
+
+    // 2. It shrinks back into him as it fades, then hides. Docked, it only fades, and gives its strip back once gone.
     public void Dismiss()
     {
         face.Hush();
@@ -491,11 +756,13 @@ sealed class ChatWindow : Window
         speaking = null;
         if (!Showing) return;
         closing = true;
-        Animate(0, 0.96, 130, EasingMode.EaseIn, () =>
+        Animate(0, Docked is null ? 0.96 : 1, 130, EasingMode.EaseIn, () =>
         {
             if (!closing) return;
             closing = false;
             Hide();
+            Native.Unreserve(hwnd);
+            pinned = null;
         });
     }
 
@@ -516,8 +783,8 @@ sealed class ChatWindow : Window
             whole.BeginAnimation(OpacityProperty, null);
             ScaleBoth(zoom, null);
             whole.Opacity = 0;
-            zoom.ScaleX = 0.94;
-            zoom.ScaleY = 0.94;
+            zoom.ScaleX = Docked is null ? 0.94 : 1;
+            zoom.ScaleY = zoom.ScaleX;
         }
         Animate(1, 1, 190, EasingMode.EaseOut);
     }
@@ -532,6 +799,7 @@ sealed class ChatWindow : Window
         whole.BeginAnimation(OpacityProperty, fade);
         ScaleBoth(zoom, new DoubleAnimation(size, time) { EasingFunction = ease });
     }
+
 
     // 3. Whatever the lingo client is running ends as it starts again, the message waiting here with it.
     public void Stop()
@@ -661,7 +929,7 @@ sealed class ChatWindow : Window
         screensPage.Visibility = Shown(on && showingScreens);
         back.Visibility = Shown(open || (on && showingScreens));
         input.Visibility = Shown(on);
-        footer.Visibility = Shown(on);
+        screensButton.Visibility = Shown(on && !showingScreens);
 
         if (!known) subtitle.Text = "";
         else if (on) subtitle.Text = $"{status!["handle"]}";
@@ -995,7 +1263,7 @@ sealed class ChatWindow : Window
             Background = Page_,
             BorderBrush = Rule,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = new CornerRadius(10),
             Padding = new Thickness(14, 12, 14, 14),
             Margin = new Thickness(0, 2, 24, 12),
         });
@@ -1113,7 +1381,7 @@ sealed class ChatWindow : Window
         {
             Child = shown,
             Background = BlueSoft,
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = new CornerRadius(10),
             Padding = new Thickness(12, 7, 12, 8),
             Margin = new Thickness(48, 0, 0, 12),
             HorizontalAlignment = HorizontalAlignment.Right,
@@ -1260,7 +1528,7 @@ sealed class ChatWindow : Window
             Background = Page_,
             BorderBrush = Rule,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = new CornerRadius(10),
             Padding = new Thickness(14, 12, 14, 14),
             Margin = new Thickness(0, 2, 24, 12),
         };
@@ -1363,7 +1631,7 @@ sealed class ChatWindow : Window
         });
     }
 
-    // 10. Once answered it folds under one line, ▸ 4 steps · 3.1s, or stays open under ▾, as he was last told.
+    // 10. Once answered it folds under one line, "4 steps, 3.1s", or stays open, as he was last told.
     void Fold(StepList list, double ms)
     {
         list.Ms = ms;
@@ -1374,7 +1642,9 @@ sealed class ChatWindow : Window
             return;
         }
         list.Head.Visibility = Visibility.Visible;
-        list.Head.Text = $"{(StepsOpen ? "▾" : "▸")} {list.Count} step{(list.Count == 1 ? "" : "s")} · {Took(ms)}";
+        list.Head.Inlines.Clear();
+        list.Head.Inlines.Add(new System.Windows.Documents.Run(StepsOpen ? OpenIcon : FoldedIcon) { FontFamily = Icons, FontSize = 9 });
+        list.Head.Inlines.Add(new System.Windows.Documents.Run($"  {list.Count} step{(list.Count == 1 ? "" : "s")}, {Took(ms)}"));
         list.Body.Visibility = Shown(StepsOpen);
     }
 
@@ -1395,7 +1665,7 @@ sealed class ChatWindow : Window
         Page();
     }
 
-    ////////// 12. THE MENU //////////
+    ////////// 12. THE MENUS //////////
 
     // A row in a menu: a title, and a quieter line under it.
     static Border Row(string text, string under, Action click)
@@ -1403,7 +1673,7 @@ sealed class ChatWindow : Window
         var row = new Border
         {
             Padding = new Thickness(10, 7, 10, 7),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(7),
             Cursor = Cursors.Hand,
             Background = Brushes.Transparent,
             Child = new StackPanel
@@ -1411,39 +1681,37 @@ sealed class ChatWindow : Window
                 Children =
                 {
                     new TextBlock { Text = text, FontSize = 13, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis },
-                    new TextBlock { Text = under, FontSize = 11, Foreground = Ink4 },
+                    new TextBlock { Text = under, FontSize = 11.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap },
                 },
             },
         };
-        Hover(row, Page_, Brushes.Transparent);
+        Hover(row, Sunk, Brushes.Transparent);
         row.MouseLeftButtonUp += (_, _) => click();
         return row;
     }
 
-    // 12. A small menu under the button, closed by clicking anywhere else.
-    void Menu(FrameworkElement anchor)
+    // 12. A small menu under a button, lifted like the card, closed by clicking anywhere else.
+    static Popup Pop(FrameworkElement anchor, UIElement content)
     {
-        var rows = new StackPanel();
+        // Under the button, its right edge with the button's, so it opens into the card.
         var menu = new Popup
         {
             PlacementTarget = anchor,
-            Placement = PlacementMode.Bottom,
+            Placement = PlacementMode.Custom,
+            CustomPopupPlacementCallback = (size, target, _) => new[] { new CustomPopupPlacement(new Point(target.Width - size.Width + Shadow / 2, target.Height + 6), PopupPrimaryAxis.Horizontal) },
             StaysOpen = false,
             AllowsTransparency = true,
-            VerticalOffset = 4,
-            Child = new Border
-            {
-                Background = Card,
-                BorderBrush = Edge_,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(6),
-                MinWidth = 220,
-                MaxWidth = 320,
-                Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.16 },
-                Child = rows,
-            },
+            Child = Lifted(new Border { Padding = new Thickness(6), MinWidth = 220, MaxWidth = 300, Child = content }, Shadow / 2),
         };
+        menu.IsOpen = true;
+        return menu;
+    }
+
+    // 12. The header's menu: Copy chat, from the session, and Apps and settings.
+    void Menu(FrameworkElement anchor)
+    {
+        var rows = new StackPanel();
+        var menu = Pop(anchor, rows);
         // The chat as the onsay lingo keeps it in its session: each message, then his reply or his questions.
         if (session is not null) rows.Children.Add(Row("Copy chat", "The whole chat, as text", async () =>
         {
@@ -1468,15 +1736,89 @@ sealed class ChatWindow : Window
             menu.IsOpen = false;
             SettingsWindow.Open(settings, this);
         }));
-        menu.IsOpen = true;
+    }
+
+    /* 12. Where the chat sits, as four small pictures of a screen, the way a browser's developer tools offer theirs: beside
+           him, or docked left, at the bottom or right. The one in use is filled in. Dragging the top bar to a side of the
+           screen does the same, which the line under them says. */
+    void SitMenu(FrameworkElement anchor)
+    {
+        var tiles = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 2, 4, 0) };
+        var all = new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = "Where the chat sits", FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(6, 2, 6, 8) },
+                tiles,
+                new TextBlock
+                {
+                    Text = "Or drag its top bar to a side of your screen. Docked, it keeps that side for itself, so your windows make room.",
+                    FontSize = 11.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 10, 6, 4),
+                },
+            },
+        };
+        var menu = Pop(anchor, all);
+        foreach (var (edge, name) in new (Edge?, string)[] { (null, "Next to him"), (Edge.Left, "Left"), (Edge.Bottom, "Bottom"), (Edge.Right, "Right") })
+        {
+            bool on = edge == Docked;
+            var tint = on ? Accent : Ink4;
+            var screen = new Grid { Width = 48, Height = 32 };
+            screen.Children.Add(new Border { BorderBrush = on ? Accent : Edge_, BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(4) });
+            var part = new Border { Background = tint, CornerRadius = new CornerRadius(1.5), Margin = new Thickness(4) };
+            if (edge == Edge.Left) part.Width = 14;
+            if (edge == Edge.Right) part.Width = 14;
+            if (edge == Edge.Bottom) part.Height = 9;
+            part.HorizontalAlignment = edge switch
+            {
+                Edge.Left => HorizontalAlignment.Left,
+                Edge.Right => HorizontalAlignment.Right,
+                null => HorizontalAlignment.Right,
+                _ => HorizontalAlignment.Stretch,
+            };
+            part.VerticalAlignment = edge is Edge.Bottom or null ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
+            if (edge is null)
+            {
+                // Beside him: a small card, and him under it.
+                part.Width = 12;
+                part.Height = 13;
+                part.Margin = new Thickness(0, 0, 9, 10);
+                screen.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = tint, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 4, 3) });
+            }
+            screen.Children.Add(part);
+            var tile = new Border
+            {
+                Padding = new Thickness(8, 8, 8, 6),
+                Margin = new Thickness(0, 0, 2, 0),
+                CornerRadius = new CornerRadius(7),
+                Cursor = Cursors.Hand,
+                Background = on ? BlueSoft : Brushes.Transparent,
+                Child = new StackPanel
+                {
+                    Children =
+                    {
+                        screen,
+                        new TextBlock { Text = name, FontSize = 11.5, Foreground = on ? Ink : Ink2, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) },
+                    },
+                },
+            };
+            if (!on) Hover(tile, Sunk, Brushes.Transparent);
+            tile.MouseLeftButtonUp += (_, _) =>
+            {
+                menu.IsOpen = false;
+                Sit(edge);
+            };
+            tiles.Children.Add(tile);
+        }
     }
 
     ////////// 13. THE LOOK EVERY WINDOW SHARES //////////
 
-    // brand.css's tokens, light theme. Every window draws with these, through using static Onsay.Desktop.ChatWindow.
+    // brand.css's tokens, light theme, the website's own. Every window draws with these, through using static
+    // Onsay.Desktop.ChatWindow.
     internal const string Brand = "#5865F2";
     internal static readonly SolidColorBrush Card = Hex("#FFFFFF");
-    internal static readonly SolidColorBrush Page_ = Hex("#F7F7FA");
+    internal static readonly SolidColorBrush Page_ = Hex("#F5F5FA");
+    internal static readonly SolidColorBrush Sunk = Hex("#EEEEF5");
     internal static readonly SolidColorBrush Edge_ = Hex("#D8D9E5");
     internal static readonly SolidColorBrush Rule = Hex("#E8E8F0");
     internal static readonly SolidColorBrush Ink = Hex("#12131C");
@@ -1484,17 +1826,23 @@ sealed class ChatWindow : Window
     internal static readonly SolidColorBrush Ink3 = Hex("#7B7F92");
     internal static readonly SolidColorBrush Ink4 = Hex("#A9ACBC");
     internal static readonly SolidColorBrush DropSoft = Hex("#D9DAEC");
-    internal static readonly SolidColorBrush BlueSoft = Hex("#EEF0FF");
+    internal static readonly SolidColorBrush BlueSoft = Hex("#ECEEFE");
     internal static readonly SolidColorBrush Accent = Hex(Brand);
-    internal static readonly SolidColorBrush AccentDeep = Hex("#4752C4");
+    internal static readonly SolidColorBrush AccentDeep = Hex("#4046C9");
     internal static readonly SolidColorBrush AccentEdge = Hex("#353DB8");
-    internal static readonly SolidColorBrush Good = Hex("#1F9D55");
+    internal static readonly SolidColorBrush Good = Hex("#12A594");
     internal static readonly SolidColorBrush Bad = Hex("#C62A2F");
     internal static readonly SolidColorBrush BadSoft = Hex("#FDECEC");
+    internal static readonly SolidColorBrush BadEdge = Hex("#F5C2C4");
     internal static readonly SolidColorBrush Butter = Hex("#FFF6D6");
     internal static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets");
-    internal static readonly FontFamily Mono = new("Consolas");
-    internal static readonly FontFamily Ui = new("Segoe UI");
+    // The website's fonts, shipped in fonts/: Gabarito for headings, and IBM Plex Sans and Mono for words and code, renamed
+    // Onsay Sans and Onsay Mono for their license (fonts/OFL.txt).
+    internal static readonly FontFamily Display = Font("Gabarito");
+    internal static readonly FontFamily Ui = Font("Onsay Sans");
+    internal static readonly FontFamily Mono = Font("Onsay Mono");
+
+    static FontFamily Font(string name) => new(new Uri("pack://application:,,,/"), $"./fonts/#{name}, Segoe UI");
 
     internal static SolidColorBrush Hex(string hex)
     {
@@ -1525,12 +1873,25 @@ sealed class ChatWindow : Window
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
     }
 
-    // Every kind of button is the same shape: a rounded rectangle, never a pill.
-    internal enum Kind { Primary, Quiet, Danger, Icon }
+    /* The brand's lifted look, for a card that floats: an edge, and a solid shadow offset down and right, never blurred.
+       It costs nothing to draw however much moves in the card. Gives the card with its shadow, offset by that much. */
+    internal static Grid Lifted(Border inner, double offset)
+    {
+        inner.Background = Card;
+        inner.BorderBrush = Edge_;
+        inner.BorderThickness = new Thickness(1);
+        inner.CornerRadius = new CornerRadius(10);
+        var drop = new Border { Background = DropSoft, CornerRadius = new CornerRadius(10), Margin = new Thickness(offset, offset, 0, 0) };
+        inner.Margin = new Thickness(0, 0, offset, offset);
+        return new Grid { Children = { drop, inner } };
+    }
+
+    // Every kind of button is the same shape: a rounded rectangle, never a pill. Ghost is words alone, Icon a glyph alone.
+    internal enum Kind { Primary, Quiet, Danger, Ghost, Icon }
 
     /* Darker under the pointer and pressed in while held. The primary one is filled in the brand colour on a hard shadow,
-       the way the website's is. An icon button is a glyph from Icons with no border. A click needs both press and
-       release on it. */
+       the way the website's is. Ghost and Icon have no border and darken to ink under the pointer. A click needs both
+       press and release on it. */
     internal static Border Button(string text, Kind kind, Action click, string? tip = null)
     {
         bool icon = kind == Kind.Icon;
@@ -1538,30 +1899,31 @@ sealed class ChatWindow : Window
         var (rest, hover, edge, ink) = kind switch
         {
             Kind.Primary => ((Brush)Accent, (Brush)AccentDeep, (Brush)AccentEdge, Brushes.White),
-            Kind.Danger => (Card, BadSoft, Bad, Bad),
-            Kind.Icon => (Brushes.Transparent, Page_, Edge_, Ink2),
-            _ => (Card, Page_, Edge_, Ink),
+            Kind.Danger => (Card, BadSoft, BadEdge, Bad),
+            Kind.Icon or Kind.Ghost => (Brushes.Transparent, Sunk, Edge_, Ink3),
+            _ => (Card, Sunk, Edge_, Ink),
         };
+        bool bare = kind is Kind.Icon or Kind.Ghost;
         var scale = new ScaleTransform();
         var b = new Border
         {
             Background = rest,
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(7),
             Cursor = Cursors.Hand,
             ToolTip = tip,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
             BorderBrush = edge,
-            BorderThickness = new Thickness(icon ? 0 : 1),
-            Padding = icon ? new Thickness(0) : new Thickness(14, 6, 14, 7),
+            BorderThickness = new Thickness(bare ? 0 : 1),
+            Padding = icon ? new Thickness(0) : new Thickness(bare ? 8 : 14, 6, bare ? 8 : 14, 7),
             Width = icon ? 32 : double.NaN,
             Height = icon ? 32 : double.NaN,
-            Effect = primary ? new DropShadowEffect { BlurRadius = 0, ShadowDepth = 2.5, Direction = 315, Color = AccentEdge.Color, Opacity = 1 } : null,
+            Effect = primary ? new DropShadowEffect { BlurRadius = 0, ShadowDepth = 2.83, Direction = 315, Color = AccentEdge.Color, Opacity = 1 } : null,
             Child = new TextBlock
             {
                 Text = text,
                 FontSize = icon ? 14 : 13,
-                FontWeight = icon ? FontWeights.Normal : FontWeights.SemiBold,
+                FontWeight = bare ? FontWeights.Normal : FontWeights.SemiBold,
                 FontFamily = icon ? Icons : Ui,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -1577,6 +1939,12 @@ sealed class ChatWindow : Window
             scale.ScaleY = on ? 0.95 : 1;
         }
         Hover(b, hover, rest);
+        var words = (TextBlock)b.Child;
+        if (bare)
+        {
+            b.MouseEnter += (_, _) => words.Foreground = Ink;
+            b.MouseLeave += (_, _) => words.Foreground = ink;
+        }
         b.MouseLeave += (_, _) =>
         {
             down = false;
@@ -1688,7 +2056,7 @@ sealed class ChatWindow : Window
             Background = Card,
             BorderBrush = Edge_,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = new CornerRadius(10),
             Padding = new Thickness(16, 12, 16, 12),
             Margin = new Thickness(0, 0, 0, 10),
             Cursor = Cursors.Hand,
@@ -1710,6 +2078,52 @@ sealed class ChatWindow : Window
         FontSize = size,
         Foreground = ink,
     };
+
+    // A right click menu in the brand's look: a lifted card of plain rows that darken under the pointer. Its style is
+    // "Menu", and its rows and lines take theirs from it as its Resources.
+    internal static readonly ResourceDictionary Menus = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse($"""
+        <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+          <Style x:Key="Menu" TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="HasDropShadow" Value="False" />
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                  <Grid>
+                    <Border Background="{DropSoft.Color}" CornerRadius="10" Margin="4,4,0,0" />
+                    <Border Background="{Card.Color}" BorderBrush="{Edge_.Color}" BorderThickness="1" CornerRadius="10" Padding="5" MinWidth="180" Margin="0,0,4,4">
+                      <StackPanel IsItemsHost="True" />
+                    </Border>
+                  </Grid>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style TargetType="MenuItem">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                  <Border x:Name="row" Background="Transparent" CornerRadius="7" Padding="10,6,10,7">
+                    <ContentPresenter ContentSource="Header" TextBlock.FontSize="13" TextBlock.Foreground="{Ink.Color}" />
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="row" Property="Background" Value="{Sunk.Color}" /></Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style TargetType="Separator">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Separator"><Border Height="1" Background="{Rule.Color}" Margin="6,4" /></ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </ResourceDictionary>
+        """);
 
     // A thin rounded scrollbar with no arrows. Horizontal ones never appear in these windows, so they are hidden.
     internal static readonly ResourceDictionary Thin = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse($"""

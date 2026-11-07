@@ -17,8 +17,10 @@ static class Program
         // and asks whether his data goes too.
         VelopackApp.Build().OnBeforeUninstallFastCallback(_ => Updates.Uninstalling()).Run();
 
-        // One of him. A second launch is somebody double clicking the shortcut again, not asking for twins.
-        using var only = new Mutex(true, @"Local\Onsay.Desktop", out var first);
+        // One of him. A second launch is somebody double clicking the shortcut again, not asking for twins. A test, with a
+        // folder of its own in ONSAY_DATA, is one of him for that folder, so it runs beside yours.
+        var test = Environment.GetEnvironmentVariable("ONSAY_DATA") is { Length: > 0 } ? "." + Settings.Folder.Replace('\\', '/') : "";
+        using var only = new Mutex(true, $@"Local\Onsay.Desktop{test}", out var first);
         if (!first) return;
 
         /* An error nothing caught is written down. One on the UI thread is let go and he carries on, since vanishing is

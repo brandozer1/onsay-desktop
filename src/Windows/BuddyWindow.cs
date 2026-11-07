@@ -18,6 +18,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Onsay.Character;
+using static Onsay.Desktop.ChatWindow;
 using static Onsay.Desktop.Native;
 
 namespace Onsay.Desktop;
@@ -79,7 +80,7 @@ sealed class BuddyWindow : Window
         ShowActivated = false;
         Width = Height = Box;
         Content = him;
-        chat = new ChatWindow(settings, Toggle);
+        chat = new ChatWindow(settings, Toggle, this);
         Overlay.Chat = chat;
 
         SourceInitialized += (_, _) =>
@@ -134,6 +135,10 @@ sealed class BuddyWindow : Window
         return r;
     }
 
+    // His window and his body in it, in pixels, for the chat to sit by and carry him with its top bar.
+    internal RECT Frame() => Rect();
+    internal RECT BodyRect() => Rect().Inset(Pad);
+
     void Later(Action a) => Dispatcher.BeginInvoke(a, DispatcherPriority.Background);
 
     void Every(TimeSpan gap, Action tick)
@@ -179,7 +184,7 @@ sealed class BuddyWindow : Window
     ////////// 2-4. WHERE HE SITS //////////
 
     // 2. Dropped on or near the bar he docks there, anywhere else he stays, kept on that screen.
-    void Park(bool dropped, bool slide = false)
+    internal void Park(bool dropped, bool slide = false)
     {
         if (hwnd == IntPtr.Zero) return;
         var r = Rect();
@@ -217,7 +222,7 @@ sealed class BuddyWindow : Window
     }
 
     // 3. A slide on a spring, so being put back reads as him walking there.
-    void MoveTo(POINT p, bool slide)
+    internal void MoveTo(POINT p, bool slide)
     {
         StopSlide();
         if (!slide || !SystemParameters.ClientAreaAnimation)
@@ -256,10 +261,10 @@ sealed class BuddyWindow : Window
         sliding = false;
     }
 
-    // 4. He and the chat move in one go, so the chat never draws a frame behind him.
-    void Put(POINT p)
+    // 4. He and the chat move in one go, so the chat never draws a frame behind him. Docked, the chat stays where it is.
+    internal void Put(POINT p)
     {
-        if (!open)
+        if (!open || chat.Docked is not null)
         {
             Native.Place(hwnd, p);
             return;
@@ -385,6 +390,9 @@ sealed class BuddyWindow : Window
         }
         return new ContextMenu
         {
+            Style = (Style)Menus["Menu"],
+            FontFamily = Ui,
+            Resources = Menus,
             Items =
             {
                 Item("Open chat", () => Toggle(true)),
@@ -409,8 +417,8 @@ sealed class BuddyWindow : Window
 
     ////////// 9. FOLLOWING HIS HAND //////////
 
-    /* 9. The chat closes and he flies below and right of the pointer's tip, or whichever corner fits, never over it. When
-          it fades he goes home. Fly does the moving.
+    /* 9. The chat beside him closes, a docked one stays, and he flies below and right of the pointer's tip, or whichever
+          corner fits, never over it. When it fades he goes home. Fly does the moving.
 
           The chat comes back, without taking the keyboard, only if it was open when his pointer first came out, and only
           once his pointer has gone and his turn is over: his pointer rests between steps, and the chat must not flicker
@@ -422,7 +430,7 @@ sealed class BuddyWindow : Window
         if (showing && !chasing)
         {
             chasing = true;
-            if (open)
+            if (open && chat.Docked is null)
             {
                 reopen = true;
                 SetOpen(false);

@@ -16,11 +16,15 @@
     <Version>0.1.0</Version>
   </PropertyGroup>
 
-  <!-- Velopack installs and updates him, see src/System/Updates.cs and release.ps1. WebView2 draws his panel's pages,
-       see src/Windows/PanelWindow.cs. -->
+  <!-- Velopack installs and updates him, see src/System/Updates.cs and release.ps1. -->
   <ItemGroup>
     <PackageReference Include="Velopack" Version="1.2.158" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
+
+  <!-- The brand's fonts, the website's own: Gabarito for headings, IBM Plex Sans and Mono, as Onsay Sans and Mono, for
+       the rest. All under the SIL Open Font License, see fonts/OFL.txt. -->
+  <ItemGroup>
+    <Resource Include="fonts\*.ttf" />
   </ItemGroup>
 
   <!-- The lingo client, his hands on this computer, ships beside the app, and so do its lingos, .lingo files like agent, the AI

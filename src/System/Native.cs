@@ -1,6 +1,6 @@
 // Native.cs - the Win32 calls and window setup his windows need, in physical pixels.
 //
-// 1. MonitorAt(p, fallback)     the monitor under a point, with its work area
+// 1. MonitorAt(p, fallback)     the monitor under a point, with its work area, the strip his docked chat keeps given back
 //    ScaleAt(p)                 the scaling of the monitor nearest a point, like 1.5 for 150%
 // 2. SomethingFullscreen()      a game, film or presentation has the whole screen
 // 3. Place(hwnd, p, size)       moves a window, and sizes it when size is given, without activating it
@@ -12,6 +12,8 @@
 // 9. Open(target)               a file, folder or link in its default app
 // 10. WebLink(target)           the address as a Uri when it is a web or mail link, or null
 // 11. EndsWithThis(process)     a program that ends when this app does, however this app ends. What it starts goes on
+// 12. Reserve(hwnd, edge, want)  keeps a strip of the screen for a window, the way the taskbar does, so other windows
+//                               make room for it. Gives the strip Windows agreed to. Unreserve(hwnd) gives it back
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -125,11 +127,19 @@ static class Native
 
     ////////// FUNCTIONS //////////
 
-    // 1.
+    /* 1. With the chat docked, Windows takes its strip out of the work area. Given back here, so he keeps his place on the
+          taskbar and the chat measures its strip from the whole work area, as if it took no room. */
     public static MONITORINFO MonitorAt(POINT p, uint fallback)
     {
         var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
         GetMonitorInfo(MonitorFromPoint(p, fallback), ref info);
+        if (Reserved is not { } kept) return info;
+        var mon = info.rcMonitor;
+        bool here = kept.Left >= mon.Left && kept.Right <= mon.Right && kept.Top >= mon.Top && kept.Bottom <= mon.Bottom;
+        if (!here) return info;
+        if (info.rcWork.Left == kept.Right) info.rcWork.Left = kept.Left;
+        else if (info.rcWork.Right == kept.Left) info.rcWork.Right = kept.Right;
+        else if (info.rcWork.Bottom == kept.Top) info.rcWork.Bottom = kept.Bottom;
         return info;
     }
 
@@ -203,7 +213,7 @@ static class Native
     // 9.
     public static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
 
-    // 10. Only these open from a reply or a panel: anything else stays words.
+    // 10. Only these open from a reply: anything else stays words.
     public static Uri? WebLink(string target)
     {
         if (!Uri.TryCreate(target, UriKind.Absolute, out var uri)) return null;
@@ -247,4 +257,57 @@ static class Native
 
     [DllImport("kernel32.dll")]
     static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+    ////////// 12. A STRIP OF THE SCREEN //////////
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct APPBARDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public IntPtr lParam;
+    }
+
+    [DllImport("shell32.dll")] static extern uint SHAppBarMessage(uint message, ref APPBARDATA data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessage(string name);
+
+    // Windows sends this to the window when something else moved the strips about, like the taskbar. Place it again then.
+    public static readonly uint StripMoved = RegisterWindowMessage("Onsay.Strip");
+    public static RECT? Reserved { get; private set; }   // the strip kept now, in pixels, or null
+
+    /* 12. edge is Left, Right or Bottom. Windows may move the strip in, past the taskbar or another app's strip: the width
+           or height asked for is kept from wherever it starts. */
+    public static RECT Reserve(IntPtr hwnd, Edge edge, RECT want)
+    {
+        var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = hwnd, uCallbackMessage = StripMoved };
+        if (Reserved is null) SHAppBarMessage(0, ref data);   // ABM_NEW
+        data.uEdge = edge switch
+        {
+            Edge.Left => 0u,
+            Edge.Right => 2u,
+            _ => 3u,
+        };
+        int w = want.Width;
+        int h = want.Height;
+        data.rc = want;
+        SHAppBarMessage(2, ref data);   // ABM_QUERYPOS: Windows moves rc clear of the strips there already
+        if (edge == Edge.Left) data.rc.Right = data.rc.Left + w;
+        if (edge == Edge.Right) data.rc.Left = data.rc.Right - w;
+        if (edge == Edge.Bottom) data.rc.Top = data.rc.Bottom - h;
+        SHAppBarMessage(3, ref data);   // ABM_SETPOS
+        Reserved = data.rc;
+        return data.rc;
+    }
+
+    // 12.
+    public static void Unreserve(IntPtr hwnd)
+    {
+        if (Reserved is null) return;
+        var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = hwnd };
+        SHAppBarMessage(1, ref data);   // ABM_REMOVE
+        Reserved = null;
+    }
 }

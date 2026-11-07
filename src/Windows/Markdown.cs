@@ -1,11 +1,13 @@
-// Markdown.cs - his replies drawn the way they are written: headings, lists, quotes, tables, links, bold, italics and
-// code, every code block with its language and a Copy button. Drawn again as his words type out, so a block not yet
-// finished draws as far as it has got.
+// Markdown.cs - his replies drawn the way they are written: headings, lists and to-do lists, quotes, tables, links, bold,
+// italics and code, every code block with its language and a Copy button. A character escaped with \ and HTML's &amp;
+// and <br> read as what they stand for. Drawn again as his words type out, so a block not yet finished draws as far as
+// it has got.
 //
 // 1. Render(text)       the whole reply as a document, for a read only box that can still be selected and copied
 // 2. Inlines(text)      one stretch of text: its bold, italics, struck out words, code and links
 // 3. Code(language, text) a code block, its language over it and Copy beside that
 // 4. Copy(text, label)  a small Copy button that says Copied for a moment once pressed, for code and whole replies
+using System.Net;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,10 +22,11 @@ static class Markdown
 {
     static readonly Regex Fence = new(@"^\s*(```|~~~)\s*([^\s`]*)");
     static readonly Regex Heading = new(@"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$");
-    static readonly Regex Item = new(@"^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$");
+    static readonly Regex Item = new(@"^(\s*)([-*+\u2022]|\d{1,9}[.)])\s+(.*)$");
+    static readonly Regex Checkbox = new(@"^\[([ xX])\]\s+(.*)$");
     static readonly Regex Line = new(@"^\s{0,3}([-*_])(\s*\1){2,}\s*$");
     static readonly Regex Quote = new(@"^\s*>\s?(.*)$");
-    static readonly Regex Row = new(@"^\s*\|(.*)\|\s*$");
+    static readonly Regex Row = new(@"\|");
     static readonly Regex Divider = new(@"^\s*\|?(\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?\s*$|^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$");
 
     // Code first, so nothing inside it is read as anything else. The group numbers are what Inlines reads.
@@ -36,15 +39,20 @@ static class Markdown
         @"|(?<![\w_])_(?![\s_])(.+?)(?<![\s_])_(?![\w_])" +              // 7: italics
         @"|\[([^\]]+)\]\(\s*<?([^)\s>]+)>?\s*\)" +                       // 8, 9: a link's words and address
         @"|(https?://[^\s<>()]*[^\s<>().,;:!?'""])");                    // 10: a bare address
-    static readonly Thickness Gap = new(0, 0, 0, 8);
+    static readonly Regex Escape = new(@"\\([\\`*_{}\[\]()#+\-.!|~>])");
+    static readonly Regex Break = new(@"<br\s*/?>", RegexOptions.IgnoreCase);
+    const char Hidden = '\uF000';   // an escaped character is kept as Hidden plus itself until it is drawn, so nothing reads it
+    static readonly Thickness Gap = new(0, 0, 0, 10);
 
     ////////// 1. BLOCKS //////////
 
     // 1. Line by line. A list keeps going over a blank line while the next line is another item, and nests by indent.
     public static FlowDocument Render(string text)
     {
-        var doc = new FlowDocument { PagePadding = new Thickness(0), FontFamily = Ui, FontSize = 14, TextAlignment = TextAlignment.Left };
-        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var doc = new FlowDocument { PagePadding = new Thickness(0), FontFamily = Ui, FontSize = 14, LineHeight = 22, TextAlignment = TextAlignment.Left };
+        text = Break.Replace(text.Replace("\r\n", "\n"), "\n");
+        text = Escape.Replace(text, m => $"{(char)(Hidden + m.Groups[1].Value[0])}");
+        var lines = text.Split('\n');
         var words = new List<string>();
         var lists = new Stack<(int indent, List list)>();
         void Words()
@@ -80,15 +88,26 @@ static class Markdown
                     var list = new List
                     {
                         MarkerStyle = numbered ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc,
-                        Margin = lists.Count == 0 ? Gap : new Thickness(0),
-                        Padding = new Thickness(20, 0, 0, 0),
+                        Margin = lists.Count == 0 ? Gap : new Thickness(0, 2, 0, 0),
+                        Padding = new Thickness(22, 0, 0, 0),
                     };
                     if (numbered && int.TryParse(m.Groups[2].Value.TrimEnd('.', ')'), out var start)) list.StartIndex = Math.Max(1, start);
                     if (lists.Count == 0) doc.Blocks.Add(list);
                     else lists.Peek().list.ListItems.LastListItem?.Blocks.Add(list);
                     lists.Push((indent, list));
                 }
-                lists.Peek().list.ListItems.Add(new ListItem(new Paragraph(Spanned(m.Groups[3].Value)) { Margin = new Thickness(0, 0, 0, 2) }));
+                // A to-do item, - [ ] or - [x], has a box in place of its dot.
+                var said = m.Groups[3].Value;
+                var item = new Paragraph { Margin = new Thickness(0, 0, 0, 4) };
+                if (Checkbox.Match(said) is { Success: true } task)
+                {
+                    lists.Peek().list.MarkerStyle = TextMarkerStyle.None;
+                    lists.Peek().list.Padding = new Thickness(lists.Count > 1 ? 22 : 0, 0, 0, 0);
+                    item.Inlines.Add(new Run(task.Groups[1].Value == " " ? "\uE739  " : "\uE73A  ") { FontFamily = Icons, FontSize = 12, Foreground = Accent });
+                    said = task.Groups[2].Value;
+                }
+                item.Inlines.Add(Spanned(said));
+                lists.Peek().list.ListItems.Add(new ListItem(item));
             }
             else if (lists.Count > 0 && line.Trim().Length > 0)
             {
@@ -98,12 +117,15 @@ static class Markdown
             else if ((m = Heading.Match(line)).Success)
             {
                 Words();
-                int size = m.Groups[1].Value.Length switch { 1 => 19, 2 => 17, _ => 15 };
+                // The two biggest in the brand's heading font, the rest as bold words, all near the size of the text in a chat.
+                int level = m.Groups[1].Value.Length;
                 doc.Blocks.Add(new Paragraph(Spanned(m.Groups[2].Value))
                 {
-                    FontSize = size,
-                    FontWeight = FontWeights.SemiBold,
-                    Margin = new Thickness(0, doc.Blocks.Count > 0 ? 6 : 0, 0, 6),
+                    FontFamily = level <= 2 ? Display : Ui,
+                    FontSize = level switch { 1 => 18, 2 => 16, _ => 14 },
+                    LineHeight = level == 1 ? 24 : 22,
+                    FontWeight = level <= 2 ? FontWeights.Bold : FontWeights.SemiBold,
+                    Margin = new Thickness(0, doc.Blocks.Count > 0 ? 8 : 0, 0, 6),
                 });
             }
             else if (Line.IsMatch(line) && words.Count == 0)
@@ -122,11 +144,11 @@ static class Markdown
                     Foreground = Ink2,
                     BorderBrush = Edge_,
                     BorderThickness = new Thickness(3, 0, 0, 0),
-                    Padding = new Thickness(10, 2, 0, 2),
+                    Padding = new Thickness(12, 0, 0, 0),
                     Margin = Gap,
                 });
             }
-            else if (Row.IsMatch(line) && i + 1 < lines.Length && Divider.IsMatch(lines[i + 1]))
+            else if (Row.IsMatch(line) && words.Count == 0 && i + 1 < lines.Length && Divider.IsMatch(lines[i + 1]))
             {
                 Words();
                 var rows = new List<string> { line };
@@ -142,17 +164,24 @@ static class Markdown
         return doc;
     }
 
-    // A table: its first row the header, each cell's text read like any other, every cell ruled.
+    // A table: its first row the header, each cell's text read like any other, every cell ruled. The pipes on its outer
+    // edges may be left off.
     static Table Table(List<string> rows)
     {
-        var cells = rows.Select(r => Row.Match(r).Groups[1].Value.Split('|').Select(c => c.Trim()).ToArray()).ToList();
+        var cells = rows.Select(r =>
+        {
+            var row = r.Trim();
+            if (row.StartsWith('|')) row = row[1..];
+            if (row.EndsWith('|')) row = row[..^1];
+            return row.Split('|').Select(c => c.Trim()).ToArray();
+        }).ToList();
         int columns = cells.Max(c => c.Length);
         var table = new Table { CellSpacing = 0, Margin = Gap, BorderBrush = Rule, BorderThickness = new Thickness(1, 1, 0, 0), FontSize = 13 };
         for (int c = 0; c < columns; c++) table.Columns.Add(new TableColumn());
         var group = new TableRowGroup();
         for (int r = 0; r < cells.Count; r++)
         {
-            var row = new TableRow { Background = r == 0 ? Page_ : null, FontWeight = r == 0 ? FontWeights.SemiBold : FontWeights.Normal };
+            var row = new TableRow { Background = r == 0 ? Sunk : null, FontWeight = r == 0 ? FontWeights.SemiBold : FontWeights.Normal };
             for (int c = 0; c < columns; c++)
                 row.Cells.Add(new TableCell(new Paragraph(Spanned(c < cells[r].Length ? cells[r][c] : "")) { Margin = new Thickness(0) })
                 {
@@ -184,23 +213,40 @@ static class Markdown
     {
         if (depth > 8)
         {
-            yield return new Run(text);
+            yield return Plain(text);
             yield break;
         }
         int at = 0;
         foreach (Match m in Spans.Matches(text))
         {
-            if (m.Index > at) yield return new Run(text[at..m.Index]);
+            if (m.Index > at) yield return Plain(text[at..m.Index]);
             at = m.Index + m.Length;
             var g = m.Groups;
-            if (g[2].Success) yield return new Run(g[2].Value.Trim()) { FontFamily = Mono, FontSize = 12.5, Background = Page_, Foreground = Ink };
-            else if (g[3].Success || g[4].Success) yield return Wrap(new Bold(), g[3].Success ? g[3].Value : g[4].Value, depth);
+            // Code has a thin space at each end, so its shading reaches past its first and last letters.
+            if (g[2].Success) yield return new Run($"\u2009{Shown(g[2].Value.Trim(), code: true)}\u2009") { FontFamily = Mono, FontSize = 12.5, Background = Sunk, Foreground = Ink };
+            else if (g[3].Success || g[4].Success) yield return Wrap(new Span { FontWeight = FontWeights.SemiBold }, g[3].Success ? g[3].Value : g[4].Value, depth);
             else if (g[5].Success) yield return Wrap(new Span { TextDecorations = TextDecorations.Strikethrough }, g[5].Value, depth);
             else if (g[6].Success || g[7].Success) yield return Wrap(new Italic(), g[6].Success ? g[6].Value : g[7].Value, depth);
             else yield return Link(g[8].Success ? g[8].Value : g[10].Value, g[8].Success ? g[9].Value : g[10].Value, depth);
         }
-        if (at < text.Length) yield return new Run(text[at..]);
+        if (at < text.Length) yield return Plain(text[at..]);
     }
+
+    // Words as they are drawn: an escaped character as itself, and &amp; and the like as what they stand for. In code both
+    // stay as written.
+    static string Shown(string text, bool code = false)
+    {
+        var shown = new System.Text.StringBuilder();
+        foreach (var c in text)
+        {
+            bool escaped = c > Hidden && c < Hidden + 128;
+            if (escaped && code) shown.Append('\\');
+            shown.Append(escaped ? (char)(c - Hidden) : c);
+        }
+        return code ? shown.ToString() : WebUtility.HtmlDecode(shown.ToString());
+    }
+
+    static Run Plain(string text) => new(Shown(text));
 
     static Span Wrap(Span span, string inner, int depth)
     {
@@ -211,10 +257,10 @@ static class Markdown
     // A link opens in the browser. Only web and mail links are links: anything else stays words.
     static Inline Link(string words, string target, int depth)
     {
-        if (Native.WebLink(target) is not { } uri) return new Run(words);
+        if (Native.WebLink(target) is not { } uri) return Plain(words);
         var link = new Hyperlink { Foreground = Accent, TextDecorations = null, Cursor = Cursors.Hand, ToolTip = uri.ToString() };
         // Words with an address in them stay words: read again they would be a link, inside a link, for ever.
-        if (words.Contains("://")) link.Inlines.Add(new Run(words));
+        if (words.Contains("://")) link.Inlines.Add(Plain(words));
         else Wrap(link, words, depth);
         link.Click += (_, _) => Native.Open(uri.ToString());
         link.MouseEnter += (_, _) => link.TextDecorations = TextDecorations.Underline;
@@ -235,7 +281,7 @@ static class Markdown
             Background = Page_,
             BorderBrush = Rule,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(7),
             Child = new StackPanel
             {
                 Children =
@@ -243,7 +289,7 @@ static class Markdown
                     head,
                     new TextBox
                     {
-                        Text = text,
+                        Text = Shown(text, code: true),
                         IsReadOnly = true,
                         BorderThickness = new Thickness(0),
                         Background = Brushes.Transparent,

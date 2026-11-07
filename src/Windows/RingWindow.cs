@@ -53,7 +53,7 @@ sealed class RingWindow : Window
         {
             Background = Card, CornerRadius = new CornerRadius(14, 14, 14, 5), Padding = new Thickness(11, 8, 11, 8),
             BorderBrush = Rule, BorderThickness = new Thickness(1), Child = words,
-            Effect = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 6, Opacity = 0.16 },
+            Effect = new DropShadowEffect { BlurRadius = 0, ShadowDepth = 3, Direction = 315, Color = DropSoft.Color, Opacity = 1 },
         };
         him.Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 4, Opacity = 0.22 };
         canvas.Children.Add(ripple);
