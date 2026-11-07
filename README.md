@@ -30,7 +30,8 @@ Onsay on.
 
 He sits on the taskbar and watches your cursor. Click him to chat. Alt+Shift+O stops him at any time, from any app.
 While something has the whole screen he steps aside. Right click him for Open chat, Apps, Settings, Put him back and
-Quit.
+Close Onsay. Closed, he goes but Onsay keeps running, so your devices and apps can still use this computer; opening
+Onsay again, from the Start menu, brings him back. Quit Onsay, in Settings, stops it all.
 
 **Where the chat sits** is yours to choose, the way a browser's developer tools dock: next to him, moving with him, or
 docked along the left, right or bottom of his screen. Docked, it keeps that strip of the screen the way the taskbar does,
@@ -43,7 +44,7 @@ card closes or the app ends.
 
 **The chat only draws; the onsay lingo does the work.** Each chat is a session of the onsay lingo. A message goes to
 `/onsay` on the lingo client with its prompt key, read from the onsay lingo's settings, in a session the app names when
-the chat starts, the way the onsay lingo names one, with `mode` for Let me choose. The onsay lingo works it through as
+the chat starts, the way the onsay lingo names one. The onsay lingo works it through as
 the agent loop: Onsay decides each step from the whole session, a call or the reply, and the onsay lingo runs each call
 on this computer or through Onsay, until the reply (lingo-client `lingos/onsay/README.md`). It keeps the session, every
 call and what it gave included, so he remembers the chat and what he did in it. The app draws what comes back and what
@@ -56,10 +57,7 @@ moment, the way it asks for the questions waiting: each step is a line in plain 
 laptop", what a step asked indented under it, and the newest on the bar. Once he answers they fold under one line,
 "4 steps, 3.1s"; a click opens or folds them all, and he remembers which (`ShowSteps` in `desktop.json`).
 
-**Let me choose**, a switch in the box, has him ask before every step he takes (`LetMeChoose` in `desktop.json`,
-sent as `mode: "list"`): before each call, a card asks "Which should I do?" with each way, what it does and where,
-and None of these, which stops him. A value a call needs that nobody gave is asked for on a card too, with or without
-it. Your answers go to `/onsay/sessions/<session>/answers`, and the card keeps only each question and its answer.
+**A value a call needs that nobody gave** is asked for on a card. Your answers go to `/onsay/sessions/<session>/answers`, and the card keeps only each question and its answer.
 
 **Questions back** show in the chat together: a question as text gets a box to type in, `{question, why, choices, other,
 skip}` a button for each choice, with Something else and Skip unless `other` or `skip` is false. Send, once every one is

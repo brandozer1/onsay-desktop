@@ -6,6 +6,7 @@
 // 3. AlongOf(m, topLeft, w, h, margin)      the other way: how far along the bar a window is
 // 4. Beside(m, body, w, h, gap, prefer)     a card next to him, toward the middle of the screen, sliding along him
 // 5. OnBar(m, body, near)                   whether his body was dropped on the bar, or within near of it
+// 6. Clear(work, body, card, gap)           how far his body moves, the shortest way, to be outside a card and gap round it
 using static Onsay.Desktop.Native;
 
 namespace Onsay.Desktop;
@@ -98,5 +99,24 @@ static class Dock
             Edge.Left => body.Left <= work.Left + near,
             _ => body.Right >= work.Right - near,
         };
+    }
+
+    // 6. Nothing when he is clear of it already. Each way out keeps him on the screen along the way he moves.
+    public static POINT Clear(RECT work, RECT body, RECT card, int gap)
+    {
+        var room = new RECT { Left = card.Left - gap, Top = card.Top - gap, Right = card.Right + gap, Bottom = card.Bottom + gap };
+        bool over = body.Left < room.Right && body.Right > room.Left && body.Top < room.Bottom && body.Bottom > room.Top;
+        if (!over) return new POINT(0, 0);
+        var ways = new[]
+        {
+            new POINT(room.Left - body.Right, 0),
+            new POINT(room.Right - body.Left, 0),
+            new POINT(0, room.Top - body.Bottom),
+            new POINT(0, room.Bottom - body.Top),
+        };
+        var fits = ways.Where(w => w.X != 0
+            ? body.Left + w.X >= work.Left && body.Right + w.X <= work.Right
+            : body.Top + w.Y >= work.Top && body.Bottom + w.Y <= work.Bottom);
+        return fits.DefaultIfEmpty(ways[0]).MinBy(w => Math.Abs(w.X) + Math.Abs(w.Y));
     }
 }

@@ -3,9 +3,8 @@
 // which works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask
 // is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
 // it has got, and Not quite on a done one makes a new one that follows it up. Opening one shows its whole conversation,
-// and the box there replies to it. Its X closes it, and so do he (his back has an X while it is open) and Esc. Let me
-// choose, in the box, sends list mode, so each step is a card of ways to pick from, and while he works his steps show as
-// they happen, folded under one line once he answers. It sits beside him and moves with him, or docked to the left,
+// and the box there replies to it. Its X closes it, and so do he (his back has an X while it is open) and Esc. While he
+// works his steps show as they happen, folded under one line once he answers. It sits beside him and moves with him, or docked to the left,
 // right or bottom of his screen, which keeps that strip so windows make room, the way a browser's developer tools dock.
 // Its top bar dragged carries him and the card, and dropped on a side of the screen docks it there.
 //
@@ -198,6 +197,7 @@ sealed class ChatWindow : Window
         catch (Exception) { return false; }
     }
     bool Showing => IsVisible && !closing;          // open, and not on its way out
+    internal bool Carrying => carrying;             // its top bar is being dragged, carrying him
     bool SignedIn => (bool?)status?["signed_in"] == true;
 
     // Where the card sits, and how it gets there.
@@ -333,7 +333,7 @@ sealed class ChatWindow : Window
         working.Children.Add(doing);
         tick.Tick += (_, _) => workingTime.Text = Took((DateTime.Now - doingSince).TotalMilliseconds, live: true);
 
-        /* The box: what you type on top, and under it Let me choose and Send. Enter sends, Shift+Enter starts a new line,
+        /* The box: what you type on top, and under it Send. Enter sends, Shift+Enter starts a new line,
            and it grows to a few lines before it scrolls. A click anywhere in it puts the cursor in the text. */
         send = new Border
         {
@@ -345,31 +345,6 @@ sealed class ChatWindow : Window
             e.Handled = true;
             Send();
         };
-        var knob = new Ellipse { Width = 12, Height = 12, Fill = Card, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(2), RenderTransform = new TranslateTransform() };
-        var track = new Border { Width = 28, Height = 16, CornerRadius = new CornerRadius(8), Child = knob, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
-        void Choosing()
-        {
-            bool on = settings.LetMeChoose == true;
-            track.Background = on ? Accent : Edge_;
-            ((TranslateTransform)knob.RenderTransform).X = on ? 12 : 0;
-        }
-        var choose = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            Cursor = Cursors.Hand,
-            Background = Brushes.Transparent,
-            ToolTip = "On: I show you the ways I found, and you pick what I do",
-            Children = { track, new TextBlock { Text = "Let me choose", FontSize = 12, Foreground = Ink3, VerticalAlignment = VerticalAlignment.Center } },
-        };
-        choose.MouseLeftButtonUp += (_, e) =>
-        {
-            e.Handled = true;
-            settings.LetMeChoose = settings.LetMeChoose != true;
-            settings.Save();
-            Choosing();
-        };
-        Choosing();
         var field = new Border
         {
             BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
@@ -379,7 +354,7 @@ sealed class ChatWindow : Window
                 Children =
                 {
                     new Grid { Children = { hint, box }, Margin = new Thickness(0, 0, 4, 6) },
-                    new DockPanel { Cursor = Cursors.Arrow, Children = { Right(send), choose } },
+                    new DockPanel { Cursor = Cursors.Arrow, Children = { Right(send) } },
                 },
             },
         };
@@ -418,7 +393,7 @@ sealed class ChatWindow : Window
            inner edge, which is dragged to resize it. */
         clip = new Border { ClipToBounds = true, Child = layout };
         card = new Border { Background = Card, BorderBrush = Edge_, Child = clip };
-        drop = new Border { Background = DropSoft, Margin = new Thickness(Shadow / 2, Shadow / 2, -Shadow / 2, -Shadow / 2) };
+        drop = new Border { Background = DropSoft, CornerRadius = new CornerRadius(10), Margin = new Thickness(Shadow / 2, Shadow / 2, 0, 0) };
         grip = new Border { Background = Brushes.Transparent };
         grip.MouseLeftButtonDown += (_, e) =>
         {
@@ -613,7 +588,8 @@ sealed class ChatWindow : Window
     {
         var edge = Docked;
         bool docked = edge is not null;
-        whole.Margin = new Thickness(docked ? 0 : Shadow);
+        whole.Margin = docked ? new Thickness(0) : new Thickness(Shadow, Shadow, Shadow / 2, Shadow / 2);
+        card.Margin = docked ? new Thickness(0) : new Thickness(0, 0, Shadow / 2, Shadow / 2);
         drop.Visibility = Shown(!docked);
         card.CornerRadius = new CornerRadius(docked ? 0 : 10);
         clip.CornerRadius = new CornerRadius(docked ? 0 : 9);
@@ -720,7 +696,7 @@ sealed class ChatWindow : Window
             return;
         }
         Sit(edge);
-        him.MoveTo(new POINT(home.Left, home.Top), slide: true);
+        him.Park(dropped: false, slide: true);
     }
 
     // 1. A see-through strip in the brand colour where the card would dock, or null to hide it. Never clicked.
@@ -962,7 +938,6 @@ sealed class ChatWindow : Window
     {
         var message = new JsonObject { ["prompt"] = text, ["session"] = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Random.Shared.Next(0x1000000):x6}" };
         if (fixing is not null) message["from"] = fixing;
-        if (settings.LetMeChoose == true) message["mode"] = "list";
         Fix(null);
         face.React("thinking");
         try
@@ -1172,7 +1147,7 @@ sealed class ChatWindow : Window
     }
 
     /* 6. A reply to the one open: shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in
-          its session, and with Let me choose on, in list mode, followed as it runs (Follow). Its answer is his reply, or
+          its session, followed as it runs (Follow). Its answer is his reply, or
           questions back. */
     async void Ask(string text)
     {
@@ -1196,7 +1171,6 @@ sealed class ChatWindow : Window
             await ReadKey();
             followed = Follow(mine, steps, done.Token, untilIdle: false);
             var message = new JsonObject { ["prompt"] = text, ["session"] = session };
-            if (settings.LetMeChoose == true) message["mode"] = "list";
             using var ask = To(HttpMethod.Post, "", message);
             using var res = await Http.SendAsync(ask);
             code = (int)res.StatusCode;

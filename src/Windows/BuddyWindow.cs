@@ -6,8 +6,8 @@
 // 4. Put(p)                          puts him there now, and the chat with him in the same move
 // 5. OnPress / OnDrag / OnRelease    a click opens or closes the chat, a drag carries him
 // 6. Look()                          he follows the cursor, or his own pointer while it shows, and dozes when still
-// 7. StepAside(on)                   hides while something is fullscreen, and comes back when it ends
-// 8. BuildMenu()                     right click: open the chat, apps, settings, put him back, quit
+// 7. StepAside(on), Away(on)         hides while something is fullscreen, or while closed, and comes back
+// 8. BuildMenu()                     right click: open the chat, apps, settings, put him back, close
 // 9. Follow(), Fly                   while his own pointer shows, he flies beside it, then goes home, and the chat comes back
 //                                    if it was open
 using System.Diagnostics;
@@ -46,6 +46,7 @@ sealed class BuddyWindow : Window
     bool open;       // the chat is open
     bool asleep;     // dozing, the cursor having been still
     bool aside;      // hidden while something is fullscreen
+    bool away;       // closed: hidden until Onsay is opened again, while the lingo client keeps running
 
     // Being held or dragged.
     bool pressed;
@@ -157,7 +158,12 @@ sealed class BuddyWindow : Window
         }
         if (msg == WM_HOTKEY && wParam == StopHotKey) chat.Stop();
         // The taskbar moved or resized, or a monitor came or went. Let Windows finish first.
-        if (msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam == SPI_SETWORKAREA)) Later(() => Park(dropped: false));
+        // The chat docking or coming off changes the work area too, so he walks off its strip or back home.
+        bool workMoved = msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam == SPI_SETWORKAREA);
+        if (workMoved) Later(() =>
+        {
+            if (!dragging && !chat.Carrying) Park(dropped: false, slide: true);
+        });
         return IntPtr.Zero;
     }
 
@@ -183,7 +189,8 @@ sealed class BuddyWindow : Window
 
     ////////// 2-4. WHERE HE SITS //////////
 
-    // 2. Dropped on or near the bar he docks there, anywhere else he stays, kept on that screen.
+    // 2. Dropped on or near the bar he docks there, anywhere else he stays, kept on that screen. Never on the docked chat:
+    //    where it would cover him he goes just outside it, with a little room.
     internal void Park(bool dropped, bool slide = false)
     {
         if (hwnd == IntPtr.Zero) return;
@@ -208,17 +215,27 @@ sealed class BuddyWindow : Window
             settings.Save();
             slide = true;
         }
+        POINT p;
         if (settings.FreeX is int x && settings.FreeY is int y)
         {
             var work = MonitorAt(new POINT(x + r.Width / 2, y + r.Height / 2), MONITOR_DEFAULTTONEAREST).rcWork;
             int inset = Pad;   // his padding may hang off the edge, his body may not
             int keptX = Math.Clamp(x, work.Left - inset, work.Right - r.Width + inset);
             int keptY = Math.Clamp(y, work.Top - inset, work.Bottom - r.Height + inset);
-            MoveTo(new POINT(keptX, keptY), slide);
-            return;
+            p = new POINT(keptX, keptY);
         }
-        var monitor = MonitorAt(new POINT(settings.MonitorX ?? 0, settings.MonitorY ?? 0), MONITOR_DEFAULTTOPRIMARY);
-        MoveTo(Dock.Place(monitor, settings.Along, r.Width, r.Height, Px(EndMargin), Px((Box - Body) / 2 - Gap)), slide);
+        else
+        {
+            var monitor = MonitorAt(new POINT(settings.MonitorX ?? 0, settings.MonitorY ?? 0), MONITOR_DEFAULTTOPRIMARY);
+            p = Dock.Place(monitor, settings.Along, r.Width, r.Height, Px(EndMargin), Px((Box - Body) / 2 - Gap));
+        }
+        if (Reserved is { } card)
+        {
+            var at = new RECT { Left = p.X, Top = p.Y, Right = p.X + r.Width, Bottom = p.Y + r.Height }.Inset(Pad);
+            var shift = Dock.Clear(MonitorAt(at.Center, MONITOR_DEFAULTTONEAREST).rcWork, at, card, Px(12));
+            p = new POINT(p.X + shift.X, p.Y + shift.Y);
+        }
+        MoveTo(p, slide);
     }
 
     // 3. A slide on a spring, so being put back reads as him walking there.
@@ -339,7 +356,7 @@ sealed class BuddyWindow : Window
     // 6. Read from the system, so it works across the whole screen.
     void Look()
     {
-        if (aside || pressed) return;
+        if (aside || away || pressed) return;
         GetCursorPos(out var c);
         if (Overlay.Hand is { } h) c = h;
         if (c.X == seen.X && c.Y == seen.Y)
@@ -369,6 +386,21 @@ sealed class BuddyWindow : Window
     {
         if (on == aside || pressed) return;
         aside = on;
+        if (!away) Hidden(on);
+    }
+
+    // 7. Closed, he goes until Onsay is opened again, from the Start menu or as Windows starts (Program.cs), and the lingo
+    //    client keeps running, so your devices and apps can still use this computer. Quit, in Settings, stops it all.
+    internal void Away(bool on)
+    {
+        if (on == away) return;
+        away = on;
+        if (!aside) Hidden(on);
+        if (!on) Park(dropped: false);
+    }
+
+    void Hidden(bool on)
+    {
         him.Paused = on;
         if (on)
         {
@@ -410,7 +442,7 @@ sealed class BuddyWindow : Window
                     Park(dropped: false, slide: true);
                 }),
                 new Separator(),
-                Item("Quit Onsay", Close),
+                Item("Close Onsay", () => Away(true)),
             },
         };
     }
@@ -425,7 +457,7 @@ sealed class BuddyWindow : Window
           open in the gaps. A chat that was closed stays closed. Opening or closing it yourself meanwhile is the last word. */
     void Follow()
     {
-        if (aside) return;
+        if (aside || away) return;
         bool showing = Overlay.Hand is not null;
         if (showing && !chasing)
         {

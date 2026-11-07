@@ -17,11 +17,17 @@ static class Program
         // and asks whether his data goes too.
         VelopackApp.Build().OnBeforeUninstallFastCallback(_ => Updates.Uninstalling()).Run();
 
-        // One of him. A second launch is somebody double clicking the shortcut again, not asking for twins. A test, with a
-        // folder of its own in ONSAY_DATA, is one of him for that folder, so it runs beside yours.
+        /* One of him. A second launch is somebody opening Onsay again, maybe after closing him, not asking for twins: it
+           brings the first one back and ends. A test, with a folder of its own in ONSAY_DATA, is one of him for that
+           folder, so it runs beside yours. */
         var test = Environment.GetEnvironmentVariable("ONSAY_DATA") is { Length: > 0 } ? "." + Settings.Folder.Replace('\\', '/') : "";
         using var only = new Mutex(true, $@"Local\Onsay.Desktop{test}", out var first);
-        if (!first) return;
+        using var again = new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\Onsay.Desktop{test}.Again");
+        if (!first)
+        {
+            again.Set();
+            return;
+        }
 
         /* An error nothing caught is written down. One on the UI thread is let go and he carries on, since vanishing is
            worse than one thing going wrong. One anywhere else ends the app, as .NET always does, written down first. */
@@ -36,7 +42,9 @@ static class Program
 
         // So what the windows start as they are made comes back to the UI thread, the loop below not running yet.
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
-        app.Run(new BuddyWindow());
+        var him = new BuddyWindow();
+        ThreadPool.RegisterWaitForSingleObject(again, (_, _) => app.Dispatcher.BeginInvoke(() => him.Away(false)), null, -1, false);
+        app.Run(him);
     }
 
     static void Crashed(string where, object error)
