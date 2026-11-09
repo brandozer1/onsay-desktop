@@ -1255,7 +1255,7 @@ sealed class ChatWindow : Window
     // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.
     HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
     {
-        var req = new HttpRequestMessage(method, $"{Core.Url}/onsay{path}");
+        var req = Core.Request(method, $"/onsay{path}");
         if (body is not null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         req.Headers.Authorization = new("Bearer", promptKey);
         return req;

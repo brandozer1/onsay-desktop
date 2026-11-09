@@ -11,6 +11,8 @@
 // 4. Control(verb, values)    one of the lingo client's verbs, like start, set, ceiling or asks: through its control
 //                             routes, or its command line when it isn't answering. Its answer, or why not, in words
 //    Onsay(phrase, values)    one of the onsay lingo's phrases, like status, sign_in, share or devices, through call
+//    Request(method, path)    a request to the lingo client with this app's badge, which lets it in as the person
+//    Badge()                  that badge, made by the lingo client's command line and made again before it runs out
 // 5. Lingos()                 every lingo on this computer, an app on screen: whether it runs, what it is and needs, its
 //                             parts, or why it can't run. Title(name) is its name on screen
 using System.Diagnostics;
@@ -53,10 +55,8 @@ static class Core
     {
         "this computer" => "You, on this computer",
         "me" => "Your Onsay account",
-        "my devices" => "Your other devices",
         "onsay" => "Onsay's search and agent",
         "public" => "Anyone",
-        _ when who.StartsWith("acct_") => "Someone on Onsay",
         _ when who.StartsWith("ip ") => $"A computer at {who[3..]}",
         _ when who.Split('.') is [var device, var h] => h == handle ? $"Your {device}" : h,
         _ => who,
@@ -213,10 +213,8 @@ static class Core
         try
         {
             // A call, like signing in, may wait on Onsay. Anything else answers at once.
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{Url}/.lingo/{verb}")
-            {
-                Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json"),
-            };
+            var request = Request(HttpMethod.Post, $"/.lingo/{verb}");
+            request.Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json");
             var patience = TimeSpan.FromSeconds(verb == "call" ? 40 : 3);
             using var res = Http.Send(request, new CancellationTokenSource(patience).Token);
             var said = JsonNode.Parse(res.Content.ReadAsStream());
@@ -225,6 +223,12 @@ static class Core
         catch (Exception) when (verb is "asks" or "answer") { return (null, "Onsay's helper on this computer isn't running."); }
         catch (HttpRequestException) { }
         catch (Exception) { return (null, "Onsay's helper on this computer took too long to answer. Try again in a moment."); }
+        return Command(verb, values);
+    }
+
+    // Its command line, which works whether or not it runs.
+    static (JsonNode? answer, string? why) Command(string verb, JsonObject values)
+    {
         if (!File.Exists(Exe) || !File.Exists(Config)) return (null, "This copy of Onsay has no lingo client, so this can't be changed here.");
         var info = new ProcessStartInfo(Exe)
         {
@@ -262,6 +266,28 @@ static class Core
             return (null, last.Length > 0 ? last : "The lingo client couldn't do that.");
         }
         catch (Exception e) { return (null, e.Message); }
+    }
+
+    // 4.
+    public static HttpRequestMessage Request(HttpMethod method, string path)
+    {
+        var request = new HttpRequestMessage(method, $"{Url}{path}");
+        if (Badge() is string badge) request.Headers.Add("Onsay-Badge", badge);
+        return request;
+    }
+
+    // 4. A day long, the lingo client's own, and made again an hour before that. Null while there is no lingo client.
+    static string? badge;
+    static DateTime badgeMade;
+    public static string? Badge()
+    {
+        if (badge is not null && DateTime.Now - badgeMade < TimeSpan.FromHours(23)) return badge;
+        if (Command("badge", new()).answer is JsonValue made && made.TryGetValue(out string? text))
+        {
+            badge = text;
+            badgeMade = DateTime.Now;
+        }
+        return badge;
     }
 
     // 4. Why not as a sentence, without the phrase's name in front.
@@ -303,7 +329,7 @@ static class Core
         JsonArray all;
         try
         {
-            using var res = Http.Send(new HttpRequestMessage(HttpMethod.Get, $"{Url}/"), new CancellationTokenSource(3000).Token);
+            using var res = Http.Send(Request(HttpMethod.Get, "/"), new CancellationTokenSource(3000).Token);
             all = JsonNode.Parse(res.Content.ReadAsStream())!["lingos"]!.AsArray();
         }
         catch (Exception) { return null; }

@@ -48,6 +48,7 @@ static class Screens
             {
                 using var ws = new ClientWebSocket();
                 ws.Options.SetRequestHeader("Authorization", $"Bearer {await key()}");
+                if (Core.Badge() is string badge) ws.Options.SetRequestHeader("Onsay-Badge", badge);
                 await ws.ConnectAsync(new Uri($"{Core.Url.Replace("http://", "ws://")}/onsay/screens"), CancellationToken.None);
                 bool first = true;
                 var buffer = new byte[64 * 1024];
@@ -105,7 +106,7 @@ static class Screens
         try
         {
             using var http = new HttpClient();
-            using var req = new HttpRequestMessage(HttpMethod.Delete, $"{Core.Url}/onsay/screens/{id}");
+            using var req = Core.Request(HttpMethod.Delete, $"/onsay/screens/{id}");
             req.Headers.Authorization = new("Bearer", key);
             using var _ = await http.SendAsync(req);
         }
