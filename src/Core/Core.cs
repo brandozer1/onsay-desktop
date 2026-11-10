@@ -6,9 +6,9 @@
 //                             client with them, ending the one running first: on startup and the stop key. The first
 //                             time a shipped lingo appears it is started
 // 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
-// 3. Needs                    what a lingo may do on this computer, in words: for Apps, Activity and Advanced
+// 3. Needs, Wants(call)       what a lingo says it uses, in words, for Apps; what a call it was refused does, for Activity
 //    Who(who, handle)         a caller or a rule's who, in words, like "Your desktop" or "james"
-// 4. Control(verb, values)    one of the lingo client's verbs, like start, set, ceiling or asks: through its control
+// 4. Control(verb, values)    one of the lingo client's verbs, like start, set, policy or asks: through its control
 //                             routes, or its command line when it isn't answering. Its answer, or why not, in words
 //    Onsay(phrase, values)    one of the onsay lingo's phrases, like status, sign_in, share or devices, through call
 //    Request(method, path)    a request to the lingo client with this app's badge, which lets it in as the person
@@ -37,16 +37,31 @@ static class Core
     public static string Url => $"http://127.0.0.1:{port}";
     static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };   // each request has its own, below
 
-    // 3. Each need: what it is as a switch, what an app asking for it wants to do, and what one did, for Activity.
-    public static readonly (string Name, string Words, string Wants, string Did)[] Needs =
+    // 3. Each need an app says it uses, in words. What it says is never a permission: this computer's rules decide.
+    public static readonly (string Name, string Words)[] Needs =
     {
-        ("screen.read", "See windows and what is in them", "see your screen", "saw your screen"),
-        ("screen.act", "Click, type and open apps", "use your mouse and keyboard", "used your mouse and keyboard"),
-        ("files.read", "Read your files", "read your files", "read your files"),
-        ("files.write", "Change, move and delete files", "change your files", "changed your files"),
-        ("run", "Run commands", "run a program", "ran a program"),
-        ("net", "Reach the internet", "reach the internet", "reached the internet"),
-        ("lingos", "Make and change apps", "make or change an app", "made or changed an app"),
+        ("screen.read", "Sees windows and what is in them"),
+        ("screen.act", "Clicks, types and opens apps"),
+        ("files.read", "Reads your files"),
+        ("files.write", "Changes, moves and deletes files"),
+        ("run", "Runs commands"),
+        ("lingos", "Makes and changes apps"),
+    };
+
+    // 3. What one of this computer's calls an app was refused does, in words, by its group, like files for files.read.
+    public static string Wants(string call) => call.Split('.')[0] switch
+    {
+        "files" => "use your files",
+        "input" or "controls" => "use your mouse and keyboard",
+        "window" => "open and move windows",
+        "clipboard" => "use your clipboard",
+        "look" => "see your screen",
+        "commands" => "run a program",
+        "lingo" => "make or change an app",
+        "http" or "socket" or "connection" => "reach the internet",
+        "store" => "keep things",
+        "native" => "use the system directly",
+        _ => "do that",
     };
 
     /* 3. handle is this computer's own, so its other devices read as "Your desktop". A device signs as desktop.brandon,

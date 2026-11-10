@@ -67,7 +67,7 @@ answered, sends them as the next message in the same session, a line each, like 
 **Any lingo can talk in the chat** through the `chat` base calls. `chat.ask` asks you while it works and
 waits: its questions come with any others from `/.lingo/asks`, open the chat and show as the same card, and
 your answers go back through `/.lingo/answer`, so the lingo, like the agent, carries on with them in the same turn
-(`AskWindow.cs` hands them to `ChatWindow.Asked`). `chat.say` adds his line to the chat and `chat.step` a step under the
+(`ChatWindow.Poll` asks for them every second). `chat.say` adds his line to the chat and `chat.step` a step under the
 message running; neither opens the chat, so the work keeps the keyboard.
 
 His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings, and the chat
@@ -83,21 +83,21 @@ until he must show something or you ask to see, and both are kept by the lingo c
 open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. They come
 from the lingo client as a stream, `/onsay/screens`, kept by `Screens.cs` and shown by `ScreensWindow.cs`.
 
-**What an app may do is decided in one place.** The ceiling in Advanced is the one hard limit on this computer:
-anything on it is allowed to every app that says it needs it, and anything off is refused. Nothing asks per request,
-and nothing from the account can raise it. A question a lingo asks you with `chat.ask` still shows beside him as a
-card, and your answer goes back through `/.lingo/answer`. With the app closed, the lingo client refuses instead.
+**What an app may do is decided in one place.** This computer's own rules, a file in Onsay's folder that Advanced
+opens, let every app here do anything until someone narrows them. What an app says it uses is shown on its page, never
+a permission. Nothing asks per request. A question a lingo asks you with `chat.ask` shows in the chat, and your answer
+goes back through `/.lingo/answer`.
 
 ## Apps and settings
 
 | Page | What it has |
 |------|-------------|
-| Apps | a list of the apps on this computer, none of what is built into the lingo client. Each opens to tabs for what it can do, each thing that matters allowed or turned off by the ceiling; who can use it, with Stop sharing on what was shared (`share`, `unshare`) and Share with someone; and its settings, each with its value now (`set`). A map shows every address on this computer and what can be asked for there |
+| Apps | a list of the apps on this computer, none of what is built into the lingo client. Each opens to tabs for what it says it uses; who can use it, with Stop sharing on what was shared (`share`, `unshare`) and Share with someone; and its settings, each with its value now (`set`). A map shows every address on this computer and what can be asked for there |
 | Devices | the computers on the account, online or when last seen (`onsay.devices`) |
 | People | everyone an app is shared with, and what of it, with Stop sharing |
-| Activity | the lingo client's `decisions.log` in words, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
+| Activity | the lingo client's `requests.log` in words, requests from anyone but this computer and calls refused an app, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
 | Settings | sections of one setting a row: the account and signing in and out, starting with Windows, Work in the background and Show where he clicks, his look, updates and Uninstall Onsay |
-| Advanced | the same rows, in plain labels: the ceiling, every rule in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: everything sent to Onsay (`sent.log`), `decisions.log` as written, and the lingo client's `core.log` |
+| Advanced | the same rows, in plain labels: this computer's own rules, every rule in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: everything sent to Onsay (`sent.log`), every request (`requests.log`) as written, and the lingo client's `core.log` |
 
 **What it ships.** Every `.lingo` file in `..\lingo-client\core\bin\lingos`, today only `agent`, copied into the lingos
 folder each time the lingo client starts. The first time a shipped lingo appears the app starts it, and once it gives the
@@ -105,7 +105,7 @@ base calls, which `onsay` holds, seeing the screen, using the mouse and keyboard
 started (`Started` in `desktop.json`), so one you turn off stays off.
 
 **How it talks to the lingo client.** Through its control routes, `/.lingo/<verb>` (`start`, `stop`, `asks`, `answer`,
-`settings`, `set`, `manifest`, `policy`, `ceiling`, and `call` for the onsay lingo's phrases), or its command line,
+`settings`, `set`, `manifest`, `policy`, and `call` for the onsay lingo's phrases), or its command line,
 `onsay-core core.json <verb> ...`, when nothing answers the port (`Core.Control`).
 
 ## Files
@@ -152,7 +152,7 @@ themselves the next time he isn't busy, his card put away and no to-do working, 
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
 | `src/Core/Screens.cs` | the screens lingos draw on, watched as the onsay lingo streams them from `/onsay/screens` |
-| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), a lingo's questions (`AskWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
+| `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
 | `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 

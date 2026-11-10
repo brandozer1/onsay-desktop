@@ -36,8 +36,8 @@
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
 //                                         of the conversation
 // 10. Questions(list, send)               his questions back, each picked or typed, answered together with one Send
-//     Asked(waiting), Lingo(kind, text)   a lingo's own: its questions (chat.ask), what it says (chat.say) and a step it
-//                                         shows (chat.step)
+//     Poll(), Asked(waiting)              a lingo's questions (chat.ask), asked for every second, each a card here
+//     Lingo(kind, text)                   a lingo's own: what it says (chat.say) and a step it shows (chat.step)
 //     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
 // 11. Clear()                             back to the list, nothing open
 // 12. Menu(), SitMenu()                   the header's menu: Copy chat, from the session, and Apps and settings, and
@@ -1510,6 +1510,28 @@ sealed class ChatWindow : Window
         face.Mood("calm");
         face.React("answered");
         return shown;
+    }
+
+    /* 10. Every second, the questions lingos wait on the person for, asked off this thread, since the lingo client answers
+           one request at a time. Asking is also how the lingo client knows someone is here to answer. */
+    public void Poll()
+    {
+        bool asking = false;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += async (_, _) =>
+        {
+            if (asking) return;
+            asking = true;
+            JsonArray? all = null;
+            if (Core.Running)
+            {
+                var (answer, _) = await Task.Run(() => Core.Control("asks"));
+                all = answer as JsonArray;
+            }
+            asking = false;
+            if (all is not null || !Core.Running) Asked(all?.ToList() ?? new());
+        };
+        timer.Start();
     }
 
     /* 10. The questions a lingo waits on the person for (chat.ask), as the lingo client keeps them: each a card here, the

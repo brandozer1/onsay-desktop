@@ -1,6 +1,6 @@
 // SettingsWindow.cs - Apps and settings, from his right click menu or the chat's: a list of pages down the left, the page
 // on the right. One window at a time, above his chat, and every change takes effect as it is made. Every word on it is the
-// person's: a lingo is an app, a rule is sharing, and the ceiling is what any app may do here.
+// person's: a lingo is an app and a rule is sharing.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
 // 2. Apps        a list of apps, each opening to a page with tabs for what it can do, who can reach it and its settings,
@@ -305,31 +305,15 @@ sealed class SettingsWindow : Window
         return said;
     }
 
-    // 2. The things that matter that it says it needs, and whether this computer's ceiling allows each. The ceiling is the
-    //    one hard local limit: anything under it is allowed, with no per-app switch and no asking.
+    // 2. The things that matter that it says it uses. What it says is never a permission: this computer's rules decide, and
+    //    they let its apps do anything until someone narrows them.
     static void Abilities(StackPanel into, Core.Lingo l, Action again)
     {
-        var (policy, why) = Core.Control("policy");
-        if (policy is null)
-        {
-            into.Children.Add(Paragraph(why ?? Helper));
-            return;
-        }
-        var ceiling = Texts(policy["ceiling"]);
-
-        var asks = Core.Needs.Where(n => n.Name != "net" && l.Needs.Contains(n.Name)).ToList();
-        foreach (var (need, words, _, _) in asks)
-        {
-            if (!ceiling.Contains(need))
-            {
-                into.Children.Add(Item(words, "Turned off for every app, under Advanced."));
-                continue;
-            }
-            into.Children.Add(Item(words, "Allowed."));
-        }
+        var asks = Core.Needs.Where(n => l.Needs.Contains(n.Name)).ToList();
+        foreach (var (_, words) in asks) into.Children.Add(Item(words, null));
 
         string? reach = null;
-        if (l.Needs.Contains("net")) reach = ceiling.Contains("net") ? "It can reach the internet." : "It can't reach the internet: that is turned off for every app, under Advanced.";
+        if (l.Needs.Contains("net")) reach = "It reaches the internet.";
         else if (asks.Count == 0) reach = "It needs nothing from this computer: not your screen, your files or your programs.";
         if (reach is not null)
         {
@@ -776,8 +760,7 @@ sealed class SettingsWindow : Window
         "grant: onsay" => "Onsay can reach it.",
         "grant: public" => "It is open to anyone.",
         "no grant lets them in" => "Nothing is shared with them.",
-        "the ceiling" => "That is turned off for every app, under Advanced.",
-        "not declared" => "The app never said it needs that.",
+        "rules" => "This computer's rules don't let apps do this.",
         _ when why.StartsWith("grant: ") => "It is shared with them.",
         _ when why.StartsWith("badge: ") => "They had a pass that lets them in.",
         _ => why,
@@ -807,7 +790,8 @@ sealed class SettingsWindow : Window
             var way = $"{d?["way"]}";
             var caller = $"{d?["caller"]}";
             var lingo = $"{d?["lingo"]}";
-            if (way == "out" || (way == "in" && (caller == "this computer" || lingo == ""))) continue;
+            var refused = d?["need"] is not null && (bool?)d?["allowed"] != true;
+            if (way == "out" || (way == "in" && (caller == "this computer" || lingo == "")) || (d?["need"] is not null && !refused)) continue;
             if (++rows > 300) break;
             var app = Core.Title(lingo);
             var need = d?["need"]?.ToString();
@@ -822,29 +806,8 @@ sealed class SettingsWindow : Window
             }
             else
             {
-                var name = need;
-                string? path = null;
-                int space = need.IndexOf(' ');
-                if (space >= 0)
-                {
-                    name = need[..space];
-                    path = need[(space + 1)..];
-                }
-                var words = Core.Needs.FirstOrDefault(x => x.Name == name);
-                var did = words.Did ?? name;
-                var wants = words.Wants ?? name;
-                if (path is not null)
-                {
-                    did = did.Replace("your files", path);
-                    wants = wants.Replace("your files", path);
-                }
-                title = allowed ? $"{app} {did}" : $"{app} wasn't allowed to {wants}";
-                if (caller != "this computer")
-                {
-                    bool common = who.StartsWith("Your") || who.StartsWith("A ") || who == "Anyone";
-                    var asker = common ? char.ToLower(who[0]) + who[1..] : who;
-                    title += $", asked for by {asker}";
-                }
+                title = $"{app} wasn't allowed to {Core.Wants(need)}";
+                why = "rules";
             }
 
             DateTime? at = DateTime.TryParse($"{d?["at"]}", out var t) ? t.ToLocalTime() : null;
@@ -1003,7 +966,7 @@ sealed class SettingsWindow : Window
         ["api"] = "A question to Onsay: signing in, your account's rules, your devices, or checking another of your devices",
     };
 
-    /* 7. Everything underneath, a row each in plain labels: the ceiling, the rules in force here, this device's key and the
+    /* 7. Everything underneath, a row each in plain labels: the rules in force here, this device's key and the
           chat key, the folders, and the logs, each read in place: sent.log, which the onsay lingo keeps in the lingo
           client's home, requests.log beside it, and the lingo client's own core.log. */
     UIElement Advanced()
@@ -1065,30 +1028,6 @@ sealed class SettingsWindow : Window
             p.Children.Add(box);
         }
 
-        p.Children.Add(Section("What any app may do here"));
-        Hint("Anything off, no app here can do, whatever it says. Anything on is allowed: the ceiling is the one hard limit on this computer.");
-        if (policy?["ceiling"] is JsonArray ceiling)
-        {
-            var on = ceiling.Select(n => $"{n}").ToList();
-            var said = Problem();
-            foreach (var (name, words, _, _) in Core.Needs)
-            {
-                var toggle = Toggle(on.Contains(name), yes =>
-                {
-                    on.Remove(name);
-                    if (yes) on.Add(name);
-                    var needs = new JsonArray(on.Select(n => (JsonNode)n).ToArray());
-                    said.Text = Core.Control("ceiling", new() { ["needs"] = needs }).why ?? "";
-                });
-                p.Children.Add(Item(words, null, toggle));
-            }
-            p.Children.Add(said);
-        }
-        else
-        {
-            p.Children.Add(Paragraph(why ?? Helper));
-        }
-
         p.Children.Add(Section("Who can reach this computer"));
         Hint("Anyone not listed gets nothing, as if this computer weren't there. You, on this computer, always can.");
         foreach (var grant in (policy?["grants"] as JsonArray ?? new()).OfType<JsonObject>())
@@ -1096,14 +1035,14 @@ sealed class SettingsWindow : Window
         var rules = Path.Combine(Core.Home, "policy.json");
         if (File.Exists(rules))
         {
-            p.Children.Add(Item("This computer's ceiling", "The most any app may do here, kept in a file in Onsay's folder.", Button("Open", Kind.Quiet, () => Native.Open(rules))));
+            p.Children.Add(Item("This computer's own rules", "What the apps here may do, kept in a file in Onsay's folder. With none, they may do anything.", Button("Open", Kind.Quiet, () => Native.Open(rules))));
         }
         if (policy is not null)
         {
             var version = policy["account"]?["version"];
             var inForce = version is null
                 ? "Your account has no rules yet, so this computer is closed to everyone but you."
-                : $"Your account's rules are version {version}, and this computer's ceiling comes first.";
+                : $"Your account's rules are version {version}, beside this computer's own.";
             Log("Every rule in force here", inForce, () => policy.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
 
