@@ -783,16 +783,17 @@ sealed class SettingsWindow : Window
         _ => why,
     };
 
-    /* 5. The lingo client writes every decision but the routine to decisions.log, a line each, oldest first: each request from
-          anyone but this computer, let in or not, and each thing an app was allowed or refused. The newest 300, a row
-          each under its day, the time on the left. */
+    /* 5. The lingo client writes every request to requests.log, a line each, oldest first. Activity is each request to an
+          app from anyone but this computer, let in or not, and each thing an app was allowed or refused: the newest 300,
+          a row each under its day, the time on the left. */
     UIElement Activity()
     {
         var p = Page("Activity", "What your other devices, people you share with and your apps did on this computer.", Button("Refresh", Kind.Quiet, () => Go("Activity")));
         var handle = Core.Onsay("status").answer?["handle"]?.ToString();
         var (policy, _) = Core.Control("policy");
         DateTime? day = DateTime.MaxValue;
-        foreach (var line in Lines(Path.Combine(Core.Home, "decisions.log"), 300))
+        int rows = 0;
+        foreach (var line in Lines(Path.Combine(Core.Home, "requests.log"), int.MaxValue))
         {
             JsonNode? d;
             try
@@ -803,8 +804,11 @@ sealed class SettingsWindow : Window
             {
                 continue;
             }
+            var way = $"{d?["way"]}";
             var caller = $"{d?["caller"]}";
             var lingo = $"{d?["lingo"]}";
+            if (way == "out" || (way == "in" && (caller == "this computer" || lingo == ""))) continue;
+            if (++rows > 300) break;
             var app = Core.Title(lingo);
             var need = d?["need"]?.ToString();
             bool allowed = (bool?)d?["allowed"] == true;
@@ -1001,7 +1005,7 @@ sealed class SettingsWindow : Window
 
     /* 7. Everything underneath, a row each in plain labels: the ceiling, the rules in force here, this device's key and the
           chat key, the folders, and the logs, each read in place: sent.log, which the onsay lingo keeps in the lingo
-          client's home, decisions.log beside it, and the lingo client's own core.log. */
+          client's home, requests.log beside it, and the lingo client's own core.log. */
     UIElement Advanced()
     {
         var p = Page("Advanced", "How Onsay works underneath, for anyone who wants to look. Nothing here needs changing for him to work.");
@@ -1160,8 +1164,8 @@ sealed class SettingsWindow : Window
 
         var sent = Path.Combine(Core.Home, "sent.log");
         Log("Everything sent to Onsay", "What you ask, and what each app asks for and answers.", () => string.Join("\n\n", Lines(sent, 300).Select(Sent)), sent);
-        var decisions = Path.Combine(Core.Home, "decisions.log");
-        Log("Activity, as written", "Every request and every allow or refuse, the way the program writes it down.", () => string.Join("\n", Lines(decisions, 500)), decisions);
+        var requests = Path.Combine(Core.Home, "requests.log");
+        Log("Every request", "Everything asked of this computer and everything it asked, and every allow or refuse, the way the program writes it down.", () => string.Join("\n", Lines(requests, 500)), requests);
         Log("The program's log", "What the program that runs your apps says while it works, and any errors.", () => string.Join("\n", Lines(Core.Log, 500)), Core.Log);
         return p;
     }
