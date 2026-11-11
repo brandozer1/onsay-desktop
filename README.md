@@ -16,8 +16,10 @@ It is two things:
 The first time he opens, a window walks through it one step at a time: hello, his look, where to find him, what is sent
 to Onsay (Agree and continue), his AI, and signing in, which can be skipped. Then his chat opens.
 
-**Signing in** to Onsay isn't on the floor yet: it comes back as a lingo of its own. Until then he is signed out, and
-Settings says so.
+**Signing in** goes through Onsay's website (`src/Core/Account.cs`): the page opens in the browser with a code, and once
+you press Connect there the app gets this computer's token. The floor then sends its own key to Onsay itself, signed by
+that key, so Onsay knows this computer by it: its log, its calls to Onsay's AI and its `lingo(...)` count for your
+account with no token at all. Sign out tells Onsay too, so the key counts for nothing until you sign in again.
 
 ## Using him
 
@@ -95,11 +97,11 @@ its code each time the floor starts, so the floor keeps it and runs it. It remem
 badge from you, the floor's owner, both kept in `keys\`, sealed for your Windows user (`src/Core/Core.cs`). The floor
 calls the app back the same way, signed by the floor, for its own lingos, `chat` and `settings`, which it answers on a
 port of its own on this computer (`src/Core/Host.cs`). Each to-do is the `agent` lingo's `agent.ask`, run on the floor
-(`src/Core/ToDos.cs`). Signing in to Onsay isn't on the floor yet, so for now he is signed out.
+(`src/Core/ToDos.cs`).
 
 ## Files
 
-Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `todos.json` for your to-dos, `keys\` for the
+Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `todos.json` for your to-dos, `account.json` for who you are on Onsay, `keys\` for the
 app's keys, `floor.json` (the floor's home, its owner, and a port when one is written there) and `floor.log` for the
 floor, `floor\` for its home (`policy.json`, `offered.json`, each lingo's settings and `requests.log`), and `crash.log`,
 every error nothing caught, with its whole stack. A test sets `ONSAY_DATA` to a folder of its own before he starts, so
@@ -149,6 +151,7 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the floor, offers it the lingos, and signs every call the app makes to it |
 | `src/Core/Host.cs` | the app's own lingos, `chat` and `settings`, which the floor calls, and the to-dos at `/onsay` |
+| `src/Core/Account.cs` | your Onsay account: signing in through the website, the floor's key sent to Onsay, your devices and sharing |
 | `src/Core/ToDos.cs` | your to-dos, each run by the `agent` lingo on the floor, with its steps and questions |
 | `src/Core/Screens.cs` | the screens lingos draw on, kept for the to-do list and the Screens window |
 | `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |

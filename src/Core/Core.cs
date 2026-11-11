@@ -16,7 +16,6 @@
 // 4. Lingos()                 every lingo offered on the floor, an app on screen. Title(name) is its name on screen
 //    Switch(name, on)         an app turned on, offered again, or off, taken away
 //    Needs, Wants(call), Who(who, handle)   what an app uses, what a refused call does, and who a caller is, in words
-// 5. Onsay(phrase)            the person's Onsay account, which isn't on the floor yet: signed out
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -49,8 +48,8 @@ static class Core
 
     ////////// 1. RUNNING IT //////////
 
-    /* 1. floor.json: its home, its port, kept when one is written there, its owner, the person's key, and room for an
-          agent's to-do, 10 minutes. From any thread: the stop key calls it from its own. */
+    /* 1. floor.json: its home, its port, kept when one is written there, its owner, the person's key, where its lingo(...)
+          is asked, Onsay, and room for an agent's to-do, 10 minutes. From any thread: the stop key calls it from its own. */
     public static void Start(Settings s)
     {
         Stop();
@@ -68,6 +67,7 @@ static class Core
             ["owner"] = KeyText(Seed("owner")),
             ["ms"] = 600_000,
             ["steps"] = 1_000_000_000,
+            ["ask"] = $"{Account.Api}/search/ask",
         };
         Directory.CreateDirectory(Home);
         File.WriteAllText(Config, config.ToJsonString(Plain));
@@ -396,11 +396,4 @@ static class Core
         if (on && !File.Exists(file)) return "Only the apps that come with Onsay can be turned back on here.";
         return Call("/lingo/offer", new JsonArray(name, on ? File.ReadAllText(file) : "")).why;
     }
-
-    ////////// 5. ONSAY //////////
-
-    // 5. Signing in comes to the floor as a lingo of its own. Until then he is signed out, and says so.
-    public static (JsonNode? answer, string? why) Onsay(string phrase, params JsonNode[] values) => phrase == "status"
-        ? (new JsonObject { ["signed_in"] = false }, null)
-        : (null, "Signing in to Onsay isn't in this version yet.");
 }

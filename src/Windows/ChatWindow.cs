@@ -833,7 +833,7 @@ sealed class ChatWindow : Window
             start.Visibility = Visibility.Collapsed;
             try
             {
-                var (got, why) = await Task.Run(() => Core.Onsay("sign_in"));
+                var (got, why) = await Task.Run(() => Account.Onsay("sign_in"));
                 if (got is null) throw new Exception(why);
                 if (got["url"] is { } url)
                 {
@@ -844,7 +844,7 @@ sealed class ChatWindow : Window
                     while ((bool?)now?["signed_in"] != true)
                     {
                         await Task.Delay(2000, stop);
-                        (now, _) = await Task.Run(() => Core.Onsay("status"));
+                        (now, _) = await Task.Run(() => Account.Onsay("status"));
                         if (now is null || (bool?)now["signed_in"] == true || (bool?)now["signing_in"] == true) continue;
                         throw new Exception(now["failed"] is { } failed ? $"{failed}." : "Signing in didn't finish. Try again.");
                     }
@@ -873,7 +873,7 @@ sealed class ChatWindow : Window
     // 4. Why it couldn't, or null. The lingo client runs on, for this computer alone.
     public string? SignOut()
     {
-        var why = Core.Onsay("sign_out").why;
+        var why = Account.Onsay("sign_out").why;
         status = null;
         Clear();
         Refresh();
@@ -885,7 +885,7 @@ sealed class ChatWindow : Window
     {
         if (refreshing || !Core.Running) return;
         refreshing = true;
-        var (answer, _) = await Task.Run(() => Core.Onsay("status"));
+        var (answer, _) = await Task.Run(() => Account.Onsay("status"));
         if (answer is JsonObject now) status = now;
         refreshing = false;
         Page();
@@ -1219,7 +1219,7 @@ sealed class ChatWindow : Window
             return name.EndsWith("_key") || name == "url" || (name == "service" && $"{value}" != "onsay");
         });
         if (theirs) return;
-        var (ai, _) = await Task.Run(() => Core.Onsay("ai"));
+        var (ai, _) = await Task.Run(() => Account.Onsay("ai"));
         if ((bool?)ai?["over"] != true || offeredSubscription) return;
         offeredSubscription = true;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };

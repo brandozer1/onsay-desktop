@@ -275,7 +275,7 @@ sealed class SetupWindow : Window
     // 2. Signed in, here or before, it is the last word: all set.
     UIElement SignIn()
     {
-        if (Core.Onsay("status").answer is { } status && (bool?)status["signed_in"] == true)
+        if (Account.Onsay("status").answer is { } status && (bool?)status["signed_in"] == true)
         {
             Line("All set. Click me any time.");
             him.React("celebrate");

@@ -360,7 +360,7 @@ sealed class SettingsWindow : Window
             else said.Text = problem;
         }
 
-        var status = Core.Onsay("status").answer;
+        var status = Account.Onsay("status").answer;
         var here = $"{status?["device"]}.{status?["handle"]}";
         var form = ShareForm(l, said, Did);
         form.Visibility = Visibility.Collapsed;
@@ -373,7 +373,7 @@ sealed class SettingsWindow : Window
         {
             if (!Covers(grant, l, here) || PersonOf(grant).Length == 0) continue;   // anyone and Onsay are under Advanced, not a share
             var to = $"{grant["to"]}";
-            var stop = Button("Stop sharing", Kind.Quiet, () => Did(Core.Onsay("unshare", new JsonObject { ["to"] = to }).why));
+            var stop = Button("Stop sharing", Kind.Quiet, () => Did(Account.Onsay("unshare", new JsonObject { ["to"] = to }).why));
             into.Children.Add(Item(Core.Who(to, null), RoutesIn(grant), stop));
         }
     }
@@ -402,10 +402,10 @@ sealed class SettingsWindow : Window
                 return;
             }
             var route = part.Length > 0 ? $"{l.Route}{part}" : l.Route;
-            var status = Core.Onsay("status").answer;
+            var status = Account.Onsay("status").answer;
             var here = status?["device"] is null ? "" : $"{status["device"]}.{status["handle"]}";
             var values = new JsonObject { ["to"] = who.Split('#')[0], ["allow"] = new JsonArray($"{here}{route}") };
-            did(Core.Onsay("share", values).why);
+            did(Account.Onsay("share", values).why);
         });
         go.Margin = new Thickness(0, 12, 0, 0);
         form.Children.Add(go);
@@ -428,7 +428,7 @@ sealed class SettingsWindow : Window
           computer, and searching opens what matches. */
     UIElement LingoMap(List<Core.Lingo> lingos)
     {
-        var (status, _) = Core.Onsay("status");
+        var (status, _) = Account.Onsay("status");
         bool named = status?["device"] is not null && status["handle"] is not null;
         string computer = named ? $"{status!["device"]}.{status["handle"]}" : "This computer";
 
@@ -670,7 +670,7 @@ sealed class SettingsWindow : Window
     UIElement Devices()
     {
         var p = Page("Devices", "Every computer signed in to your Onsay account. Your devices can use the apps on each other, and nobody else's.");
-        var (status, why) = Core.Onsay("status");
+        var (status, why) = Account.Onsay("status");
         if (status is null)
         {
             p.Children.Add(Paragraph(why ?? Helper));
@@ -686,7 +686,7 @@ sealed class SettingsWindow : Window
         p.Children.Add(list);
         async void Load()
         {
-            var (got, problem) = await Task.Run(() => Core.Onsay("devices"));
+            var (got, problem) = await Task.Run(() => Account.Onsay("devices"));
             list.Children.Clear();
             if (got is not JsonArray devices)
             {
@@ -762,7 +762,7 @@ sealed class SettingsWindow : Window
     UIElement Activity()
     {
         var p = Page("Activity", "What your other devices, people you share with and your apps did on this computer.", Button("Refresh", Kind.Quiet, () => Go("Activity")));
-        var handle = Core.Onsay("status").answer?["handle"]?.ToString();
+        var handle = Account.Onsay("status").answer?["handle"]?.ToString();
         var policy = Core.Policy();
         DateTime? day = DateTime.MaxValue;
         int rows = 0;
@@ -864,7 +864,7 @@ sealed class SettingsWindow : Window
 
         // 6. As the onsay lingo says: who this computer is signed in as, and its name on Onsay.
         p.Children.Add(Section("Your account"));
-        var (status, why) = Core.Onsay("status");
+        var (status, why) = Account.Onsay("status");
         if (status is null)
         {
             p.Children.Add(Paragraph(why ?? Helper));
@@ -950,7 +950,7 @@ sealed class SettingsWindow : Window
     {
         var p = Page("Advanced", "How Onsay works underneath, for anyone who wants to look. Nothing here needs changing for him to work.");
         var policy = Core.Policy();
-        var status = Core.Onsay("status").answer;
+        var status = Account.Onsay("status").answer;
 
         void Hint(string text)
         {
@@ -1130,7 +1130,7 @@ sealed class SettingsWindow : Window
     // 8. Ends every grant for whoever this one is for, then shows the page named again.
     Border StopSharing(JsonObject grant, string page) => Button("Stop sharing", Kind.Quiet, () =>
     {
-        Core.Onsay("unshare", new JsonObject { ["to"] = $"{grant["to"]}" });
+        Account.Onsay("unshare", new JsonObject { ["to"] = $"{grant["to"]}" });
         Go(page);
     });
 
