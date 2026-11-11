@@ -94,12 +94,15 @@ begin
   WizardForm.ProgressGauge.SetBounds(ScaleX(216), ScaleY(230), ScaleX(192), ScaleY(6));
 end;
 
-// The wizard shows its buttons again on each page, so they are hidden again.
+// The wizard shows its buttons again on each page, so they are hidden again. Any page but the installing itself is gone
+// through at once, like the Ready page Inno Setup shows even when told not to, when no page came before it.
 procedure CurPageChanged(CurPageID: Integer);
 begin
   WizardForm.BackButton.Visible := False;
   WizardForm.NextButton.Visible := False;
   WizardForm.CancelButton.Visible := False;
+  if CurPageID <> wpInstalling then
+    WizardForm.NextButton.OnClick(WizardForm.NextButton);
 end;
 
 // The version that runs, as version.txt names it, written once he is in.
