@@ -15,7 +15,6 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using Onsay.Character;
-using Velopack.Windows;
 using static Onsay.Desktop.ChatWindow;
 
 namespace Onsay.Desktop;
@@ -186,10 +185,10 @@ sealed class SetupWindow : Window
         var list = new StackPanel();
         if (Updates.Installed)
         {
-            bool onDesktop = Updates.Shortcut(ShortcutLocation.Desktop);
-            bool inStart = Updates.Shortcut(ShortcutLocation.StartMenu);
-            list.Children.Add(Switch("A shortcut on your desktop", "Open his chat from your desktop.", onDesktop, on => Updates.Shortcut(ShortcutLocation.Desktop, on)));
-            list.Children.Add(Switch("In the Start menu", "Find him by typing Onsay in Start.", inStart, on => Updates.Shortcut(ShortcutLocation.StartMenu, on)));
+            bool onDesktop = Updates.Shortcut(Updates.Place.Desktop);
+            bool inStart = Updates.Shortcut(Updates.Place.StartMenu);
+            list.Children.Add(Switch("A shortcut on your desktop", "Open his chat from your desktop.", onDesktop, on => Updates.Shortcut(Updates.Place.Desktop, on)));
+            list.Children.Add(Switch("In the Start menu", "Find him by typing Onsay in Start.", inStart, on => Updates.Shortcut(Updates.Place.StartMenu, on)));
         }
         list.Children.Add(Switch("Start with Windows", "He appears on your taskbar when you sign in.", Startup.IsOn, Startup.Set));
         return Step("Where to find him", "He always sits on your taskbar. Click him to chat, or drag him anywhere you like.", list);

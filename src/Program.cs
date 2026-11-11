@@ -4,18 +4,24 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Onsay.Desktop;
-using Velopack;
 
 namespace Onsay;
 
 static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
-        // The installer's and updater's turn first (src/System/Updates.cs). Uninstalling also stops him starting with Windows,
-        // and asks whether his data goes too.
-        VelopackApp.Build().OnBeforeUninstallFastCallback(_ => Updates.Uninstalling()).Run();
+        // TLS 1.2 for every web request, which Windows 7 leaves off unless asked.
+        System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
+
+        // The uninstaller's turn first (src/System/Updates.cs): it stops him starting with Windows, and asks whether his data
+        // goes too.
+        if (args.Contains("--uninstalling"))
+        {
+            Updates.Uninstalling();
+            return;
+        }
 
         /* One of him. A second launch is somebody opening Onsay again, maybe after closing him, not asking for twins: it
            brings the first one back and ends. A test, with a folder of its own in ONSAY_DATA, is one of him for that

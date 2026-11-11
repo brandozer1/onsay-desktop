@@ -156,9 +156,9 @@ sealed class BuddyWindow : Window
         if (msg == WM_MOUSEACTIVATE)
         {
             handled = true;
-            return MA_NOACTIVATE;
+            return (IntPtr)MA_NOACTIVATE;
         }
-        if (msg == WM_HOTKEY && wParam == StopHotKey) chat.Stop();
+        if (msg == WM_HOTKEY && (int)wParam == StopHotKey) chat.Stop();
         if (msg == TrayClicked && (int)lParam == WM_LBUTTONUP) Away(false);
         if (msg == TrayClicked && (int)lParam == WM_RBUTTONUP)
         {
@@ -169,7 +169,7 @@ sealed class BuddyWindow : Window
         if (msg == TrayCreated && away) Tray(hwnd, true, "Onsay is running. Click to bring him back.");
         // The taskbar moved or resized, or a monitor came or went. Let Windows finish first.
         // The chat docking or coming off changes the work area too, so he walks off its strip or back home.
-        bool workMoved = msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam == SPI_SETWORKAREA);
+        bool workMoved = msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && (int)wParam == SPI_SETWORKAREA);
         if (workMoved) Later(() =>
         {
             if (!dragging && !chat.Carrying) Park(dropped: false, slide: true);
@@ -230,8 +230,8 @@ sealed class BuddyWindow : Window
         {
             var work = MonitorAt(new POINT(x + r.Width / 2, y + r.Height / 2), MONITOR_DEFAULTTONEAREST).rcWork;
             int inset = Pad;   // his padding may hang off the edge, his body may not
-            int keptX = Math.Clamp(x, work.Left - inset, work.Right - r.Width + inset);
-            int keptY = Math.Clamp(y, work.Top - inset, work.Bottom - r.Height + inset);
+            int keptX = Compat.Clamp(x, work.Left - inset, work.Right - r.Width + inset);
+            int keptY = Compat.Clamp(y, work.Top - inset, work.Bottom - r.Height + inset);
             p = new POINT(keptX, keptY);
         }
         else

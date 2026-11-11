@@ -347,7 +347,7 @@ static class Native
     // 13. His face is the app's own icon, at the small size.
     public static void Tray(IntPtr hwnd, bool on, string tip)
     {
-        if (face == IntPtr.Zero && Environment.ProcessPath is { } exe)
+        if (face == IntPtr.Zero && Compat.ProcessPath is { } exe)
         {
             var small = new IntPtr[1];
             ExtractIconEx(exe, 0, null, small, 1);

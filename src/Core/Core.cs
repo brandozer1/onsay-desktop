@@ -231,8 +231,8 @@ static class Core
             var request = Request(HttpMethod.Post, $"/.lingo/{verb}");
             request.Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json");
             var patience = TimeSpan.FromSeconds(verb == "call" ? 40 : 3);
-            using var res = Http.Send(request, new CancellationTokenSource(patience).Token);
-            var said = JsonNode.Parse(res.Content.ReadAsStream());
+            using var res = Http.SendAsync(request, new CancellationTokenSource(patience).Token).GetAwaiter().GetResult();
+            var said = JsonNode.Parse(res.Content.ReadAsStreamAsync().GetAwaiter().GetResult());
             return res.IsSuccessStatusCode ? (said, null) : (null, $"{said?["error"]}");
         }
         catch (Exception) when (verb is "asks" or "answer") { return (null, "Onsay's helper on this computer isn't running."); }
@@ -254,17 +254,17 @@ static class Core
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
         };
-        info.ArgumentList.Add(Config);
-        info.ArgumentList.Add(verb);
+        var args = new List<string> { Config, verb };
         foreach (var (key, v) in values)
         {
             if (v is JsonArray list)
             {
-                foreach (var x in list) info.ArgumentList.Add($"{x}");
+                foreach (var x in list) args.Add($"{x}");
             }
-            else if (key != "value" && v is JsonValue j && j.TryGetValue(out string? text)) info.ArgumentList.Add(text);
-            else info.ArgumentList.Add(v?.ToJsonString() ?? "null");
+            else if (key != "value" && v is JsonValue j && j.TryGetValue(out string? text)) args.Add(text);
+            else args.Add(v?.ToJsonString() ?? "null");
         }
+        info.Arguments = Compat.Arguments(args);
         try
         {
             using var p = Process.Start(info)!;
@@ -344,8 +344,8 @@ static class Core
         JsonArray all;
         try
         {
-            using var res = Http.Send(Request(HttpMethod.Get, "/"), new CancellationTokenSource(3000).Token);
-            all = JsonNode.Parse(res.Content.ReadAsStream())!["lingos"]!.AsArray();
+            using var res = Http.SendAsync(Request(HttpMethod.Get, "/"), new CancellationTokenSource(3000).Token).GetAwaiter().GetResult();
+            all = JsonNode.Parse(res.Content.ReadAsStreamAsync().GetAwaiter().GetResult())!["lingos"]!.AsArray();
         }
         catch (Exception) { return null; }
         return all.Select(e =>

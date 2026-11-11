@@ -56,12 +56,12 @@ static class StopKey
             case 'O' when up:
                 if (!held) break;
                 held = false;
-                return 1;
+                return (IntPtr)1;
             // Windows agreeing too covers a release this hook missed, like one made on the lock screen.
             case 'O' when alt && shift && !ctrl && !win && GetAsyncKeyState(0x12) < 0 && GetAsyncKeyState(0x10) < 0:
                 if (!held) ThreadPool.QueueUserWorkItem(_ => pressed?.Invoke());
                 held = true;
-                return 1;
+                return (IntPtr)1;
         }
         return CallNextHookEx(IntPtr.Zero, code, msg, data);
     }

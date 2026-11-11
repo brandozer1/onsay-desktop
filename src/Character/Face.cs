@@ -53,7 +53,7 @@ public enum Ch
 
 static class Channels
 {
-    public static readonly int Count = Enum.GetValues<Ch>().Length;
+    public static readonly int Count = Enum.GetValues(typeof(Ch)).Length;
 
     public static double Rest(Ch c) => c switch
     {

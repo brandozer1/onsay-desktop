@@ -167,7 +167,7 @@ public sealed class OnsayView : FrameworkElement
 
         bool busy = false;
         Aim();
-        Array.Clear(add);
+        Array.Clear(add, 0, add.Length);
         for (int i = gestures.Count - 1; i >= 0; i--)
         {
             var g = gestures[i];
@@ -215,15 +215,15 @@ public sealed class OnsayView : FrameworkElement
 
     void Look(double x, double y, double tilt = double.NaN)
     {
-        ch[(int)Ch.LookX].Target = Math.Clamp(x, -1, 1);
-        ch[(int)Ch.LookY].Target = Math.Clamp(y, -1, 1);
+        ch[(int)Ch.LookX].Target = Compat.Clamp(x, -1, 1);
+        ch[(int)Ch.LookY].Target = Compat.Clamp(y, -1, 1);
         if (!double.IsNaN(tilt)) ch[(int)Ch.Tilt].Target = tilt;
     }
 
     ////////// 2. DRAWING //////////
 
     double V(Ch c) => ch[(int)c].V + add[(int)c];
-    static double Unit(double v) => Math.Clamp(v, 0, 1);
+    static double Unit(double v) => Compat.Clamp(v, 0, 1);
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -552,7 +552,7 @@ public sealed class OnsayView : FrameworkElement
     {
         carried = velocity is not null;
         var v = (velocity ?? default) / 1200;
-        Look(v.X, v.Y * 0.6, Math.Clamp(v.X, -1, 1) * 9);
+        Look(v.X, v.Y * 0.6, Compat.Clamp(v.X, -1, 1) * 9);
         Wake();
     }
 

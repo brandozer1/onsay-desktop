@@ -35,7 +35,7 @@ static class Dock
     {
         var work = m.rcWork;
         var edge = EdgeOf(m);
-        along = Math.Clamp(along, 0, 1);
+        along = Compat.Clamp(along, 0, 1);
         if (Horizontal(edge))
         {
             int x = work.Left + margin + (int)Math.Round(along * Math.Max(0, work.Width - w - 2 * margin));
@@ -54,7 +54,7 @@ static class Dock
         bool flat = Horizontal(EdgeOf(m));
         int span = flat ? work.Width - w - 2 * margin : work.Height - h - 2 * margin;
         int at = flat ? topLeft.X - work.Left - margin : topLeft.Y - work.Top - margin;
-        return span <= 0 ? 0.5 : Math.Clamp((double)at / span, 0, 1);
+        return span <= 0 ? 0.5 : Compat.Clamp((double)at / span, 0, 1);
     }
 
     /* 4. Toward the middle of the screen, the way a tooltip opens: above him on the lower half, below him on the upper
@@ -68,8 +68,8 @@ static class Dock
     {
         var work = m.rcWork;
         var him = body.Center;
-        double across = Math.Clamp((double)(him.X - work.Left) / Math.Max(1, work.Width), 0, 1);
-        double down = Math.Clamp((double)(him.Y - work.Top) / Math.Max(1, work.Height), 0, 1);
+        double across = Compat.Clamp((double)(him.X - work.Left) / Math.Max(1, work.Width), 0, 1);
+        double down = Compat.Clamp((double)(him.Y - work.Top) / Math.Max(1, work.Height), 0, 1);
         int x = him.X - (int)Math.Round(w * across);
         int y = him.Y - (int)Math.Round(h * down);
         var above = (side: Side.Above, p: new POINT(x, body.Top - gap - h), room: body.Top - gap - work.Top - h);
@@ -81,10 +81,10 @@ static class Dock
         var order = vertical.Concat(sideways).ToArray();
         if (avoid is not null && order.Any(s => s.side != avoid && s.room >= 0)) order = order.Where(s => s.side != avoid).ToArray();
         var kept = order.FirstOrDefault(s => s.side == prefer && s.room >= 0);
-        var pick = kept.side == prefer && prefer is not null ? kept : order.FirstOrDefault(s => s.room >= 0, order.MaxBy(s => s.room));
+        var pick = kept.side == prefer && prefer is not null ? kept : order.Where(s => s.room >= 0).DefaultIfEmpty(order.MaxBy(s => s.room)).First();
         side = pick.side;
-        int keptX = Math.Clamp(pick.p.X, work.Left, Math.Max(work.Left, work.Right - w));
-        int keptY = Math.Clamp(pick.p.Y, work.Top, Math.Max(work.Top, work.Bottom - h));
+        int keptX = Compat.Clamp(pick.p.X, work.Left, Math.Max(work.Left, work.Right - w));
+        int keptY = Compat.Clamp(pick.p.Y, work.Top, Math.Max(work.Top, work.Bottom - h));
         return new POINT(keptX, keptY);
     }
 

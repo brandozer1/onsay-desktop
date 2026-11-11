@@ -39,7 +39,7 @@ sealed class HandWindow : Window
     readonly IntPtr hwnd;
     readonly Stopwatch clock = new();
     (POINT from, POINT to, double ms, double cx, double cy)? trip;   // the glide under way, drawn each frame
-    TaskCompletionSource? arrived;
+    TaskCompletionSource<bool>? arrived;
     bool hiding;   // Windows' own cursor is hidden, in real mode
 
     public HandWindow()
@@ -142,7 +142,7 @@ sealed class HandWindow : Window
           by the clock each frame, so a late frame never makes it stutter. A newer glide takes over mid way. */
     public Task Glide(POINT from, POINT to, int ms, double bend, bool real, bool text)
     {
-        arrived?.TrySetResult();
+        arrived?.TrySetResult(true);
         typed.Stop();
         Shape(text);
         double dx = to.X - from.X;
@@ -151,7 +151,7 @@ sealed class HandWindow : Window
         double controlX = from.X + dx / 2 - dy / span * bend;
         double controlY = from.Y + dy / 2 + dx / span * bend;
         trip = (from, to, Math.Max(1, ms), controlX, controlY);
-        arrived = new TaskCompletionSource();
+        arrived = new TaskCompletionSource<bool>();
         Put(from);
         Wake();
         SystemCursor(show: !real);
@@ -178,7 +178,7 @@ sealed class HandWindow : Window
         trip = null;
         CompositionTarget.Rendering -= Frame;
         Wake();
-        arrived?.TrySetResult();
+        arrived?.TrySetResult(true);
     }
 
     // 2.
@@ -201,7 +201,7 @@ sealed class HandWindow : Window
     public void Rest()
     {
         trip = null;
-        arrived?.TrySetResult();
+        arrived?.TrySetResult(true);
         idle.Stop();
         Sleep(300);
     }

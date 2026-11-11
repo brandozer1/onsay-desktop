@@ -1,13 +1,10 @@
-// Updates.cs - keeping Onsay up to date, and removing it. Built with Velopack (release.ps1 makes the installer). Half a
-// minute after he starts, and every hour after, he asks Onsay's server for a newer version (api.onsay.dev/updates, which
-// hands out this repo's newest GitHub release) and downloads it quietly. It goes in by itself the next time he isn't
-// busy, his card put away and no to-do working: he blinks out and back on the newer version, and nobody presses
-// anything. Quit before then, and it goes in as he next starts. A build that was never installed (start.ps1's) does
-// nothing here.
-//
-// The updater itself almost never changes: Velopack installs a tiny separate program that applies updates, and that is
-// what updates everything else, so a new version of Onsay is a normal update, never a reinstall. Keep it that way:
-// nothing the updater needs lives in the app's own update logic.
+// Updates.cs - keeping Onsay up to date, and removing it, on Windows 7 and later. The installer (release.ps1, with Inno
+// Setup) puts him in %LocalAppData%\Onsay: the launcher Onsay.exe, which never changes, version.txt naming the version
+// that runs, a folder for each version, app-<version>, and the uninstaller. Half a minute after he starts, and every hour
+// after, he asks the update lingo of his lingo client for a newer version, which downloads it beside this one and checks
+// Onsay signed it. It goes in by itself the next time he isn't busy, his card put away and no to-do working: the update
+// lingo names it in version.txt and he starts again through the launcher, on the newer version. Quit before then, and it
+// goes in as he next starts. A build that was never installed (start.ps1's) does nothing here.
 //
 // 1. Start(idle)              the checks, from startup. idle says whether nothing is happening that a restart would cut
 //                             short
@@ -18,135 +15,115 @@
 //                             starting with Windows, and what it keeps goes too if the person says so
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json.Nodes;
 using System.Windows;
 using Microsoft.Win32;
-using Velopack;
-using Velopack.Locators;
-using Velopack.Windows;
 
 namespace Onsay.Desktop;
 
 static class Updates
 {
-    // Where installed copies ask for a newer version: Onsay's own server, which hands out this repo's GitHub releases
-    // (onsay's server/routes/updates.js), so where they live can change without changing a copy already installed.
-    const string Feed = "https://api.onsay.dev/updates";
+    public enum Place { Desktop, StartMenu }
 
-    static UpdateManager Manager => new(Feed);
+    // Where he was installed: the folder above this version's, with the launcher and version.txt in it.
+    static readonly string Root = Path.GetDirectoryName(AppContext.BaseDirectory.TrimEnd('\\')) ?? "";
+    static string Launcher => Path.Combine(Root, "Onsay.exe");
 
     ////////// 1. A NEWER VERSION //////////
 
-    // 1. A check that fails, offline or with nothing published yet, is tried again the next hour. Once one is downloaded,
-    //    whether he may go in is asked every minute.
+    // 1. A check that fails, offline or with nothing published yet, is tried again the next hour. Once a newer version is
+    //    ready, whether he may go in is asked every minute.
     public static async void Start(Func<Task<bool>> idle)
     {
         if (!Installed) return;
         await Task.Delay(TimeSpan.FromSeconds(30));
         while (true)
         {
-            try
+            var (ready, _) = await Task.Run(() => Core.Control("call", new JsonObject { ["fn"] = "update.check", ["values"] = new JsonArray(Root) }));
+            if (ready?["version"] is JsonNode newer && $"{newer}" != Version)
             {
-                var um = Manager;
-                if (await um.CheckForUpdatesAsync() is { } newer)
+                while (!await idle()) await Task.Delay(TimeSpan.FromMinutes(1));
+                var (went, _) = await Task.Run(() => Core.Control("call", new JsonObject { ["fn"] = "update.apply", ["values"] = new JsonArray(Root, $"{newer}") }));
+                if (went is not null)
                 {
-                    await um.DownloadUpdatesAsync(newer);
-                    while (!await idle()) await Task.Delay(TimeSpan.FromMinutes(1));
-                    um.ApplyUpdatesAndRestart(newer.TargetFullRelease);
+                    Process.Start(new ProcessStartInfo(Launcher) { UseShellExecute = true });
+                    Application.Current.Dispatcher.Invoke(() => Application.Current.Shutdown());
                     return;
                 }
             }
-            catch (Exception) { }
             await Task.Delay(TimeSpan.FromHours(1));
         }
     }
 
     ////////// 2-3. THIS COPY //////////
 
-    // 2.
-    public static bool Installed
-    {
-        get
-        {
-            try { return Manager.IsInstalled; }
-            catch { return false; }
-        }
-    }
+    // 2. Installed when the launcher and version.txt sit in the folder above this version's.
+    public static bool Installed => File.Exists(Launcher) && File.Exists(Path.Combine(Root, "version.txt"));
 
-    public static string Version
-    {
-        get
-        {
-            try { return Manager.CurrentVersion?.ToString() ?? ""; }
-            catch { return ""; }
-        }
-    }
+    public static string Version => typeof(Updates).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
 
-    // 3. Velopack's own shortcuts, so they point at the copy that updates and go when he is uninstalled. Only for an
-    //    installed copy.
-    public static bool Shortcut(ShortcutLocation where)
+    // 3. A shortcut to the launcher, so it always opens the version that runs. Only for an installed copy.
+    static string ShortcutPath(Place where) => Path.Combine(Environment.GetFolderPath(where == Place.Desktop
+        ? Environment.SpecialFolder.DesktopDirectory : Environment.SpecialFolder.Programs), "Onsay.lnk");
+
+    public static bool Shortcut(Place where) => File.Exists(ShortcutPath(where));
+
+    public static void Shortcut(Place where, bool on)
     {
         try
         {
-            var links = new Shortcuts(VelopackLocator.Current);
-            return links.FindShortcuts(VelopackLocator.Current.ThisExeRelativePath, where).Count > 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public static void Shortcut(ShortcutLocation where, bool on)
-    {
-        try
-        {
-            var links = new Shortcuts(VelopackLocator.Current);
-            if (on) links.CreateShortcutForThisExe(where);
-            else links.RemoveShortcutForThisExe(where);
+            if (!on)
+            {
+                File.Delete(ShortcutPath(where));
+                return;
+            }
+            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+            dynamic link = shell.CreateShortcut(ShortcutPath(where));
+            link.TargetPath = Launcher;
+            link.WorkingDirectory = Root;
+            link.IconLocation = Launcher;
+            link.Save();
         }
         catch { }
     }
 
     ////////// 4. REMOVING IT //////////
 
-    // 4. Through the uninstaller Velopack registered with Windows (the same one Windows' Installed apps uses), so it
-    //    removes everything, startup included. If Windows has none for it, opens Windows' Installed apps instead.
+    // 4. Through the uninstaller the installer registered with Windows (the one Programs and Features uses), so it removes
+    //    everything, startup included. If Windows has none for it, opens Programs and Features instead.
     public static void Uninstall()
     {
-        string? cmd = null;
-        using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Onsay"))
-            cmd = k?.GetValue("QuietUninstallString") as string ?? k?.GetValue("UninstallString") as string;
-        if (cmd is null)
+        string? cmd;
+        using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Onsay_is1"))
+            cmd = k?.GetValue("UninstallString") as string;
+        try
         {
-            try { Native.Open("ms-settings:appsfeatures"); } catch { }
-            return;
+            if (cmd is null) Process.Start(new ProcessStartInfo("control.exe", "appwiz.cpl") { UseShellExecute = true });
+            else Process.Start(new ProcessStartInfo(cmd.Trim('"')) { UseShellExecute = true });
         }
-        // cmd is like "C:\...\Update.exe --uninstall": the exe, quoted, then its arguments.
-        var exe = cmd.StartsWith('"') ? cmd[1..cmd.IndexOf('"', 1)] : cmd.Split(' ')[0];
-        var args = cmd[(cmd.IndexOf(exe) + exe.Length)..].TrimStart('"', ' ');
-        try { Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true }); } catch { }
+        catch { }
     }
 
     // The browser lingo's own folder, where it keeps LibreWolf and its profile, unless its folder setting moved it.
     static readonly string BrowserFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "lingo-browser");
 
-    /* 4. However it is removed, from his settings or Windows' Installed apps. First everything running from Onsay is
-          stopped, the lingo client and its browser included, so no file in its folder is held open and the folder goes
-          whole. Everything he keeps, in Settings.Folder and the browser's folder, stays unless the person says to delete
-          it, since most who uninstall mean to install again. Velopack gives this half a minute: no answer by then keeps it
-          all. */
+    /* 4. However it is removed, from his settings or Programs and Features: the uninstaller starts him with --uninstalling
+          first. Everything running from Onsay is stopped, the lingo client and its browser included, so no file in its
+          folder is held open and the folder goes whole. Everything he keeps, in Settings.Folder and the browser's folder,
+          stays unless the person says to delete it, since most who uninstall mean to install again. */
     public static void Uninstalling()
     {
         Startup.Set(false);
-        var mine = new[] { AppContext.BaseDirectory, BrowserFolder };
+        var mine = new[] { Root, BrowserFolder };
+        var me = Process.GetCurrentProcess().Id;
         foreach (var p in Process.GetProcesses())
         {
-            if (p.Id == Environment.ProcessId) continue;
+            if (p.Id == me) continue;
             try
             {
                 var file = p.MainModule?.FileName ?? "";
                 if (!mine.Any(folder => file.StartsWith(folder, StringComparison.OrdinalIgnoreCase))) continue;
-                p.Kill(entireProcessTree: true);
+                p.Kill();
                 p.WaitForExit(3000);
             }
             catch { }   // another person's, or gone already

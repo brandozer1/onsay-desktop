@@ -69,7 +69,7 @@ static class Drawing
                         case "fillStyle": now.Fill = Paint($"{value}"); break;
                         case "strokeStyle": now.Stroke = Paint($"{value}"); break;
                         case "lineWidth": now.Line = (double?)value ?? 1; break;
-                        case "globalAlpha": now.Alpha = Math.Clamp((double?)value ?? 1, 0, 1); break;
+                        case "globalAlpha": now.Alpha = Compat.Clamp((double?)value ?? 1, 0, 1); break;
                         case "font": (now.Face, now.Size) = Font($"{value}"); break;
                         case "textAlign": now.Align = $"{value}"; break;
                         case "textBaseline": now.Baseline = $"{value}"; break;
@@ -238,10 +238,10 @@ static class Drawing
             if (c.StartsWith("rgb"))
             {
                 var parts = c[(c.IndexOf('(') + 1)..c.IndexOf(')')].Split(new[] { ',', ' ', '/' }, StringSplitOptions.RemoveEmptyEntries);
-                byte B(int i) => (byte)Math.Clamp(double.Parse(parts[i].TrimEnd('%'), CultureInfo.InvariantCulture), 0, 255);
+                byte B(int i) => (byte)Compat.Clamp(double.Parse(parts[i].TrimEnd('%'), CultureInfo.InvariantCulture), 0, 255);
                 double alpha = parts.Length > 3 ? double.Parse(parts[3].TrimEnd('%'), CultureInfo.InvariantCulture) : 1;
                 if (parts.Length > 3 && parts[3].EndsWith('%')) alpha /= 100;
-                return Frozen(new SolidColorBrush(Color.FromArgb((byte)Math.Clamp(alpha * 255, 0, 255), B(0), B(1), B(2))));
+                return Frozen(new SolidColorBrush(Color.FromArgb((byte)Compat.Clamp(alpha * 255, 0, 255), B(0), B(1), B(2))));
             }
             if (c == "transparent") return Brushes.Transparent;
             return Frozen(new SolidColorBrush((Color)ColorConverter.ConvertFromString(c)));
@@ -269,7 +269,7 @@ static class Drawing
             var w = words[i].ToLowerInvariant();
             if (w is "italic" or "oblique") style = FontStyles.Italic;
             else if (w == "bold") weight = FontWeights.Bold;
-            else if (int.TryParse(w, out int n)) weight = FontWeight.FromOpenTypeWeight(Math.Clamp(n, 1, 999));
+            else if (int.TryParse(w, out int n)) weight = FontWeight.FromOpenTypeWeight(Compat.Clamp(n, 1, 999));
             else if (w.EndsWith("px") || w.EndsWith("pt"))
             {
                 var number = w.Split('/')[0];

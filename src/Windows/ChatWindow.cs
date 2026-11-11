@@ -434,7 +434,7 @@ sealed class ChatWindow : Window
         // Something else moved the strips about, like the taskbar or a screen: its strip is worked out again.
         HwndSource.FromHwnd(hwnd).AddHook((IntPtr window, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
         {
-            bool moved = (msg == (int)Native.StripMoved && wParam == 1) || msg == Native.WM_DISPLAYCHANGE;
+            bool moved = (msg == (int)Native.StripMoved && (int)wParam == 1) || msg == Native.WM_DISPLAYCHANGE;
             if (moved && Showing) Dispatcher.BeginInvoke(Pin);
             return IntPtr.Zero;
         });
@@ -629,7 +629,7 @@ sealed class ChatWindow : Window
         };
         int most = (edge == Edge.Bottom ? work.Height : work.Width) / 2;
         int least = (int)Math.Round((edge == Edge.Bottom ? 200 : 320) * scale);
-        px = Math.Clamp(px, least, Math.Max(least, most));
+        px = Compat.Clamp(px, least, Math.Max(least, most));
         settings.DockSize = px / scale;
         var r = now;
         if (edge == Edge.Left) r.Right = r.Left + px;
@@ -672,8 +672,8 @@ sealed class ChatWindow : Window
         var monitor = Native.MonitorAt(c, Native.MONITOR_DEFAULTTONEAREST);
         var work = monitor.rcWork;
         int room = (home.Width - him.BodyRect().Width) / 2;
-        int x = Math.Clamp(start.X + c.X - grabbed.X, work.Left - room, work.Right - home.Width + room);
-        int y = Math.Clamp(start.Y + c.Y - grabbed.Y, work.Top - room, work.Bottom - home.Height + room);
+        int x = Compat.Clamp(start.X + c.X - grabbed.X, work.Left - room, work.Right - home.Width + room);
+        int y = Compat.Clamp(start.Y + c.Y - grabbed.Y, work.Top - room, work.Bottom - home.Height + room);
         him.Put(new POINT(x, y));
         int near = (int)Math.Round(Near * scale);
         landing = null;
@@ -936,7 +936,7 @@ sealed class ChatWindow : Window
           once, following up the one Not quite was pressed on, if any. The list follows it from there. */
     async void Add(string text)
     {
-        var message = new JsonObject { ["prompt"] = text, ["session"] = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Random.Shared.Next(0x1000000):x6}" };
+        var message = new JsonObject { ["prompt"] = text, ["session"] = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Compat.Shared.Next(0x1000000):x6}" };
         if (fixing is not null) message["from"] = fixing;
         Fix(null);
         face.React("thinking");
@@ -1119,7 +1119,7 @@ sealed class ChatWindow : Window
                 await Task.Delay(400, done);
                 using var look = To(HttpMethod.Get, $"/sessions/{session}/live");
                 using var res = await Http.SendAsync(look, done);
-                if (JsonNode.Parse(await res.Content.ReadAsStringAsync(done)) is not JsonObject now || mine != chat) continue;
+                if (JsonNode.Parse(await res.Content.ReadAsStringAsync()) is not JsonObject now || mine != chat) continue;
                 if (untilIdle && (bool?)now["running"] != true) break;
                 var got = now["steps"] as JsonArray ?? new();
                 Hear(steps, got);

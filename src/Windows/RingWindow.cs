@@ -74,7 +74,7 @@ sealed class RingWindow : Window
     {
         int mine = ++move;
         timeout.Stop();
-        timeout.Interval = TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 600));
+        timeout.Interval = TimeSpan.FromSeconds(Compat.Clamp(seconds, 1, 600));
         timeout.Start();
         bubble.Visibility = say.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         words.Text = say;
@@ -149,8 +149,8 @@ sealed class RingWindow : Window
         if (onLeft) groupX = ringLeft - Gap - groupWidth;
         if (onRight || onLeft) groupY = ringTop + ringHeight / 2 - groupHeight / 2;
         else if (groupY + groupHeight > workBottom - 8) groupY = ringTop - Gap - groupHeight;   // no room below: above
-        groupX = Math.Clamp(groupX, workLeft + 8, Math.Max(workLeft + 8, workRight - 8 - groupWidth));
-        groupY = Math.Clamp(groupY, workTop + 8, Math.Max(workTop + 8, workBottom - 8 - groupHeight));
+        groupX = Compat.Clamp(groupX, workLeft + 8, Math.Max(workLeft + 8, workRight - 8 - groupWidth));
+        groupY = Compat.Clamp(groupY, workTop + 8, Math.Max(workTop + 8, workBottom - 8 - groupHeight));
 
         // The window, around all of it.
         double left = Math.Min(ringLeft, groupX) - Glow;

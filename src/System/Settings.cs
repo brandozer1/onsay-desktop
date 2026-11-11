@@ -101,7 +101,7 @@ static class Startup
     public static void Set(bool on)
     {
         using var k = Registry.CurrentUser.CreateSubKey(Key);
-        if (on) k.SetValue(Name, $"\"{Environment.ProcessPath}\"");
+        if (on) k.SetValue(Name, $"\"{Compat.ProcessPath}\"");
         else k.DeleteValue(Name, false);
     }
 }
