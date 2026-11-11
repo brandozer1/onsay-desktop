@@ -93,15 +93,17 @@ begin
   WizardForm.ProgressGauge.SetBounds(ScaleX(216), ScaleY(230), ScaleX(192), ScaleY(6));
 end;
 
-// The wizard shows its buttons again on each page, so they are hidden again. Any page but the installing itself is gone
-// through at once, like the Ready page Inno Setup shows even when told not to, when no page came before it.
+// Any page but the installing itself is gone through at once, like the Welcome and Ready pages Inno Setup shows even when
+// told not to. Next is pressed by a message posted to it, so the press comes once the wizard has finished showing the
+// page, since one pressed while it still is counts for nothing. Its buttons are moved out of sight rather than hidden,
+// since a hidden button can't be pressed.
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  WizardForm.BackButton.Visible := False;
-  WizardForm.NextButton.Visible := False;
-  WizardForm.CancelButton.Visible := False;
+  WizardForm.BackButton.Left := -ScaleX(1000);
+  WizardForm.NextButton.Left := -ScaleX(1000);
+  WizardForm.CancelButton.Left := -ScaleX(1000);
   if CurPageID <> wpInstalling then
-    WizardForm.NextButton.OnClick(WizardForm.NextButton);
+    PostMessage(WizardForm.NextButton.Handle, $00F5, 0, 0);   // BM_CLICK
 end;
 
 // The version that runs, as version.txt names it, written once he is in.

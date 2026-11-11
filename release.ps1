@@ -71,8 +71,6 @@ foreach ($f in Get-ChildItem publish -Recurse -File | Where-Object { $_.Name -ne
 }
 ship "$client/bin/windows/floor.exe" "floor.exe" "update-floor-x64.exe" "x64"
 ship "$client/bin/x86/windows/floor.exe" "floor.exe" "update-floor-x86.exe" "x86"
-$release = [ordered]@{ version = $Version; files = $files } | ConvertTo-Json -Depth 4
-[IO.File]::WriteAllText("$here/$out/release.json", $release, (New-Object Text.UTF8Encoding $false))
 
 # The installer. Under Wine, each path as Windows sees it, the Linux root being drive Z:.
 function seen($path) { if ($windows) { $path } else { "Z:" + (($path -replace '\\', '/') -replace '/', '\') } }
@@ -81,4 +79,10 @@ $defines = "/DVersion=$Version", "/DApp=$(seen $published)", "/DLauncher=$(seen 
     "/DSplash=$(seen "$here/obj/splash.bmp")", "/O$(seen "$here/$out")"
 if ($windows) { & $iscc @defines setup.iss } else { & xvfb-run -a wine $iscc @defines setup.iss }
 if ($LASTEXITCODE -ne 0) { stop "The installer wasn't made" }
+
+# release.json, written last: the version and its files, which Onsay signs, and for the website, the installer's name and
+# size and the day it was made.
+$setup = [ordered]@{ name = "Onsay-Setup.exe"; size = (Get-Item "$out/Onsay-Setup.exe").Length }
+$release = [ordered]@{ version = $Version; made = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd"); installer = $setup; files = $files } | ConvertTo-Json -Depth 4
+[IO.File]::WriteAllText("$here/$out/release.json", $release, (New-Object Text.UTF8Encoding $false))
 Write-Host "Made Onsay $Version in $out."

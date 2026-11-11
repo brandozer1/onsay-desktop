@@ -46,7 +46,13 @@ upload() {
 
 if [ "${1:-}" != "inside" ]; then
   cd "$(dirname "$0")"
-  if [ -f .env ]; then . ./.env; fi
+  # .env read as NAME=value lines, never run, so a key may hold any character.
+  if [ -f .env ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line=$(printf '%s' "$line" | tr -d '\r')
+      case "$line" in RUSTFS_*=*) export "${line%%=*}=${line#*=}" ;; esac
+    done < .env
+  fi
   : "${RUSTFS_KEY:?Put RUSTFS_KEY in .env beside release.sh}" "${RUSTFS_SECRET:?Put RUSTFS_SECRET in .env beside release.sh}"
   if [ "${1:-}" = "upload" ]; then
     VERSION=${2:?Say the version, like ./release.sh upload 0.2.0}
