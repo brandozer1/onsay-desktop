@@ -2,11 +2,11 @@
 // for the chat's Screens page, and one window, full screen, that shows one to-do's screens full size, one at a time. What
 // is open comes from Screens.cs. A lingo has no say in where its screen shows.
 //
-// 1. Strip(session, height, named, key)     the small screens of one to-do in a row, hidden with none. A click shows
+// 1. Strip(session, height, named)          the small screens of one to-do in a row, hidden with none. A click shows
 //                                           that one full screen
-//    Every(named, key)                      every screen open, a card each with its title and its to-do, or a line
+//    Every(named)                           every screen open, a card each with its title and its to-do, or a line
 //                                           saying there are none. A click shows that one full screen
-// 2. Open(named, key, session, screen)      the window: one to-do's screens, from screen
+// 2. Open(named, session, screen)           the window: one to-do's screens, from screen
 //    Esc, the arrows, Close                 put it away, go through them, close the one showing
 using System.Windows;
 using System.Windows.Controls;
@@ -23,7 +23,6 @@ sealed class ScreensWindow : Window
     static readonly SolidColorBrush Blank = Hex("#2A2C38");
 
     readonly Func<string, string> named;   // a to-do's name by its session, what was asked
-    readonly Func<string?> key;            // the prompt key, for closing one
     readonly Grid body = new();
     readonly TextBlock title = new() { FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     string session = "";   // the to-do whose screens show, "" for those of none
@@ -32,7 +31,7 @@ sealed class ScreensWindow : Window
     ////////// 1. SMALL SCREENS //////////
 
     // 1. More than fit scroll sideways, the wheel too while over them.
-    public static FrameworkElement Strip(string session, double height, Func<string, string> named, Func<string?> key)
+    public static FrameworkElement Strip(string session, double height, Func<string, string> named)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var strip = new ScrollViewer { Content = row, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -51,7 +50,7 @@ sealed class ScreensWindow : Window
             small.MouseLeftButtonUp += (_, e) =>
             {
                 e.Handled = true;
-                Open(named, key, session, s.Id);
+                Open(named, session, s.Id);
             };
             return (small, small, height);
         }, any => strip.Visibility = Shown(any));
@@ -59,7 +58,7 @@ sealed class ScreensWindow : Window
     }
 
     // 1. Two cards to a row on the chat.
-    public static FrameworkElement Every(Func<string, string> named, Func<string?> key)
+    public static FrameworkElement Every(Func<string, string> named)
     {
         var cards = new WrapPanel();
         var none = new TextBlock
@@ -81,7 +80,7 @@ sealed class ScreensWindow : Window
                     new TextBlock { Text = s.Session.Length > 0 ? named(s.Session) : "Not part of a to-do", FontSize = 11.5, Foreground = Ink3, Margin = new Thickness(2, 1, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis },
                 },
             };
-            card.MouseLeftButtonUp += (_, _) => Open(named, key, s.Session, s.Id);
+            card.MouseLeftButtonUp += (_, _) => Open(named, s.Session, s.Id);
             return (card, picture, 0);
         }, any => none.Visibility = Shown(!any));
         return new StackPanel { Children = { none, cards } };
@@ -141,9 +140,9 @@ sealed class ScreensWindow : Window
     ////////// 2. FULL SCREEN //////////
 
     // 2. One window at a time: opened again, it shows what was asked for.
-    public static void Open(Func<string, string> named, Func<string?> key, string session, long screen)
+    public static void Open(Func<string, string> named, string session, long screen)
     {
-        shown ??= new ScreensWindow(named, key);
+        shown ??= new ScreensWindow(named);
         shown.session = session;
         shown.screen = screen;
         shown.Draw();
@@ -151,10 +150,9 @@ sealed class ScreensWindow : Window
         shown.Activate();
     }
 
-    ScreensWindow(Func<string, string> named, Func<string?> key)
+    ScreensWindow(Func<string, string> named)
     {
         this.named = named;
-        this.key = key;
         Title = "Screens";
         WindowStyle = WindowStyle.None;
         WindowState = WindowState.Maximized;
@@ -237,7 +235,7 @@ sealed class ScreensWindow : Window
             };
             shelf.Children.Add(small);
         }
-        var close = Button("Close this screen", Kind.Quiet, () => Screens.Close(s.Id, key()), "Takes it away. The app may open another as it works");
+        var close = Button("Close this screen", Kind.Quiet, () => Screens.Close(s.Id), "Takes it away. The app may open another as it works");
         close.HorizontalAlignment = HorizontalAlignment.Right;
         close.Margin = new Thickness(0, 12, 20, 16);
         var bottom = new Grid { Children = { shelf, close } };

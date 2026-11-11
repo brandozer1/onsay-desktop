@@ -1,6 +1,7 @@
 // Host.cs - the app's own lingos, which the floor calls like any lingo offered at an address, and the to-dos, all on one
 // small web server on this computer (127.0.0.1, a port of its own each run): the chat, which asks the person questions
-// and shows what is being done, and settings, which keeps each lingo's settings for it (Core.cs). A call from the floor
+// and shows what is being done, settings, which keeps each lingo's settings for it (Core.cs), and screen, canvases lingos
+// draw on (Screens.cs). A call from the floor
 // counts only when the floor signed it (RFC 9421) with its own key. /onsay is the to-dos (ToDos.cs), for the chat window
 // and any program given the prompt key.
 //
@@ -35,6 +36,11 @@ static class Host
             "fn step(text: text \"what is being done now\") \"Shows what is being done now as a step under the person's to-do. Say one as each part of a long job starts.\" {}\n"),
         ("settings", "\"Each lingo's settings on this computer, kept by the Onsay app.\"\n" +
             "fn get(key: text \"the setting's name\", reference: text \"the lingo whose setting it is\") \"A lingo's setting as the person set it, or nothing.\" {}\n"),
+        ("screen", "\"Screens in the Onsay app on this computer: canvases a lingo draws on, which the person watches beside the to-do the work is for. Never video.\"\n" +
+            "fn open(title: text \"what it shows, like Browser tab 1\") -> number \"A new screen, or the one of that title already open for the to-do, so a lingo called again and again draws on one.\" {}\n" +
+            "fn draw(screen: number \"from screen.open\", instructions: list \"Canvas 2D instructions as in a web page's canvas, each a record with one key, like \\{fillRect: [0, 0, 120, 12]}: clear [w, h] starts it over at a size, and save, restore, translate, scale, rotate, beginPath, closePath, moveTo, lineTo, bezierCurveTo, quadraticCurveTo, arc, rect, roundRect, fill, stroke, clip, fillRect, strokeRect, clearRect, fillText, strokeText, drawImage, fillStyle, strokeStyle, lineWidth, font, textAlign, textBaseline and globalAlpha draw after what was drawn before. drawImage takes only a picture inside it, a data:image/ address\") \"Draws on a screen.\" {}\n" +
+            "fn show(screen: number \"from screen.open\", picture: text \"a PNG or JPEG as base64, or a data: address\") \"Puts a whole picture on a screen, in place of what was there.\" {}\n" +
+            "fn close(screen: number \"from screen.open\") \"Takes a screen away.\" {}\n"),
     };
 
     // 1. Before the floor starts, so its address is known when the lingos are offered.
@@ -100,6 +106,18 @@ static class Host
                 return (200, null);
             case "/settings/get":
                 return (200, Core.Setting($"{values.ElementAtOrDefault(1)}", $"{values.ElementAtOrDefault(0)}"));
+            case "/screen/open":
+                return (200, Screens.Open(run ?? "", $"{values.ElementAtOrDefault(0)}"));
+            case "/screen/draw":
+            case "/screen/show":
+            {
+                long id = (long?)(double?)values.ElementAtOrDefault(0) ?? 0;
+                var why = path == "/screen/draw" ? Screens.Draw(id, values.ElementAtOrDefault(1)) : Screens.Show(id, $"{values.ElementAtOrDefault(1)}");
+                return why is null ? (200, null) : (400, Error(why));
+            }
+            case "/screen/close":
+                Screens.Close((long?)(double?)values.ElementAtOrDefault(0) ?? 0);
+                return (200, null);
             default:
                 return (404, Error("Nothing is there"));
         }
@@ -141,7 +159,7 @@ static class Host
 
     ////////// 3. SERVING //////////
 
-    // 3. Its first line, its headers by lower case name, and a body of Content-Length, at most 4 MB.
+    // 3. Its first line, its headers by lower case name, and a body of Content-Length, at most 20 MB, a screen's picture.
     static async Task Serve(TcpClient client)
     {
         using var _ = client;
@@ -164,7 +182,7 @@ static class Host
                 var colon = line.IndexOf(':');
                 if (colon > 0) headers[line.Substring(0, colon).Trim().ToLowerInvariant()] = line.Substring(colon + 1).Trim();
             }
-            int length = int.TryParse(headers.GetValueOrDefault("content-length"), out var n) ? Math.Min(n, 4 << 20) : 0;
+            int length = int.TryParse(headers.GetValueOrDefault("content-length"), out var n) ? Math.Min(n, 20 << 20) : 0;
             var body = new byte[length];
             for (int got = 0; got < length;)
             {

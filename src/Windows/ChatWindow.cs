@@ -304,7 +304,7 @@ sealed class ChatWindow : Window
             Children =
             {
                 new TextBlock { Text = "Screens", FontFamily = Display, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Ink, Margin = new Thickness(8, 0, 0, 4) },
-                ScreensWindow.Every(Named, () => promptKey),
+                ScreensWindow.Every(Named),
             },
         };
 
@@ -439,11 +439,6 @@ sealed class ChatWindow : Window
         });
         Page();
         Core.Start(settings);
-        Screens.Watch(async () =>
-        {
-            await ReadKey();
-            return promptKey;
-        });
         // Whether this computer is signed in and connected, asked again every few seconds while the card shows.
         var look = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         look.Tick += (_, _) =>
@@ -1011,7 +1006,7 @@ sealed class ChatWindow : Window
         var body = new StackPanel();
         body.Children.Add(new TextBlock { Text = $"{item["prompt"]}", FontSize = 13.5, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis });
         body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
-        var strip = ScreensWindow.Strip(id, 48, Named, () => promptKey);
+        var strip = ScreensWindow.Strip(id, 48, Named);
         strip.Margin = new Thickness(0, 6, 0, 0);
         body.Children.Add(strip);
         var mark = new TextBlock
@@ -1058,7 +1053,7 @@ sealed class ChatWindow : Window
         Clear();
         showingScreens = false;
         session = id;
-        screensBar.Child = ScreensWindow.Strip(id, 64, Named, () => promptKey);
+        screensBar.Child = ScreensWindow.Strip(id, 64, Named);
         int mine = chat;
         watched = mine;   // while it loads and runs, the list never loads it again over itself
         var item = items.FirstOrDefault(i => $"{i?["session"]}" == id);

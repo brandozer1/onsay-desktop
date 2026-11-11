@@ -1,5 +1,5 @@
-// Drawing.cs - draws a screen here from its instructions, the part of Canvas 2D the onsay lingo keeps (screen.draw in
-// ../lingo-client/lingos/onsay/onsay.c, DRAWS), as a picture WPF shows: paths, rectangles, text in its CSS font and
+// Drawing.cs - draws a screen here from its instructions, the part of Canvas 2D the screen lingo takes (screen.draw in
+// Host.cs), as a picture WPF shows: paths, rectangles, text in its CSS font and
 // colour, pictures inside data: addresses, transforms, clips, save and restore. Nothing here reaches the web.
 //
 // 1. Draw(instructions)   -> the screen as a frozen picture, sized by its clear, so any thread may make it

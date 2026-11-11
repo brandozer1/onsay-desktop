@@ -70,8 +70,9 @@ until he must show something or you ask to see, and both are kept by the floor (
 
 **Screens** are canvases a lingo draws on as it works, like the browser's page, with `screen.open`, `screen.draw`,
 `screen.show` and `screen.close`: Canvas 2D instructions, drawn here by `Drawing.cs`, never pictures sent whole. Each to-do that opened some shows them in a small strip under its row, and above the box when it is
-open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. They aren't on the
-floor yet: they come back as calls of a lingo the app offers, kept by `Screens.cs` and shown by `ScreensWindow.cs`.
+open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. `screen` is one
+of the app's own lingos, beside `chat` and `settings`: the floor sends each call here, `Screens.cs` keeps the screens with
+their to-do and `ScreensWindow.cs` shows them.
 
 **What an app may do is decided in one place.** This computer's own rules, a file in Onsay's folder that Advanced
 opens, let every app here do anything until someone narrows them. What an app says it uses is shown on its page, never
@@ -153,7 +154,7 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 | `src/Core/Host.cs` | the app's own lingos, `chat` and `settings`, which the floor calls, and the to-dos at `/onsay` |
 | `src/Core/Account.cs` | your Onsay account: signing in through the website, the floor's key sent to Onsay, your devices and sharing |
 | `src/Core/ToDos.cs` | your to-dos, each run by the `agent` lingo on the floor, with its steps and questions |
-| `src/Core/Screens.cs` | the screens lingos draw on, kept for the to-do list and the Screens window |
+| `src/Core/Screens.cs` | the screen lingo: the screens lingos draw on, kept for the to-do list and the Screens window |
 | `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
 | `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), updates and removing him (`Updates`), Ed25519 signatures (`Ed25519`), and what .NET Framework 4.8 lacks (`Compat`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
