@@ -38,9 +38,11 @@
 
   <!-- The lingo client, his hands on this computer, ships beside the app, and so do its lingos, .lingo files like agent, the AI
        agent, which go in its lingos folder. All come from the lingo-client project beside this one:
-       build them first with ..\lingo-client\core\build.ps1. -->
+       build them first with ..\lingo-client\core\build.ps1. The floor, the new lingo client, comes too, with the Windows
+       lingos and the update lingo built in (src/System/Updates.cs); release.ps1 ships the 32-bit one for 32-bit Windows. -->
   <ItemGroup>
     <None Include="..\lingo-client\core\bin\onsay-core.exe" Link="onsay-core.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')" />
+    <None Include="..\lingo-client\core\bin\windows\floor.exe" Link="floor.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\windows\floor.exe')" />
     <None Include="..\lingo-client\core\bin\lingos\*.lingo" Link="lingos\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

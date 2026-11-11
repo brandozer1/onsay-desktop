@@ -24,11 +24,17 @@ static class Program
         }
 
         /* One of him. A second launch is somebody opening Onsay again, maybe after closing him, not asking for twins: it
-           brings the first one back and ends. A test, with a folder of its own in ONSAY_DATA, is one of him for that
-           folder, so it runs beside yours. */
+           brings the first one back and ends. A newer version started by an update, with --restarted, waits for the one
+           before it to end instead. A test, with a folder of its own in ONSAY_DATA, is one of him for that folder, so it
+           runs beside yours. */
         var test = Environment.GetEnvironmentVariable("ONSAY_DATA") is { Length: > 0 } ? "." + Settings.Folder.Replace('\\', '/') : "";
         using var only = new Mutex(true, $@"Local\Onsay.Desktop{test}", out var first);
         using var again = new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\Onsay.Desktop{test}.Again");
+        if (!first && args.Contains("--restarted"))
+        {
+            try { first = only.WaitOne(TimeSpan.FromSeconds(30)); }
+            catch (AbandonedMutexException) { first = true; }   // it ended without letting go, which hands it over all the same
+        }
         if (!first)
         {
             again.Set();

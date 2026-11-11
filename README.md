@@ -122,20 +122,25 @@ uninstall mean to install again.
 
 ```
 ..\lingo-client\core\build.ps1   builds the lingo client and its lingos, in the lingo-client project beside this one
-.\start.ps1                       builds and starts the app. Needs the .NET 8 SDK
-.\release.ps1 0.2.0               a release in Releases\. Needs vpk: dotnet tool install -g vpk
+.\start.ps1                       builds and starts the app. Needs the .NET SDK
+.\release.ps1 0.2.0               a release in Releases\. Needs Inno Setup 6, from jrsoftware.org
 ```
 
 ## Releasing
 
 Push a tag like `v0.2.0`, or run the release workflow from the Actions tab with a version. GitHub builds the lingo
-client and the app, packs them with Velopack (`release.ps1`), and puts them on this repo's release page:
-`Onsay-win-Setup.exe`, the portable zip, and the packages installed copies update from. It needs no secrets.
+client and the app, makes the installer with Inno Setup (`release.ps1`, `setup.iss`), and puts them on this repo's
+release page: `Onsay-Setup.exe`, one installer for 32 and 64-bit Windows 7 and later, and `release.json` with the
+`update-` files installed copies update from. It needs no secrets: Onsay's server signs `release.json` as it hands it
+out.
 
-The installer puts him in `%LocalAppData%\Onsay` for that person alone, with no admin rights, and opens him. Installed
-copies ask Onsay's server for a newer release half a minute after starting and every hour (`api.onsay.dev/updates`,
-which hands out this repo's newest release, onsay's `server/routes/updates.js`), download it quietly, and put it in by
-themselves the next time he isn't busy, his card put away and no to-do working, or as he next starts
+The installer puts him in `%LocalAppData%\Onsay` for that person alone, with no admin rights, and opens him: the
+launcher `Onsay.exe` (`launcher.c`), `version.txt`, and the version itself in `app-<version>`. On Windows 7 it first
+checks for .NET Framework 4.8 and the update KB2999226, and says where to get either. Installed copies ask Onsay's server
+for a newer release half a minute after starting and every hour (`api.onsay.dev/updates`, which hands out this repo's
+newest release, onsay's `server/routes/updates.js`), through the update lingo built into the floor beside the app, which
+puts it together beside the version running, downloading only the files that changed, each checked against what Onsay
+signed, and put it in by themselves the next time he isn't busy, his card put away and no to-do working, or as he next starts
 (`src/System/Updates.cs`). Nobody presses anything.
 
 ## Layout
@@ -144,16 +149,18 @@ themselves the next time he isn't busy, his card put away and no to-do working, 
 |------|-----|
 | `Onsay.csproj` | the build, with the lingo client and its lingos copied in from `..\lingo-client` |
 | `app.manifest` | tells Windows the app is per monitor DPI aware |
-| `onsay.ico`, `splash.png` | his face as the app and installer icon, and what the installer shows while it copies |
+| `onsay.ico` | his face as the app, launcher and installer icon |
 | `fonts/` | the website's fonts, Gabarito and IBM Plex, which every window uses, with their license (`OFL.txt`) |
 | `start.ps1` | builds and starts the app, closing a running one first |
-| `release.ps1` | a release: the installer and update packages, in `Releases\` |
+| `release.ps1` | a release: the installer and the files updates come from, in `Releases\` |
+| `setup.iss` | the installer, for Inno Setup: one for 32 and 64-bit Windows 7 and later |
+| `launcher.c`, `launcher.rc` | `Onsay.exe` in the install folder, starting the version `version.txt` names, with his icon |
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
 | `src/Core/Screens.cs` | the screens lingos draw on, watched as the onsay lingo streams them from `/onsay/screens` |
 | `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
-| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), and updates (`Updates`) |
+| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), updates and removing him (`Updates`), and what .NET Framework 4.8 lacks (`Compat`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 
 ## License

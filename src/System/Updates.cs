@@ -1,8 +1,8 @@
 // Updates.cs - keeping Onsay up to date, and removing it, on Windows 7 and later. The installer (release.ps1, with Inno
 // Setup) puts him in %LocalAppData%\Onsay: the launcher Onsay.exe, which never changes, version.txt naming the version
 // that runs, a folder for each version, app-<version>, and the uninstaller. Half a minute after he starts, and every hour
-// after, he asks the update lingo of his lingo client for a newer version, which downloads it beside this one and checks
-// Onsay signed it. It goes in by itself the next time he isn't busy, his card put away and no to-do working: the update
+// after, he asks the update lingo, built into the floor beside him, for a newer version, which it puts together beside
+// this one, each file checked against the release Onsay signed. It goes in by itself the next time he isn't busy, his card put away and no to-do working: the update
 // lingo names it in version.txt and he starts again through the launcher, on the newer version. Quit before then, and it
 // goes in as he next starts. A build that was never installed (start.ps1's) does nothing here.
 //
@@ -32,21 +32,22 @@ static class Updates
     ////////// 1. A NEWER VERSION //////////
 
     // 1. A check that fails, offline or with nothing published yet, is tried again the next hour. Once a newer version is
-    //    ready, whether he may go in is asked every minute.
+    //    ready, whether he may go in is asked every minute. The newer one is started with --restarted, so it waits for
+    //    this one to end instead of handing over to it (Program.cs).
     public static async void Start(Func<Task<bool>> idle)
     {
         if (!Installed) return;
         await Task.Delay(TimeSpan.FromSeconds(30));
         while (true)
         {
-            var (ready, _) = await Task.Run(() => Core.Control("call", new JsonObject { ["fn"] = "update.check", ["values"] = new JsonArray(Root) }));
+            var ready = await Task.Run(() => Floor($"return update.check({Text(Root)})"));
             if (ready?["version"] is JsonNode newer && $"{newer}" != Version)
             {
                 while (!await idle()) await Task.Delay(TimeSpan.FromMinutes(1));
-                var (went, _) = await Task.Run(() => Core.Control("call", new JsonObject { ["fn"] = "update.apply", ["values"] = new JsonArray(Root, $"{newer}") }));
+                var went = await Task.Run(() => Floor($"return update.apply({Text(Root)}, {Text($"{newer}")})"));
                 if (went is not null)
                 {
-                    Process.Start(new ProcessStartInfo(Launcher) { UseShellExecute = true });
+                    Process.Start(new ProcessStartInfo(Launcher, "--restarted") { UseShellExecute = true });
                     Application.Current.Dispatcher.Invoke(() => Application.Current.Shutdown());
                     return;
                 }
@@ -54,6 +55,34 @@ static class Updates
             await Task.Delay(TimeSpan.FromHours(1));
         }
     }
+
+    /* 1. A script run by the floor beside this version, the lingo client with the update lingo built in, from its command
+          line as this computer: its value, or null when it failed. Its home is floor in Settings.Folder. */
+    static JsonNode? Floor(string script)
+    {
+        try
+        {
+            var settings = Path.Combine(Settings.Folder, "floor.json");
+            if (!File.Exists(settings)) File.WriteAllText(settings, new JsonObject { ["home"] = Path.Combine(Settings.Folder, "floor") }.ToJsonString());
+            var info = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "floor.exe"), Compat.Arguments(new[] { settings, "run", script }))
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+            };
+            using var p = Process.Start(info)!;
+            var said = p.StandardOutput.ReadToEnd();
+            p.WaitForExit();
+            return p.ExitCode == 0 ? JsonNode.Parse(said) : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // 1. Text as a Lingo literal: quoted, with \, " and { escaped, since { starts a value in Lingo text.
+    static string Text(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("{", "\\{") + "\"";
 
     ////////// 2-3. THIS COPY //////////
 
