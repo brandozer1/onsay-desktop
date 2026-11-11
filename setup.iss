@@ -50,18 +50,19 @@ Type: filesandordirs; Name: "{app}"
 function InitializeSetup(): Boolean;
 var
   release: Cardinal;
+  code: Integer;
 begin
   Result := True;
   if not (RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full', 'Release', release) and (release >= 528040)) then
   begin
     if MsgBox('Onsay needs .NET Framework 4.8, which this computer doesn''t have yet. It comes free from Microsoft, through Windows Update or from its page.' + #13#10#13#10 + 'Open its page now?', mbInformation, MB_YESNO) = IDYES then
-      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet-framework/net48', '', '', SW_SHOWNORMAL, ewNoWait, release);
+      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet-framework/net48', '', '', SW_SHOWNORMAL, ewNoWait, code);
     Result := False;
   end
   else if not FileExists(ExpandConstant('{sys}\ucrtbase.dll')) then
   begin
     if MsgBox('Onsay needs a Windows update this computer doesn''t have yet, the Universal C Runtime (KB2999226). It comes free through Windows Update or from Microsoft''s page.' + #13#10#13#10 + 'Open its page now?', mbInformation, MB_YESNO) = IDYES then
-      ShellExec('open', 'https://support.microsoft.com/help/2999226', '', '', SW_SHOWNORMAL, ewNoWait, release);
+      ShellExec('open', 'https://support.microsoft.com/help/2999226', '', '', SW_SHOWNORMAL, ewNoWait, code);
     Result := False;
   end;
 end;
