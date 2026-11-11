@@ -3,3 +3,5 @@ bin/
 obj/
 publish/
 Releases/
+# The storage keys release.sh uploads with, never shared.
+.env

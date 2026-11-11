@@ -2,14 +2,17 @@
 # release.sh - makes a release of Onsay for Windows on a Linux server and puts it in Onsay's storage, a RustFS bucket.
 # Run it where Docker is, with the version, once that version's tag, like v0.2.0, is pushed:
 #
-#   ./release.sh 0.2.0
+#   ./release.sh 0.2.0           built in a throwaway container, then uploaded
+#   ./release.sh upload 0.2.0    Releases/ beside it uploaded as it is, for a release release.ps1 made elsewhere, like
+#                                on Windows, run from Git Bash there
 #
-# It builds a throwaway container with everything a release needs, zig, the .NET SDK, Wine and Inno Setup, which runs
-# release.ps1 on onsay-desktop at that tag and lingo-client's main, and uploads Releases/ to the bucket, then is
-# deleted: nothing keeps running and nothing is installed on the server itself. Its keys go in .env beside it:
+# The container holds everything a release needs, zig, the .NET SDK, Wine and Inno Setup, runs release.ps1 on
+# onsay-desktop at that tag and lingo-client's main, uploads Releases/, and is deleted: nothing keeps running and nothing
+# is installed on the server itself. The keys go in .env beside it, never in git:
 #
 #   RUSTFS_KEY=...       an access key that may write to the bucket
 #   RUSTFS_SECRET=...
+#   RUSTFS_REGION=...    only when it isn't us-east-1
 #
 # In the bucket, each version's files go in windows/<version>/, then the installer is copied to windows/Onsay-Setup.exe,
 # a download link that never changes, and windows/release.json is written last, naming the newest, so a release half
@@ -18,13 +21,37 @@ set -eu
 
 STORAGE=https://storage.brandongamez.com/onsay   # the bucket, readable by anyone
 
-########## ON THE SERVER ##########
+########## UPLOADING ##########
+
+# One file into the bucket, signed with the keys as S3 asks (curl's own --aws-sigv4).
+put() {
+  case "$1" in *.json) type=application/json ;; *) type=application/octet-stream ;; esac
+  curl -fsS --aws-sigv4 "aws:amz:${RUSTFS_REGION:-us-east-1}:s3" --user "$RUSTFS_KEY:$RUSTFS_SECRET" \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" -H "Content-Type: $type" -T "$1" "$STORAGE/$2"
+  echo "  $2"
+}
+
+# Every file of the release in folder, the version's own first and release.json last.
+upload() {
+  cd "$2"
+  grep -q "\"$1\"" release.json || { echo "$2/release.json isn't version $1"; exit 1; }
+  for f in *; do put "$f" "windows/$1/$f"; done
+  put Onsay-Setup.exe windows/Onsay-Setup.exe
+  put release.json windows/release.json
+  echo "Onsay $1 is out: $STORAGE/windows/Onsay-Setup.exe"
+}
+
+########## ON THE SERVER, OR UPLOADING ONE MADE ELSEWHERE ##########
 
 if [ "${1:-}" != "inside" ]; then
-  VERSION=${1:?Say the version, like ./release.sh 0.2.0}
   cd "$(dirname "$0")"
-  [ -f .env ] && . ./.env
+  if [ -f .env ]; then . ./.env; fi
   : "${RUSTFS_KEY:?Put RUSTFS_KEY in .env beside release.sh}" "${RUSTFS_SECRET:?Put RUSTFS_SECRET in .env beside release.sh}"
+  if [ "${1:-}" = "upload" ]; then
+    upload "${2:?Say the version, like ./release.sh upload 0.2.0}" "$PWD/Releases"
+    exit 0
+  fi
+  VERSION=${1:?Say the version, like ./release.sh 0.2.0}
   docker build -t onsay-release - <<'IMAGE'
 FROM mcr.microsoft.com/dotnet/sdk:8.0
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 WINEDEBUG=-all WINEPREFIX=/opt/wine WINEDLLOVERRIDES="mscoree,mshtml=" ISCC=/opt/wine/drive_c/inno/ISCC.exe
@@ -48,15 +75,4 @@ VERSION=$2
 git clone -q --depth 1 --branch "v$VERSION" https://github.com/brandozer1/onsay-desktop.git /work/onsay-desktop
 git clone -q --depth 1 https://github.com/brandozer1/lingo-client.git /work/lingo-client
 pwsh /work/onsay-desktop/release.ps1 "$VERSION"
-
-# One file into the bucket, signed with the keys as S3 asks (curl's own --aws-sigv4).
-put() {
-  case "$1" in *.json) type=application/json ;; *) type=application/octet-stream ;; esac
-  curl -fsS --aws-sigv4 "aws:amz:${RUSTFS_REGION:-us-east-1}:s3" --user "$RUSTFS_KEY:$RUSTFS_SECRET" \
-    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" -H "Content-Type: $type" -T "$1" "$STORAGE/$2"
-}
-cd /work/onsay-desktop/Releases
-for f in *; do put "$f" "windows/$VERSION/$f"; done
-put Onsay-Setup.exe windows/Onsay-Setup.exe
-put release.json windows/release.json
-echo "Onsay $VERSION is out: $STORAGE/windows/Onsay-Setup.exe"
+upload "$VERSION" /work/onsay-desktop/Releases
