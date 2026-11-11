@@ -11,26 +11,30 @@ param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+# Why it stopped, as a line GitHub shows on the run's page too (::error::), then out.
+function stop($why) { Write-Host "::error::$why"; exit 1 }
+trap { stop "release.ps1 line $($_.InvocationInfo.ScriptLineNumber): $_" }
+
 $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
 if (-not $dotnet) { $dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
 if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-if (-not (Test-Path $iscc)) { Write-Host "Inno Setup 6 isn't installed. Get it from jrsoftware.org"; exit 1 }
+if (-not (Test-Path $iscc)) { stop "Inno Setup 6 isn't installed. Get it from jrsoftware.org" }
 $zig = (Get-Command zig -ErrorAction SilentlyContinue).Source
 if (-not $zig) { $zig = Get-ChildItem "$env:LOCALAPPDATA\zig" -Recurse -Filter zig.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
-if (-not $zig) { Write-Host "zig wasn't found. Get it from ziglang.org/download"; exit 1 }
+if (-not $zig) { stop "zig wasn't found. Get it from ziglang.org/download" }
 
 # The lingo client and its floors, then the app, then the launcher, 32-bit so it runs on every Windows.
 $client = "$PSScriptRoot\..\lingo-client\core"
 & "$client\build.ps1"
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { stop "The lingo client didn't build" }
 if (Test-Path publish) { Remove-Item publish -Recurse -Force }
 if (Test-Path Releases) { Remove-Item Releases -Recurse -Force }
 & $dotnet publish -c Release -p:Version=$Version -o publish
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { stop "The app didn't build" }
 New-Item -ItemType Directory -Force obj\launcher, Releases | Out-Null
 & $zig cc -target x86-windows-gnu -Os -s "-Wl,--subsystem,windows" launcher.c launcher.rc -o obj\launcher\Onsay.exe
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { stop "The launcher didn't build" }
 
 # What installed copies update from: every file of the app, by its place in app-<version>, and the floor for each kind of
 # computer, each in Releases\ under a name with no folders, which is how GitHub keeps a release's files, starting
@@ -53,5 +57,5 @@ $release = [ordered]@{ version = $Version; files = $files } | ConvertTo-Json -De
 [IO.File]::WriteAllText("$PSScriptRoot\Releases\release.json", $release, (New-Object Text.UTF8Encoding $false))
 
 & $iscc "/DVersion=$Version" "/DApp=$published" "/DLauncher=$PSScriptRoot\obj\launcher\Onsay.exe" "/DFloor64=$client\bin\windows\floor.exe" "/DFloor32=$client\bin\x86\windows\floor.exe" setup.iss
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { stop "The installer wasn't made" }
 Write-Host "Made Onsay $Version in Releases\."
