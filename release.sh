@@ -3,18 +3,19 @@
 # Run it where Docker is, with the version, once that version's tag, like v0.2.0, is pushed:
 #
 #   ./release.sh 0.2.0           built in a throwaway container, then uploaded
-#   ./release.sh upload 0.2.0    Releases/ beside it uploaded as it is, for a release release.ps1 made elsewhere, like
-#                                on Windows, run from Git Bash there
+#   ./release.sh upload 0.2.0    Releases/windows/0.2.0/ beside it uploaded as it is, for a release release.ps1 made
+#                                elsewhere, like on Windows, run from Git Bash there
 #
 # The container holds everything a release needs, zig, the .NET SDK, Wine and Inno Setup, runs release.ps1 on
-# onsay-desktop at that tag and lingo-client's main, uploads Releases/, and is deleted: nothing keeps running and nothing
+# onsay-desktop at that tag and lingo-client's main, uploads what it made, and is deleted: nothing keeps running and nothing
 # is installed on the server itself. The keys go in .env beside it, never in git:
 #
 #   RUSTFS_KEY=...       an access key that may write to the bucket
 #   RUSTFS_SECRET=...
 #   RUSTFS_REGION=...    only when it isn't us-east-1
 #
-# In the bucket, each version's files go in windows/<version>/, then the installer is copied to windows/Onsay-Setup.exe,
+# In the bucket, each version's files go in windows/<version>/, as release.ps1 lays them out in Releases/, then the
+# installer is copied to windows/Onsay-Setup.exe,
 # a download link that never changes, and windows/release.json is written last, naming the newest, so a release half
 # uploaded is never offered. Onsay's server reads it from there (onsay server routes/updates.js).
 set -eu
@@ -48,7 +49,8 @@ if [ "${1:-}" != "inside" ]; then
   if [ -f .env ]; then . ./.env; fi
   : "${RUSTFS_KEY:?Put RUSTFS_KEY in .env beside release.sh}" "${RUSTFS_SECRET:?Put RUSTFS_SECRET in .env beside release.sh}"
   if [ "${1:-}" = "upload" ]; then
-    upload "${2:?Say the version, like ./release.sh upload 0.2.0}" "$PWD/Releases"
+    VERSION=${2:?Say the version, like ./release.sh upload 0.2.0}
+    upload "$VERSION" "$PWD/Releases/windows/$VERSION"
     exit 0
   fi
   VERSION=${1:?Say the version, like ./release.sh 0.2.0}
@@ -75,4 +77,4 @@ VERSION=$2
 git clone -q --depth 1 --branch "v$VERSION" https://github.com/brandozer1/onsay-desktop.git /work/onsay-desktop
 git clone -q --depth 1 https://github.com/brandozer1/lingo-client.git /work/lingo-client
 pwsh /work/onsay-desktop/release.ps1 "$VERSION"
-upload "$VERSION" /work/onsay-desktop/Releases
+upload "$VERSION" "/work/onsay-desktop/Releases/windows/$VERSION"

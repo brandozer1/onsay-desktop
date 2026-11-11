@@ -1,8 +1,9 @@
-# release.ps1 - makes a release of Onsay for Windows 7 and later, 32 and 64-bit, in Releases/: Onsay-Setup.exe, the
-# installer people download (setup.iss), and what installed copies update from (src/System/Updates.cs): release.json,
-# naming the version and each file of it with its sha256, and each file under the name release.json gives it. Onsay
-# signs release.json as it hands it out (onsay server routes/updates.js). Run it with: ./release.ps1 0.2.0
-# It runs on Windows or Linux, where release.sh runs it on a server and puts Releases/ in Onsay's storage.
+# release.ps1 - makes a release of Onsay for Windows 7 and later, 32 and 64-bit, in Releases/windows/<version>/, laid
+# out as it goes in Onsay's storage: Onsay-Setup.exe, the installer people download (setup.iss), and what installed
+# copies update from (src/System/Updates.cs): release.json, naming the version and each file of it with its sha256, and
+# each file under the name release.json gives it. Onsay signs release.json as it hands it out (onsay server
+# routes/updates.js). Run it with: ./release.ps1 0.2.0
+# It runs on Windows or Linux, and release.sh puts what it made in Onsay's storage.
 #
 # Needs the .NET SDK, zig for the lingo client and the launcher (see ../lingo-client/core/build.ps1), and Inno Setup 6,
 # from jrsoftware.org: on Linux under Wine, at $env:ISCC, with ImageMagick for the splash.
@@ -34,7 +35,8 @@ if (Test-Path publish) { Remove-Item publish -Recurse -Force }
 if (Test-Path Releases) { Remove-Item Releases -Recurse -Force }
 & $dotnet publish -c Release -p:Version=$Version -p:EnableWindowsTargeting=true -o publish
 if ($LASTEXITCODE -ne 0) { stop "The app didn't build" }
-New-Item -ItemType Directory -Force obj/launcher, Releases | Out-Null
+$out = "Releases/windows/$Version"   # this release, as it goes in the storage
+New-Item -ItemType Directory -Force obj/launcher, $out | Out-Null
 & $zig cc -target x86-windows-gnu -Os -s "-Wl,--subsystem,windows" launcher.c launcher.rc -o obj/launcher/Onsay.exe
 if ($LASTEXITCODE -ne 0) { stop "The launcher didn't build" }
 
@@ -53,11 +55,11 @@ if ($windows) {
 }
 
 # What installed copies update from: every file of the app, by its place in app-<version>, and the floor for each kind of
-# computer, each in Releases/ under a name with no folders, starting update- so the installer is the one file a person
+# computer, each in $out under a name with no folders, starting update- so the installer is the one file a person
 # picks there.
 $files = @()
 function ship($from, $path, $name, $arch) {
-    Copy-Item $from "Releases/$name"
+    Copy-Item $from "$out/$name"
     $file = [ordered]@{ path = $path; name = $name; sha256 = (Get-FileHash $from -Algorithm SHA256).Hash.ToLower(); size = (Get-Item $from).Length }
     if ($arch) { $file.arch = $arch }
     $script:files += $file
@@ -70,13 +72,13 @@ foreach ($f in Get-ChildItem publish -Recurse -File | Where-Object { $_.Name -ne
 ship "$client/bin/windows/floor.exe" "floor.exe" "update-floor-x64.exe" "x64"
 ship "$client/bin/x86/windows/floor.exe" "floor.exe" "update-floor-x86.exe" "x86"
 $release = [ordered]@{ version = $Version; files = $files } | ConvertTo-Json -Depth 4
-[IO.File]::WriteAllText("$here/Releases/release.json", $release, (New-Object Text.UTF8Encoding $false))
+[IO.File]::WriteAllText("$here/$out/release.json", $release, (New-Object Text.UTF8Encoding $false))
 
 # The installer. Under Wine, each path as Windows sees it, the Linux root being drive Z:.
 function seen($path) { if ($windows) { $path } else { "Z:" + (($path -replace '\\', '/') -replace '/', '\') } }
 $defines = "/DVersion=$Version", "/DApp=$(seen $published)", "/DLauncher=$(seen "$here/obj/launcher/Onsay.exe")",
     "/DFloor64=$(seen "$client/bin/windows/floor.exe")", "/DFloor32=$(seen "$client/bin/x86/windows/floor.exe")",
-    "/DSplash=$(seen "$here/obj/splash.bmp")"
+    "/DSplash=$(seen "$here/obj/splash.bmp")", "/O$(seen "$here/$out")"
 if ($windows) { & $iscc @defines setup.iss } else { & xvfb-run -a wine $iscc @defines setup.iss }
 if ($LASTEXITCODE -ne 0) { stop "The installer wasn't made" }
-Write-Host "Made Onsay $Version in Releases/."
+Write-Host "Made Onsay $Version in $out."

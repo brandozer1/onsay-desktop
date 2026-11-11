@@ -27,7 +27,6 @@ UninstallDisplayName=Onsay
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes
-OutputDir=Releases
 OutputBaseFilename=Onsay-Setup
 
 [Files]
