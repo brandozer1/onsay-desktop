@@ -77,8 +77,8 @@ static class Core
     }
 
     /* Its errors go to floor.log, and what the Windows lingos ask to be drawn comes on its output, see Overlay.cs. Once it
-       answers, the lingos are offered: the app's own at Host's address, and each shipped one new to this computer or
-       offered still, so a newer version's code replaces the old and one the person took away stays away. */
+       answers, the lingos are offered: the app's own at Host's address, and each shipped one the person hasn't turned
+       off, so a newer version's code replaces the old. One that won't compile is noted in floor.log. */
     static void Run()
     {
         if (!wanted || process is { HasExited: false }) return;
@@ -127,15 +127,14 @@ static class Core
             var until = DateTime.Now.AddSeconds(15);
             while (Lingos() is null && DateTime.Now < until) await Task.Delay(250);
             foreach (var (name, code) in Host.Lingos) Call("/lingo/offer", new JsonArray(name, code, $"{Host.Url}/{name}"));
-            var offered = Lingos()?.Select(l => l.Name).ToList() ?? new();
             foreach (var file in Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.ls") : Array.Empty<string>())
             {
                 var name = Path.GetFileNameWithoutExtension(file);
-                if ((settings.Started ?? new()).Contains(name) && !offered.Contains(name)) continue;
-                if (Call("/lingo/offer", new JsonArray(name, File.ReadAllText(file))).why is not null) continue;
-                if (!(settings.Started ??= new()).Contains(name)) settings.Started.Add(name);
+                if ((settings.Off ?? new()).Contains(name)) continue;
+                var (_, why) = Call("/lingo/offer", new JsonArray(name, File.ReadAllText(file)));
+                if (why is null) continue;
+                try { File.AppendAllText(Log, $"{DateTime.Now:s} The {name} lingo wasn't offered: {why}\n"); } catch { }
             }
-            settings.Save();
         });
     }
 
@@ -394,6 +393,12 @@ static class Core
     {
         var file = Path.Combine(Shipped, name + ".ls");
         if (on && !File.Exists(file)) return "Only the apps that come with Onsay can be turned back on here.";
-        return Call("/lingo/offer", new JsonArray(name, on ? File.ReadAllText(file) : "")).why;
+        var why = Call("/lingo/offer", new JsonArray(name, on ? File.ReadAllText(file) : "")).why;
+        if (why is not null) return why;
+        settings.Off ??= new();
+        settings.Off.Remove(name);
+        if (!on) settings.Off.Add(name);
+        settings.Save();
+        return null;
     }
 }
