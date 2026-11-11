@@ -127,7 +127,8 @@ release page: `Onsay-Setup.exe`, one installer for 32 and 64-bit Windows 7 and l
 `update-` files installed copies update from. It needs no secrets: Onsay's server signs `release.json` as it hands it
 out.
 
-The installer puts him in `%LocalAppData%\Onsay` for that person alone, with no admin rights, and opens him: the
+The installer has nothing to click: it shows his splash, `splash.png`, with a bar under it while it puts him in
+`%LocalAppData%\Onsay` for that person alone, with no admin rights, and opens him: the
 launcher `Onsay.exe` (`launcher.c`), `version.txt`, and the version itself in `app-<version>`. On Windows 7 it first
 checks for .NET Framework 4.8 and the update KB2999226, and says where to get either. Installed copies ask Onsay's server
 for a newer release half a minute after starting and every hour (`api.onsay.dev/updates`, which hands out this repo's
@@ -143,6 +144,7 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 | `Onsay.csproj` | the build, with the floor and the lingos the app offers it copied in from `..\lingo-client` |
 | `app.manifest` | tells Windows the app is per monitor DPI aware |
 | `onsay.ico` | his face as the app, launcher and installer icon |
+| `splash.png` | what the installer shows while it puts him in |
 | `fonts/` | the website's fonts, Gabarito and IBM Plex, which every window uses, with their license (`OFL.txt`) |
 | `start.ps1` | builds and starts the app, closing a running one first |
 | `release.ps1` | a release: the installer and the files updates come from, in `Releases\` |

@@ -1,8 +1,9 @@
 ; setup.iss - the installer people download, Onsay-Setup.exe, made by release.ps1 with Inno Setup (open source, from
-; jrsoftware.org), which passes Version, App (the published app), Launcher, Floor64 and Floor32. One installer for 32 and
-; 64-bit Windows 7 and later: it puts him in %LocalAppData%\Onsay for this person alone, with no admin rights, as the
-; launcher Onsay.exe, version.txt and app-<version> (src/System/Updates.cs), with the floor built for this computer,
-; adds him to the Start menu and the desktop, and opens him. Removing him asks him to clean up first (--uninstalling).
+; jrsoftware.org), which passes Version, App (the published app), Launcher, Floor64, Floor32 and Splash. One installer
+; for 32 and 64-bit Windows 7 and later, with nothing to click: it shows the splash, splash.png, with a bar under it while
+; it puts him in %LocalAppData%\Onsay for this person alone, with no admin rights, as the launcher Onsay.exe, version.txt
+; and app-<version> (src/System/Updates.cs), with the floor built for this computer, adds him to the Start menu and the
+; desktop, and opens him. Removing him asks him to clean up first (--uninstalling).
 
 [Setup]
 ; AppId names his entry in Programs and Features, Onsay_is1, which src/System/Updates.cs opens to remove him.
@@ -18,6 +19,8 @@ MinVersion=6.1sp1
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
+DisableWelcomePage=yes
+DisableFinishedPage=yes
 SetupIconFile=onsay.ico
 UninstallDisplayIcon={app}\Onsay.exe
 UninstallDisplayName=Onsay
@@ -32,13 +35,14 @@ Source: "{#Launcher}"; DestDir: "{app}"; DestName: "Onsay.exe"; Flags: ignorever
 Source: "{#App}\*"; DestDir: "{app}\app-{#Version}"; Excludes: "floor.exe,*.pdb"; Flags: ignoreversion recursesubdirs
 Source: "{#Floor64}"; DestDir: "{app}\app-{#Version}"; DestName: "floor.exe"; Flags: ignoreversion; Check: Is64BitInstallMode
 Source: "{#Floor32}"; DestDir: "{app}\app-{#Version}"; DestName: "floor.exe"; Flags: ignoreversion; Check: not Is64BitInstallMode
+Source: "{#Splash}"; DestName: "splash.bmp"; Flags: dontcopy
 
 [Icons]
 Name: "{userprograms}\Onsay"; Filename: "{app}\Onsay.exe"
 Name: "{userdesktop}\Onsay"; Filename: "{app}\Onsay.exe"
 
 [Run]
-Filename: "{app}\Onsay.exe"; Description: "Open Onsay"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Onsay.exe"; Flags: nowait skipifsilent
 
 [UninstallDelete]
 ; The versions updates added, and version.txt, go with the rest.
@@ -65,6 +69,37 @@ begin
       ShellExec('open', 'https://support.microsoft.com/help/2999226', '', '', SW_SHOWNORMAL, ewNoWait, code);
     Result := False;
   end;
+end;
+
+// The splash in place of the wizard: a window as big as the picture, 560 by 340, with no border, no pages and no
+// buttons, and the bar under "Getting him ready for you". Every control of the wizard's own is hidden, since a picture
+// draws beneath them.
+procedure InitializeWizard();
+var
+  splash: TBitmapImage;
+begin
+  ExtractTemporaryFile('splash.bmp');
+  WizardForm.BorderStyle := bsNone;
+  WizardForm.ClientWidth := ScaleX(560);
+  WizardForm.ClientHeight := ScaleY(340);
+  WizardForm.Position := poScreenCenter;
+  WizardForm.OuterNotebook.Visible := False;
+  WizardForm.Bevel.Visible := False;
+  splash := TBitmapImage.Create(WizardForm);
+  splash.Parent := WizardForm;
+  splash.SetBounds(0, 0, WizardForm.ClientWidth, WizardForm.ClientHeight);
+  splash.Stretch := True;
+  splash.Bitmap.LoadFromFile(ExpandConstant('{tmp}\splash.bmp'));
+  WizardForm.ProgressGauge.Parent := WizardForm;
+  WizardForm.ProgressGauge.SetBounds(ScaleX(216), ScaleY(230), ScaleX(192), ScaleY(6));
+end;
+
+// The wizard shows its buttons again on each page, so they are hidden again.
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  WizardForm.BackButton.Visible := False;
+  WizardForm.NextButton.Visible := False;
+  WizardForm.CancelButton.Visible := False;
 end;
 
 // The version that runs, as version.txt names it, written once he is in.

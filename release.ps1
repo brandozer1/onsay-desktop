@@ -35,6 +35,15 @@ if ($LASTEXITCODE -ne 0) { stop "The app didn't build" }
 New-Item -ItemType Directory -Force obj\launcher, Releases | Out-Null
 & $zig cc -target x86-windows-gnu -Os -s "-Wl,--subsystem,windows" launcher.c launcher.rc -o obj\launcher\Onsay.exe
 if ($LASTEXITCODE -ne 0) { stop "The launcher didn't build" }
+# The splash as a 24-bit BMP, the picture every Inno Setup shows, drawn on its own background colour.
+Add-Type -AssemblyName System.Drawing
+$png = [System.Drawing.Image]::FromFile("$PSScriptRoot\splash.png")
+$bmp = New-Object System.Drawing.Bitmap $png.Width, $png.Height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+$paint = [System.Drawing.Graphics]::FromImage($bmp)
+$paint.Clear(([System.Drawing.Bitmap]$png).GetPixel(0, 0))
+$paint.DrawImage($png, 0, 0, $png.Width, $png.Height)
+$bmp.Save("$PSScriptRoot\obj\splash.bmp", [System.Drawing.Imaging.ImageFormat]::Bmp)
+$paint.Dispose(); $bmp.Dispose(); $png.Dispose()
 
 # What installed copies update from: every file of the app, by its place in app-<version>, and the floor for each kind of
 # computer, each in Releases\ under a name with no folders, which is how GitHub keeps a release's files, starting
@@ -56,6 +65,6 @@ ship "$client\bin\x86\windows\floor.exe" "floor.exe" "update-floor-x86.exe" "x86
 $release = [ordered]@{ version = $Version; files = $files } | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText("$PSScriptRoot\Releases\release.json", $release, (New-Object Text.UTF8Encoding $false))
 
-& $iscc "/DVersion=$Version" "/DApp=$published" "/DLauncher=$PSScriptRoot\obj\launcher\Onsay.exe" "/DFloor64=$client\bin\windows\floor.exe" "/DFloor32=$client\bin\x86\windows\floor.exe" setup.iss
+& $iscc "/DVersion=$Version" "/DApp=$published" "/DLauncher=$PSScriptRoot\obj\launcher\Onsay.exe" "/DFloor64=$client\bin\windows\floor.exe" "/DFloor32=$client\bin\x86\windows\floor.exe" "/DSplash=$PSScriptRoot\obj\splash.bmp" setup.iss
 if ($LASTEXITCODE -ne 0) { stop "The installer wasn't made" }
 Write-Host "Made Onsay $Version in Releases\."
