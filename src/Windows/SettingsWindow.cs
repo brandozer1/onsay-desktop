@@ -237,7 +237,7 @@ sealed class SettingsWindow : Window
     {
         return Toggle(l.Running, on =>
         {
-            var problem = Core.Control(on ? "start" : "stop", new() { ["lingo"] = l.Name }).why;
+            var problem = Core.Switch(l.Name, on);
             if (problem is not null) MessageBox.Show(problem, "Onsay");
         });
     }
@@ -352,12 +352,7 @@ sealed class SettingsWindow : Window
     // 2. You, then each rule that reaches this app on this computer, with Stop sharing, and sharing with someone new first.
     static void Access(StackPanel into, Core.Lingo l, Action again)
     {
-        var (policy, why) = Core.Control("policy");
-        if (policy is null)
-        {
-            into.Children.Add(Paragraph(why ?? Helper));
-            return;
-        }
+        var policy = Core.Policy();
         var said = Problem();
         void Did(string? problem)
         {
@@ -467,7 +462,7 @@ sealed class SettingsWindow : Window
     // One app in the map: a branch that opens to what it can do, nothing when a search finds nothing in it.
     void AddBranch(StackPanel tree, Core.Lingo l, string computer, string search)
     {
-        bool Fits(Core.Call c) => search.Length == 0 || c.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || c.Does.Contains(search, StringComparison.OrdinalIgnoreCase);
+        bool Fits(Core.Function c) => search.Length == 0 || c.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || c.Does.Contains(search, StringComparison.OrdinalIgnoreCase);
         bool nameFits = search.Length > 0 && l.Name.Contains(search, StringComparison.OrdinalIgnoreCase);
         var calls = l.Calls.Where(c => nameFits || Fits(c)).ToList();
         if (search.Length > 0 && calls.Count == 0) return;
@@ -528,7 +523,7 @@ sealed class SettingsWindow : Window
     }
 
     // One thing that can be asked for: its name, what it does, and a button that copies its address.
-    static Border Leaf(Core.Call call, string computer)
+    static Border Leaf(Core.Function call, string computer)
     {
         var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         words.Children.Add(new TextBlock { Text = call.Name, FontSize = 13, Foreground = Ink });
@@ -553,10 +548,10 @@ sealed class SettingsWindow : Window
           Saving writes only what changed, and an empty one goes back to its default. */
     static void Fields(StackPanel form, string lingo)
     {
-        var (got, why) = Core.Control("settings", new() { ["lingo"] = lingo });
-        if (got is not JsonArray fields)
+        var fields = Core.SettingsFor(lingo);
+        if (fields.Count == 0)
         {
-            form.Children.Add(Paragraph(why ?? ""));
+            form.Children.Add(Paragraph("It has no settings."));
             return;
         }
         if (fields.Count == 0)
@@ -661,7 +656,7 @@ sealed class SettingsWindow : Window
         {
             var changed = read.Where(x => x.now() != (x.value ?? "")).ToList();
             var problem = changed
-                .Select(x => Core.Control("set", new() { ["lingo"] = lingo, ["key"] = x.name, ["value"] = x.now().Length == 0 ? null : x.now() }).why)
+                .Select(x => Core.Set(lingo, x.name, x.now().Length == 0 ? null : x.now()))
                 .FirstOrDefault(e => e is not null);
             var done = changed.Count == 0 ? "Nothing changed." : "Saved. The app reads them the next time it runs.";
             status.Text = problem ?? done;
@@ -724,12 +719,7 @@ sealed class SettingsWindow : Window
     UIElement People()
     {
         var p = Page("People", "People you share with can use those routes from their own devices. They can't see or use anything else on your computers.");
-        var (policy, why) = Core.Control("policy");
-        if (policy is null)
-        {
-            p.Children.Add(Paragraph(why ?? Helper));
-            return p;
-        }
+        var policy = Core.Policy();
         var people = (policy["grants"] as JsonArray ?? new()).OfType<JsonObject>()
             .Where(g => PersonOf(g).Length > 0)
             .GroupBy(PersonOf);
@@ -773,7 +763,7 @@ sealed class SettingsWindow : Window
     {
         var p = Page("Activity", "What your other devices, people you share with and your apps did on this computer.", Button("Refresh", Kind.Quiet, () => Go("Activity")));
         var handle = Core.Onsay("status").answer?["handle"]?.ToString();
-        var (policy, _) = Core.Control("policy");
+        var policy = Core.Policy();
         DateTime? day = DateTime.MaxValue;
         int rows = 0;
         foreach (var line in Lines(Path.Combine(Core.Home, "requests.log"), int.MaxValue))
@@ -908,7 +898,7 @@ sealed class SettingsWindow : Window
         /* 6. How he uses the mouse and keyboard, as the lingo client keeps it: input.modes(headless, no_follow), each
               changed alone. Without no follow, his pointer's lines come and he and the chat follow it (Overlay.cs). */
         p.Children.Add(Section("When he uses your computer"));
-        var (modes, notNow) = Core.Control("call", new() { ["fn"] = "input.modes" });
+        var (modes, notNow) = Core.Call("/input/modes");
         if (modes is null)
         {
             p.Children.Add(Paragraph(notNow ?? Helper));
@@ -916,7 +906,7 @@ sealed class SettingsWindow : Window
         else
         {
             var said = Problem();
-            void Keep(JsonArray values) => said.Text = Core.Control("call", new() { ["fn"] = "input.modes", ["values"] = values }).why ?? "";
+            void Keep(JsonArray values) => said.Text = Core.Call("/input/modes", values).why ?? "";
             var background = Toggle((bool?)modes["headless"] == true, on => Keep(new JsonArray(on)));
             var follow = Toggle((bool?)modes["no_follow"] == false, on => Keep(new JsonArray(null, !on)));
             p.Children.Add(Item("Work in the background", "He clicks and types in apps behind your other windows, without moving your mouse or bringing them to the front. When an app doesn't allow it, he brings it forward for that one step, tells you why, and gives you back the window you were in.", background));
@@ -953,26 +943,13 @@ sealed class SettingsWindow : Window
 
     ////////// 7. ADVANCED //////////
 
-    // What each kind of message sent to Onsay is, in plain words.
-    static readonly Dictionary<string, string> Kinds = new()
-    {
-        ["hello"] = "This computer connected to Onsay, with the apps on it",
-        ["catalog"] = "The apps on this computer changed",
-        ["prompt"] = "Something you asked, with the chat before it",
-        ["lingo"] = "An app asked Onsay for something while it ran",
-        ["response"] = "An app's answer to a request that came through Onsay",
-        ["applied"] = "Your account's newest rules, as this computer put them in place",
-        ["log"] = "What was allowed or refused on this computer, for your Activity",
-        ["api"] = "A question to Onsay: signing in, your account's rules, your devices, or checking another of your devices",
-    };
-
     /* 7. Everything underneath, a row each in plain labels: the rules in force here, this device's key and the
-          chat key, the folders, and the logs, each read in place: sent.log, which the onsay lingo keeps in the lingo
-          client's home, requests.log beside it, and the lingo client's own core.log. */
+          chat key, the folders, and the logs, each read in place: the floor's requests.log, which is what it sends Onsay,
+          sealed, and floor.log, what it says while it works. */
     UIElement Advanced()
     {
         var p = Page("Advanced", "How Onsay works underneath, for anyone who wants to look. Nothing here needs changing for him to work.");
-        var (policy, why) = Core.Control("policy");
+        var policy = Core.Policy();
         var status = Core.Onsay("status").answer;
 
         void Hint(string text)
@@ -1062,49 +1039,20 @@ sealed class SettingsWindow : Window
         p.Children.Add(Item("This computer's key", keyIs, copyKey));
         p.Children.Add(Item("Chat key", "Lets another program send him a message. Keep it private.", Button("Copy", Kind.Quiet, () =>
         {
-            var own = Core.Control("settings", new() { ["lingo"] = "onsay" }).answer?.AsArray();
-            var value = own?.FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"];
-            if (value is null)
-            {
-                copied.Text = "There's no chat key yet. Onsay makes one the first time it is on.";
-                return;
-            }
-            Clipboard.SetText($"{value}");
-            copied.Text = $"Copied the chat key. A program sends him a message at {Core.Url}/onsay with it.";
+            Clipboard.SetText(Host.PromptKey);
+            copied.Text = $"Copied the chat key. A program sends him a message at {Host.Url}/onsay with it.";
         })));
         p.Children.Add(copied);
 
         p.Children.Add(Section("Folders"));
         p.Children.Add(Item("Onsay's folder", "Everything he keeps on this computer.", Button("Open", Kind.Quiet, () => Native.Open(Settings.Folder))));
-        p.Children.Add(Item("Apps folder", "To add an app, put its file here. It shows in Apps, off until you turn it on.", Button("Open", Kind.Quiet, () => Native.Open(Core.LingosFolder))));
         p.Children.Add(Item("The program that runs your apps", $"It answers at {Core.Url}, for this computer alone.", Button("Open its settings", Kind.Quiet, () => Native.Open(Core.Config))));
 
         p.Children.Add(Section("Logs"));
         Hint("Newest first, exactly as written.");
 
-        // One line of sent.log in words, or as it is when it can't be read.
-        string Sent(string line)
-        {
-            JsonNode? s;
-            try
-            {
-                s = JsonNode.Parse(line);
-            }
-            catch (JsonException)
-            {
-                return line;
-            }
-            var json = s?["message"]?.ToJsonString() ?? "";
-            var shown = json.Length > 4000 ? json[..4000] + "\n... (the rest is in the file)" : json;
-            var kind = $"{s?["message"]?["type"]}";
-            DateTime.TryParse($"{s?["at"]}", out var at);
-            return $"{at:g}  {Kinds.GetValueOrDefault(kind, kind)}\n{shown}";
-        }
-
-        var sent = Path.Combine(Core.Home, "sent.log");
-        Log("Everything sent to Onsay", "What you ask, and what each app asks for and answers.", () => string.Join("\n\n", Lines(sent, 300).Select(Sent)), sent);
         var requests = Path.Combine(Core.Home, "requests.log");
-        Log("Every request", "Everything asked of this computer and everything it asked, and every allow or refuse, the way the program writes it down.", () => string.Join("\n", Lines(requests, 500)), requests);
+        Log("Every request", "Everything asked of this computer and everything it asked, and every allow or refuse, the way the program writes it down. This is what it sends Onsay, sealed so only Onsay can read it.", () => string.Join("\n", Lines(requests, 500)), requests);
         Log("The program's log", "What the program that runs your apps says while it works, and any errors.", () => string.Join("\n", Lines(Core.Log, 500)), Core.Log);
         return p;
     }

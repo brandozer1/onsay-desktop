@@ -1,4 +1,4 @@
-<!-- Onsay.csproj - the Windows app's build: a WPF program, with the lingo client and its lingos from ..\lingo-client\core\bin beside it. -->
+<!-- Onsay.csproj - the Windows app's build: a WPF program, with the floor and the lingos it offers from ..\lingo-client beside it. -->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -22,12 +22,14 @@
     <Version>0.1.0</Version>
   </PropertyGroup>
 
-  <!-- What .NET Framework needs to build here and to read JSON: its reference assemblies, and System.Text.Json. -->
+  <!-- What .NET Framework needs to build here, read JSON and seal keys: its reference assemblies, System.Text.Json and
+       System.Security. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
     <Reference Include="System.Net.Http" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Security" />
   </ItemGroup>
 
   <!-- The brand's fonts, the website's own: Gabarito for headings, IBM Plex Sans and Mono, as Onsay Sans and Mono, for
@@ -36,25 +38,13 @@
     <Resource Include="fonts\*.ttf" />
   </ItemGroup>
 
-  <!-- The lingo client, his hands on this computer, ships beside the app, and so do its lingos, .lingo files like agent, the AI
-       agent, which go in its lingos folder. All come from the lingo-client project beside this one:
-       build them first with ..\lingo-client\core\build.ps1. The floor, the new lingo client, comes too, with the Windows
-       lingos and the update lingo built in (src/System/Updates.cs); release.ps1 ships the 32-bit one for 32-bit Windows. -->
+  <!-- The floor, the lingo client made for Windows, with the Windows lingos and the update lingo built in, ships beside
+       the app, and so do the lingos the app offers it, a .ls file each, like agent, the AI agent: from the lingo-client
+       project beside this one, built first with ..\lingo-client\core\build.ps1. release.ps1 ships the 32-bit floor for
+       32-bit Windows. -->
   <ItemGroup>
-    <None Include="..\lingo-client\core\bin\onsay-core.exe" Link="onsay-core.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')" />
     <None Include="..\lingo-client\core\bin\windows\floor.exe" Link="floor.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\windows\floor.exe')" />
-    <None Include="..\lingo-client\core\bin\lingos\*.lingo" Link="lingos\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\lingo-client\lingo-library\*\*.ls" Link="lingos\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-
-  <!-- The lingos only the app ships, not the lingo client: browser, LibreWolf driven over WebDriver BiDi. Each is packed
-       from ..\lingo-client\lingo-library by the lingo client as the app builds. -->
-  <Target Name="PackLingos" BeforeTargets="AssignTargetPaths" Condition="Exists('..\lingo-client\core\bin\onsay-core.exe')">
-    <MakeDir Directories="$(IntermediateOutputPath)lingos" />
-    <Exec Command="&quot;..\lingo-client\core\bin\onsay-core.exe&quot; &quot;..\lingo-client\core\obj\pack.json&quot; pack &quot;..\lingo-client\lingo-library\browser&quot; &quot;$(IntermediateOutputPath)lingos&quot;" />
-    <ItemGroup>
-      <Packed Include="$(IntermediateOutputPath)lingos\*.lingo" />
-      <None Include="@(Packed)" Link="lingos\%(Packed.Filename)%(Packed.Extension)" CopyToOutputDirectory="PreserveNewest" />
-    </ItemGroup>
-  </Target>
 
 </Project>

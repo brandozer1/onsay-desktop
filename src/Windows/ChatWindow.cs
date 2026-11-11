@@ -1,7 +1,6 @@
 // ChatWindow.cs - the card that opens beside him, or docked along a side of his screen: signing in, your to-dos, or one
-// to-do open, and the look every window shares. It only draws: each to-do is one session of the onsay lingo on this computer, every prompt goes to its /onsay,
-// which works it through with Onsay a step at a time and keeps the session, and what comes back and what the lingos ask
-// is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
+// to-do open, and the look every window shares. It only draws: each to-do is kept by the app (ToDos.cs) and run by the agent lingo on the floor,
+// every prompt going to the app's /onsay (Host.cs), and what comes back and what the lingos ask is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
 // it has got, and Not quite on a done one makes a new one that follows it up. Opening one shows its whole conversation,
 // and the box there replies to it. Its X closes it, and so do he (his back has an X while it is open) and Esc. While he
 // works his steps show as they happen, folded under one line once he answers. It sits beside him and moves with him, or docked to the left,
@@ -28,7 +27,7 @@
 //                                         opened in a row along its bottom, and
 //                                         Fix(item), Not quite on one. Named(id) is one by what was asked
 //     Load(id), Follow(...)               one to-do open, its whole conversation, and what it does as it runs
-//     ReadKey(), To(method, path, body)   the prompt key, and a request to /onsay with it
+//     ReadKey(), To(method, path, body)   the prompt key, and a request to the app's /onsay with it
 //     Replied(...)                        his answer, with how it ended and how long it took
 //     Trial()                             once Onsay's AI trial is over, a card offering the subscription or your own key
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
@@ -1211,8 +1210,8 @@ sealed class ChatWindow : Window
     async void Trial()
     {
         if (offeredSubscription) return;
-        var (aiSettings, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "ai" }));
-        bool theirs = aiSettings is JsonArray fields && fields.Any(f =>
+        var fields = await Task.Run(() => Core.SettingsFor("ai"));
+        bool theirs = fields.Any(f =>
         {
             var name = $"{f?["name"]}";
             var value = f?["value"];
@@ -1245,17 +1244,17 @@ sealed class ChatWindow : Window
         listPage.ScrollToHome();
     }
 
-    // 6. The onsay lingo's prompt key, read again for each prompt.
-    async Task ReadKey()
+    // 6. The chat key, which the app's /onsay asks for (Host.cs).
+    Task ReadKey()
     {
-        var (onsaySettings, _) = await Task.Run(() => Core.Control("settings", new() { ["lingo"] = "onsay" }));
-        promptKey = $"{onsaySettings?.AsArray().FirstOrDefault(s => $"{s?["name"]}" == "prompt_key")?["value"]}";
+        promptKey = Host.PromptKey;
+        return Task.CompletedTask;
     }
 
     // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.
     HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
     {
-        var req = Core.Request(method, $"/onsay{path}");
+        var req = new HttpRequestMessage(method, $"{Host.Url}/onsay{path}");
         if (body is not null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         req.Headers.Authorization = new("Bearer", promptKey);
         return req;
@@ -1522,14 +1521,9 @@ sealed class ChatWindow : Window
         {
             if (asking) return;
             asking = true;
-            JsonArray? all = null;
-            if (Core.Running)
-            {
-                var (answer, _) = await Task.Run(() => Core.Control("asks"));
-                all = answer as JsonArray;
-            }
+            var all = await Task.Run(() => ToDos.Asks());
             asking = false;
-            if (all is not null || !Core.Running) Asked(all?.ToList() ?? new());
+            Asked(all.ToList());
         };
         timer.Start();
     }
@@ -1551,7 +1545,7 @@ sealed class ChatWindow : Window
             if (!Showing) setOpen(true);
             lingoCards[id] = Questions(questions, answers =>
             {
-                Task.Run(() => Core.Control("answer", new() { ["id"] = id, ["answer"] = Strings(answers) }));
+                ToDos.Answer((long)id, null, Strings(answers));
             }, session is null ? asksPanel : lines);
             listPage.ScrollToHome();
             Page();

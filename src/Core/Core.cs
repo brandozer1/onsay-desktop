@@ -1,137 +1,89 @@
-// Core.cs - runs the lingo client, onsay-core.exe: a small program that answers web requests on this computer, each
-// lingo at its own route, and is his hands here. Its onsay lingo connects it to Onsay: signing in, and /onsay, where it
-// works each message of the chat through with Onsay.
+// Core.cs - runs the floor, floor.exe, the lingo client made for Windows, and is how this app, one of its lingos, calls it:
+// each call signed with the app's own key and carrying a badge from the person, its owner, so it is checked like any call
+// from anywhere (../onsay/docs/lingo-function.md, Lingos beside the floor). The lingos this app ships, the agent and ai
+// among them, are offered to it with their code and kept there; the app's own, the chat and settings, with the address
+// they answer at (Host.cs).
 //
-// 1. Start(settings)          writes core.json, puts the lingos this app ships in the lingos folder and starts the lingo
-//                             client with them, ending the one running first: on startup and the stop key. The first
-//                             time a shipped lingo appears it is started
-// 2. Stop()                   ends it, and keeps it ended. Running says whether it runs
-// 3. Needs, Wants(call)       what a lingo says it uses, in words, for Apps; what a call it was refused does, for Activity
-//    Who(who, handle)         a caller or a rule's who, in words, like "Your desktop" or "james"
-// 4. Control(verb, values)    one of the lingo client's verbs, like start, set, policy or asks: through its control
-//                             routes, or its command line when it isn't answering. Its answer, or why not, in words
-//    Onsay(phrase, values)    one of the onsay lingo's phrases, like status, sign_in, share or devices, through call
-//    Request(method, path)    a request to the lingo client with this app's badge, which lets it in as the person
-//    Badge()                  that badge, made by the lingo client's command line and made again before it runs out
-// 5. Lingos()                 every lingo on this computer, an app on screen: whether it runs, what it is and needs, its
-//                             parts, or why it can't run. Title(name) is its name on screen
+// 1. Start(settings)          writes floor.json, starts the floor and offers it the lingos: on startup and the stop key.
+//                             It comes back by itself if it ever stops
+//    Stop(), Running          ends it, and keeps it ended, and whether it runs
+// 2. Call(path, values, run)  one function on the floor as the app, like /agent/ask with its values in order, run the
+//                             to-do it is for, passed on with each call it makes: its value, or why not in words
+//    Run(script)              a script on the floor as the app, the same way
+// 3. SettingsFor(lingo)       each setting a lingo's code reads, with its value, kept in the floor's home
+//    Setting(lingo, key), Set(lingo, key, value)   one of them, and keeping one
+//    Policy(), Keep(policy)   the grants in policy.json, which the floor reads at every call
+// 4. Lingos()                 every lingo offered on the floor, an app on screen. Title(name) is its name on screen
+//    Switch(name, on)         an app turned on, offered again, or off, taken away
+//    Needs, Wants(call), Who(who, handle)   what an app uses, what a refused call does, and who a caller is, in words
+// 5. Onsay(phrase)            the person's Onsay account, which isn't on the floor yet: signed out
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Onsay.Desktop;
 
 static class Core
 {
-    // Each .lingo file in the lingos folder is a lingo, see ../lingo-client/core/README.md.
-    static readonly string Exe = Path.Combine(AppContext.BaseDirectory, "onsay-core.exe");
-    static readonly string Shipped = Path.Combine(AppContext.BaseDirectory, "lingos");
-    public static readonly string Home = Path.Combine(Settings.Folder, "core");
-    public static readonly string LingosFolder = Path.Combine(Home, "lingos");
-    public static readonly string Config = Path.Combine(Settings.Folder, "core.json");
-    public static readonly string Log = Path.Combine(Settings.Folder, "core.log");
-    // Where it answers on this computer: the port in core.json, its own default 6969 when it names none.
+    static readonly string Exe = Path.Combine(AppContext.BaseDirectory, "floor.exe");
+    static readonly string Shipped = Path.Combine(AppContext.BaseDirectory, "lingos");   // the lingos this app ships, a .ls each
+    public static readonly string Home = Path.Combine(Settings.Folder, "floor");
+    public static readonly string Config = Path.Combine(Settings.Folder, "floor.json");
+    public static readonly string Log = Path.Combine(Settings.Folder, "floor.log");
+    static readonly string Keys = Path.Combine(Settings.Folder, "keys");
+    // Where it answers on this computer: the port in floor.json, 6969 when it names none.
     static int port = 6969;
     public static string Url => $"http://127.0.0.1:{port}";
-    static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };   // each request has its own, below
-
-    // 3. Each need an app says it uses, in words. What it says is never a permission: this computer's rules decide.
-    public static readonly (string Name, string Words)[] Needs =
-    {
-        ("screen.read", "Sees windows and what is in them"),
-        ("screen.act", "Clicks, types and opens apps"),
-        ("files.read", "Reads your files"),
-        ("files.write", "Changes, moves and deletes files"),
-        ("run", "Runs commands"),
-        ("lingos", "Makes and changes apps"),
-    };
-
-    // 3. What one of this computer's calls an app was refused does, in words, by its group, like files for files.read.
-    public static string Wants(string call) => call.Split('.')[0] switch
-    {
-        "files" => "use your files",
-        "input" or "controls" => "use your mouse and keyboard",
-        "window" => "open and move windows",
-        "clipboard" => "use your clipboard",
-        "look" => "see your screen",
-        "commands" => "run a program",
-        "lingo" => "make or change an app",
-        "http" or "socket" or "connection" => "reach the internet",
-        "store" => "keep things",
-        "native" => "use the system directly",
-        _ => "do that",
-    };
-
-    /* 3. handle is this computer's own, so its other devices read as "Your desktop". A device signs as desktop.brandon,
-          me is the account itself through Onsay, and onsay is Onsay's own search and agent. */
-    public static string Who(string who, string? handle) => who switch
-    {
-        "this computer" => "You, on this computer",
-        "me" => "Your Onsay account",
-        "onsay" => "Onsay's search and agent",
-        "public" => "Anyone",
-        _ when who.StartsWith("ip ") => $"A computer at {who[3..]}",
-        _ when who.Split('.') is [var device, var h] => h == handle ? $"Your {device}" : h,
-        _ => who,
-    };
-
-    // The lingos built into the lingo client. A .lingo file or folder an older version of this app put in the lingos folder
-    // for one goes, since a lingo there with a built-in one's name is set aside.
-    static readonly string[] BuiltIn = { "onsay", "windows", "native" };
-    // What older versions shipped as lingos and are now standard functions of the lingo client, or no longer ship.
-    static readonly string[] Retired = { "encode", "json", "list", "math", "request", "text", "time", "url", "writer" };
-
-    // A marker that Onsay's own lingos were set up once, so the person's choices are kept.
-    const string BaseCalls = "base calls";
+    static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };   // each call has its own, below
+    // JSON as the floor writes it, so what is signed here checks out there: nothing escaped that needn't be, like +.
+    static readonly JsonSerializerOptions Plain = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     static Process? process;
     static bool wanted;
     static Settings settings = null!;
 
-    ////////// 1-2. RUNNING IT //////////
+    ////////// 1. RUNNING IT //////////
 
-    // 1. core.json holds its home, and keeps a port written there. From any thread: the stop key calls it from its own.
+    /* 1. floor.json: its home, its port, kept when one is written there, its owner, the person's key, and room for an
+          agent's to-do, 10 minutes. From any thread: the stop key calls it from its own. */
     public static void Start(Settings s)
     {
         Stop();
-        Directory.CreateDirectory(LingosFolder);
+        Host.Start(s);
         if (!File.Exists(Exe)) return;
-        var config = new JsonObject { ["home"] = Home };
         try
         {
-            if ((int?)JsonNode.Parse(File.ReadAllText(Config))?["port"] is int kept)
-            {
-                port = kept;
-                config["port"] = kept;
-            }
+            if ((int?)JsonNode.Parse(File.ReadAllText(Config))?["port"] is int kept) port = kept;
         }
         catch (Exception) { }
-        File.WriteAllText(Config, config.ToJsonString());
+        var config = new JsonObject
+        {
+            ["home"] = Home,
+            ["port"] = port,
+            ["owner"] = KeyText(Seed("owner")),
+            ["ms"] = 600_000,
+            ["steps"] = 1_000_000_000,
+        };
+        Directory.CreateDirectory(Home);
+        File.WriteAllText(Config, config.ToJsonString(Plain));
         settings = s;
         wanted = true;
         Run();
     }
 
-    /* Its errors go to core.log, and what the windows lingo asks to be drawn comes on its output, see Overlay.cs. It comes
-       back if it ever stops on its own. The lingos are copied before it starts, while nothing has their libraries open,
-       and only those that differ. What an older version put there for one, its folder like windows\, goes, so it is never
-       there twice. */
+    /* Its errors go to floor.log, and what the Windows lingos ask to be drawn comes on its output, see Overlay.cs. Once it
+       answers, the lingos are offered: the app's own at Host's address, and each shipped one new to this computer or
+       offered still, so a newer version's code replaces the old and one the person took away stays away. */
     static void Run()
     {
         if (!wanted || process is { HasExited: false }) return;
-        foreach (var name in BuiltIn.Concat(Retired))
-            try
-            {
-                File.Delete(Path.Combine(LingosFolder, name + ".lingo"));
-                var folder = Path.Combine(LingosFolder, name);
-                if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
-            }
-            catch (IOException) { }   // still open somewhere: it goes next time
-        // One left behind by an app that crashed before this one had its job would hold the port and fight this one for
-        // the connection to Onsay.
-        foreach (var other in Process.GetProcessesByName("onsay-core"))
+        // One left behind by an app that crashed before this one had its job would hold the port.
+        foreach (var other in Process.GetProcessesByName("floor"))
             try
             {
                 if (string.Equals(other.MainModule?.FileName, Exe, StringComparison.OrdinalIgnoreCase))
@@ -140,23 +92,10 @@ static class Core
                     other.WaitForExit(3000);
                 }
             }
-            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }   // already gone
-        var shipped = Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.lingo") : Array.Empty<string>();
-        foreach (var path in shipped)
-            try
-            {
-                var from = new FileInfo(path);
-                var to = new FileInfo(Path.Combine(LingosFolder, from.Name));
-                var older = Path.Combine(LingosFolder, Path.GetFileNameWithoutExtension(path));
-                if (Directory.Exists(older)) Directory.Delete(older, recursive: true);
-                bool differs = !to.Exists || to.Length != from.Length || to.LastWriteTimeUtc != from.LastWriteTimeUtc;
-                if (differs) from.CopyTo(to.FullName, overwrite: true);
-            }
-            catch (IOException) { }   // still open somewhere: the one there stays until next time
+            catch (Exception) { }
         var p = new Process
         {
-            // In its home, never the app's folder, so nothing it starts holds that folder open through an update or an uninstall.
-            StartInfo = new ProcessStartInfo(Exe, $"\"{Config}\"")
+            StartInfo = new ProcessStartInfo(Exe, Compat.Arguments(new[] { Config }))
             {
                 CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
                 StandardOutputEncoding = Encoding.UTF8, WorkingDirectory = Home,
@@ -183,25 +122,24 @@ static class Core
         p.BeginOutputReadLine();
         process = p;
 
-        // Onsay's own lingos are set up the first time each appears, once it answers: one this app ships is started, since a
-        // lingo new in the folder is stopped. Started remembers them, so one the person stops stays stopped.
-        var own = shipped.Select(f => Path.GetFileNameWithoutExtension(f)).Concat(BuiltIn).Append(BaseCalls);
-        var fresh = own.Where(n => !(settings.Started ?? new()).Contains(n)).ToList();
-        if (fresh.Count > 0) Task.Run(async () =>
+        Task.Run(async () =>
         {
             var until = DateTime.Now.AddSeconds(15);
             while (Lingos() is null && DateTime.Now < until) await Task.Delay(250);
-            foreach (var name in fresh)
+            foreach (var (name, code) in Host.Lingos) Call("/lingo/offer", new JsonArray(name, code, $"{Host.Url}/{name}"));
+            var offered = Lingos()?.Select(l => l.Name).ToList() ?? new();
+            foreach (var file in Directory.Exists(Shipped) ? Directory.GetFiles(Shipped, "*.ls") : Array.Empty<string>())
             {
-                bool ships = !BuiltIn.Contains(name) && name != BaseCalls;
-                if (ships && Control("start", new() { ["lingo"] = name }).why is not null) continue;
-                (settings.Started ??= new()).Add(name);
+                var name = Path.GetFileNameWithoutExtension(file);
+                if ((settings.Started ?? new()).Contains(name) && !offered.Contains(name)) continue;
+                if (Call("/lingo/offer", new JsonArray(name, File.ReadAllText(file))).why is not null) continue;
+                if (!(settings.Started ??= new()).Contains(name)) settings.Started.Add(name);
             }
             settings.Save();
         });
     }
 
-    // 2. Waits for it to end, so its port and its lingos' libraries are let go before anything takes them.
+    // 1. Waits for it to end, so its port is let go before anything takes it.
     public static void Stop()
     {
         wanted = false;
@@ -217,158 +155,252 @@ static class Core
 
     public static bool Running => process is { HasExited: false };
 
-    ////////// 4. CONTROL //////////
+    ////////// 2. CALLS //////////
 
-    /* 4. values go by name to its control route, and in order to its command line, a list as its words. A setting's value
-          is written as JSON there, so text stays text. The command line only when nothing answers the port: one that is
-          slow to answer is not asked twice. asks and answer only mean something to the one running. */
-    public static (JsonNode? answer, string? why) Control(string verb, JsonObject? values = null)
+    // 2. values in order. A call may take as long as the floor lets it, 10 minutes, like a to-do's agent or an update.
+    public static (JsonNode? answer, string? why) Call(string path, JsonArray? values = null, string? run = null) =>
+        Send(path, (values ?? new JsonArray()).ToJsonString(Plain), run);
+
+    // 2.
+    public static (JsonNode? answer, string? why) Run(string script) => Send("/", script, null);
+
+    static (JsonNode? answer, string? why) Send(string path, string body, string? run)
     {
-        values ??= new();
         try
         {
-            // A call, like signing in, may wait on Onsay. Anything else answers at once.
-            var request = Request(HttpMethod.Post, $"/.lingo/{verb}");
-            request.Content = new StringContent(values.ToJsonString(), Encoding.UTF8, "application/json");
-            var patience = TimeSpan.FromSeconds(verb == "call" ? 40 : 3);
-            using var res = Http.SendAsync(request, new CancellationTokenSource(patience).Token).GetAwaiter().GetResult();
-            var said = JsonNode.Parse(res.Content.ReadAsStreamAsync().GetAwaiter().GetResult());
-            return res.IsSuccessStatusCode ? (said, null) : (null, $"{said?["error"]}");
+            using var request = Signed(path, body);
+            if (run is not null) request.Headers.Add("Onsay-Run", run);
+            using var res = Http.SendAsync(request, new CancellationTokenSource(TimeSpan.FromMinutes(11)).Token).GetAwaiter().GetResult();
+            var said = JsonNode.Parse(res.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+            if (res.IsSuccessStatusCode) return (said, null);
+            return (null, $"{said?["error"] ?? "Onsay's helper on this computer couldn't do that."}");
         }
-        catch (Exception) when (verb is "asks" or "answer") { return (null, "Onsay's helper on this computer isn't running."); }
-        catch (HttpRequestException) { }
+        catch (HttpRequestException) { return (null, "Onsay's helper on this computer isn't running. It starts again by itself, so try again in a moment."); }
         catch (Exception) { return (null, "Onsay's helper on this computer took too long to answer. Try again in a moment."); }
-        return Command(verb, values);
     }
 
-    // Its command line, which works whether or not it runs.
-    static (JsonNode? answer, string? why) Command(string verb, JsonObject values)
+    /* A POST to the floor signed by the app's key (RFC 9421): its method, its whole address and its body's digest, made
+       now, with a nonce never used before, the key naming itself as keyid; and the badge the owner gave the app. */
+    static HttpRequestMessage Signed(string path, string body)
     {
-        if (!File.Exists(Exe) || !File.Exists(Config)) return (null, "This copy of Onsay has no lingo client, so this can't be changed here.");
-        var info = new ProcessStartInfo(Exe)
-        {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            WorkingDirectory = Directory.Exists(Home) ? Home : Settings.Folder,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-        };
-        var args = new List<string> { Config, verb };
-        foreach (var (key, v) in values)
-        {
-            if (v is JsonArray list)
-            {
-                foreach (var x in list) args.Add($"{x}");
-            }
-            else if (key != "value" && v is JsonValue j && j.TryGetValue(out string? text)) args.Add(text);
-            else args.Add(v?.ToJsonString() ?? "null");
-        }
-        info.Arguments = Compat.Arguments(args);
-        try
-        {
-            using var p = Process.Start(info)!;
-            var output = p.StandardOutput.ReadToEndAsync();
-            var error = p.StandardError.ReadToEnd();
-            if (!p.WaitForExit(20_000))
-            {
-                p.Kill();
-                return (null, "The lingo client took too long to answer.");
-            }
-            if (p.ExitCode == 0) return (JsonNode.Parse(output.Result), null);
-            // What it said last is why: the lines before it are the lingos it loaded.
-            var last = error.Trim().Split('\n').Last().Trim();
-            return (null, last.Length > 0 ? last : "The lingo client couldn't do that.");
-        }
-        catch (Exception e) { return (null, e.Message); }
-    }
-
-    // 4.
-    public static HttpRequestMessage Request(HttpMethod method, string path)
-    {
-        var request = new HttpRequestMessage(method, $"{Url}{path}");
-        if (Badge() is string badge) request.Headers.Add("Onsay-Badge", badge);
+        var url = $"{Url}{path}";
+        var bytes = Encoding.UTF8.GetBytes(body);
+        using var sha = SHA256.Create();
+        var digest = $"sha-256=:{Convert.ToBase64String(sha.ComputeHash(bytes))}:";
+        var nonce = new byte[8];
+        using (var random = RandomNumberGenerator.Create()) random.GetBytes(nonce);
+        var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var hex = BitConverter.ToString(nonce).Replace("-", "").ToLower();
+        var signature = $"(\"@method\" \"@target-uri\" \"content-digest\");created={created};nonce=\"{hex}\";keyid=\"{KeyText(Seed("app"))}\"";
+        var basis = $"\"@method\": POST\n\"@target-uri\": {url}\n\"content-digest\": {digest}\n\"@signature-params\": {signature}";
+        var sig = Ed25519.Sign(Seed("app"), Encoding.UTF8.GetBytes(basis));
+        var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(bytes) };
+        request.Headers.Add("Content-Digest", digest);
+        request.Headers.Add("Signature-Input", $"sig={signature}");
+        request.Headers.Add("Signature", $"sig=:{Convert.ToBase64String(sig)}:");
+        request.Headers.Add("Onsay-Badge", Badge());
         return request;
     }
 
-    // 4. A day long, the lingo client's own, and made again an hour before that. Null while there is no lingo client.
+    /* The app's two keys, each a private seed sealed for this Windows user (DPAPI) in keys\, made the first time: owner,
+       the person's own, which only signs the app's badge, and app, the app's, which signs each call. */
+    static readonly Dictionary<string, byte[]> seeds = new();
+    static byte[] Seed(string name)
+    {
+        lock (seeds)
+        {
+            if (seeds.TryGetValue(name, out var known)) return known;
+            var file = Path.Combine(Keys, name + ".key");
+            byte[] seed;
+            try
+            {
+                seed = ProtectedData.Unprotect(File.ReadAllBytes(file), null, DataProtectionScope.CurrentUser);
+            }
+            catch (Exception)
+            {
+                seed = new byte[32];
+                using (var random = RandomNumberGenerator.Create()) random.GetBytes(seed);
+                Directory.CreateDirectory(Keys);
+                File.WriteAllBytes(file, ProtectedData.Protect(seed, null, DataProtectionScope.CurrentUser));
+            }
+            return seeds[name] = seed;
+        }
+    }
+
+    static string KeyText(byte[] seed) => $"ed25519:{Convert.ToBase64String(Ed25519.Key(seed))}";
+
+    /* The owner's grant to the app, everything on this computer for a day, made again an hour before it ends: {allow, by,
+       to, until}, written in that order, as Onsay signs, signed by the owner, and sent as the base64 of the list it is the
+       one grant of. */
     static string? badge;
     static DateTime badgeMade;
-    public static string? Badge()
+    static string Badge()
     {
         if (badge is not null && DateTime.Now - badgeMade < TimeSpan.FromHours(23)) return badge;
-        if (Command("badge", new()).answer is JsonValue made && made.TryGetValue(out string? text))
-        {
-            badge = text;
-            badgeMade = DateTime.Now;
-        }
+        var until = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 86_400;
+        var grant = new JsonObject { ["allow"] = new JsonArray("/"), ["by"] = KeyText(Seed("owner")), ["to"] = KeyText(Seed("app")), ["until"] = until };
+        var sig = Ed25519.Sign(Seed("owner"), Encoding.UTF8.GetBytes(grant.ToJsonString(Plain)));
+        grant["sig"] = Convert.ToBase64String(sig);
+        badge = Convert.ToBase64String(Encoding.UTF8.GetBytes(new JsonArray(grant).ToJsonString(Plain)));
+        badgeMade = DateTime.Now;
         return badge;
     }
 
-    // 4. Why not as a sentence, without the phrase's name in front.
-    public static (JsonNode? answer, string? why) Onsay(string phrase, params JsonNode[] values)
+    ////////// 3. SETTINGS AND THE POLICY //////////
+
+    // 3. Each in the order its code reads them, as the floor's table lists them, with its value or null.
+    public static JsonArray SettingsFor(string lingo)
     {
-        var (answer, why) = Control("call", new() { ["fn"] = $"onsay.{phrase}", ["values"] = new JsonArray(values) });
-        why = why?.Replace($"onsay.{phrase}: ", "").TrimEnd('.');
-        return (answer, why is null ? null : why + ".");
+        var names = Table()?[lingo]?["settings"] as JsonArray ?? new();
+        var kept = SettingsOf(lingo);
+        return new JsonArray(names.Select(n => (JsonNode)new JsonObject { ["name"] = $"{n}", ["value"] = kept[$"{n}"]?.DeepClone() }).ToArray());
     }
 
-    ////////// 5. THE LINGOS //////////
+    // 3. What the app's settings lingo (Host.cs) answers a lingo's setting(...) with.
+    public static JsonNode? Setting(string lingo, string key) => SettingsOf(lingo)[key]?.DeepClone();
 
-    /* One lingo on this computer. Error is why it can't run, null when it can. BuiltIn is built into Onsay, and always on. Needs are what its
-       routes say they need, and Parts the first step of each route after its own, like /window for /windows/window/list,
-       each a part that can be shared on its own. */
-    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts, string Route, string[] Missing, Call[] Calls);
-
-    // One thing an app can be asked for: its path after the computer, its name and what it does in words, and Group, the
-    // part of the app it is in, or empty.
-    public sealed record Call(string Path, string Name, string Does, string Group);
-
-    // What a path of a manifest is, for a person: its last step as a name, and its words without the shape of its answer.
-    static Call CallAt(string path, string route, JsonNode? op)
+    // 3. null takes it away. Why not, or null.
+    public static string? Set(string lingo, string key, JsonNode? value)
     {
-        var steps = path.StartsWith(route) ? path[route.Length..].Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
-        var name = steps.Length > 0 ? Title(steps[^1].Replace('_', ' ')) : "Open it";
-        var group = steps.Length > 1 ? steps[0] : "";
-        var does = $"{op?["description"] ?? op?["summary"]}";
-        return new Call(path, name, does, group);
-    }
-
-    // 5.
-    public static string Title(string name) => name.Length > 0 ? char.ToUpper(name[0]) + name[1..] : name;
-
-    /* 5. As the lingo client says: GET / from this computer lists every lingo, running or not, and manifest gives what each
-          one is, a built-in one too. Null while the lingo client isn't answering. */
-    public static List<Lingo>? Lingos()
-    {
-        JsonArray all;
         try
         {
-            using var res = Http.SendAsync(Request(HttpMethod.Get, "/"), new CancellationTokenSource(3000).Token).GetAwaiter().GetResult();
-            all = JsonNode.Parse(res.Content.ReadAsStreamAsync().GetAwaiter().GetResult())!["lingos"]!.AsArray();
+            var kept = SettingsOf(lingo);
+            if (value is null) kept.Remove(key);
+            else kept[key] = value.DeepClone();
+            Directory.CreateDirectory(Path.Combine(Home, "settings"));
+            File.WriteAllText(SettingsFile(lingo), kept.ToJsonString(Plain));
+            return null;
+        }
+        catch (Exception) { return "That setting couldn't be kept."; }
+    }
+
+    static string SettingsFile(string lingo) => Path.Combine(Home, "settings", $"{lingo}.json");
+
+    static JsonObject SettingsOf(string lingo)
+    {
+        try { return JsonNode.Parse(File.ReadAllText(SettingsFile(lingo))) as JsonObject ?? new(); }
+        catch (Exception) { return new(); }
+    }
+
+    // 3. {grants: [...]}, empty when there is none yet.
+    public static JsonObject Policy()
+    {
+        try
+        {
+            if (JsonNode.Parse(File.ReadAllText(Path.Combine(Home, "policy.json"))) is JsonObject kept) return kept;
+        }
+        catch (Exception) { }
+        return new() { ["grants"] = new JsonArray() };
+    }
+
+    // 3. Why not, or null.
+    public static string? Keep(JsonObject policy)
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(Home, "policy.json"), policy.ToJsonString(Plain));
+            return null;
+        }
+        catch (Exception) { return "The rules couldn't be kept."; }
+    }
+
+    ////////// 4. THE LINGOS //////////
+
+    // 4. Each in words. What an app says it uses is never a permission: this computer's rules decide.
+    public static readonly (string Name, string Words)[] Needs =
+    {
+        ("screen.read", "Sees windows and what is in them"),
+        ("screen.act", "Clicks, types and opens apps"),
+        ("files.read", "Reads your files"),
+        ("files.write", "Changes, moves and deletes files"),
+        ("run", "Runs commands"),
+        ("lingos", "Makes and changes apps"),
+    };
+
+    // 4. What one of this computer's calls an app was refused does, in words, by its group, like files for files.read.
+    public static string Wants(string call) => call.Split('.')[0] switch
+    {
+        "files" => "use your files",
+        "input" or "controls" => "use your mouse and keyboard",
+        "window" => "open and move windows",
+        "clipboard" => "use your clipboard",
+        "look" => "see your screen",
+        "commands" => "run a program",
+        "lingo" => "make or change an app",
+        "http" or "socket" or "connection" => "reach the internet",
+        "store" => "keep things",
+        "native" => "use the system directly",
+        _ => "do that",
+    };
+
+    /* 4. handle is this computer's own, so its other devices read as "Your desktop". A device signs as desktop.brandon,
+          and this app, or the person, by their key. */
+    public static string Who(string who, string? handle) => who switch
+    {
+        "this computer" => "You, on this computer",
+        "public" => "Anyone",
+        _ when who == KeyText(Seed("app")) || who == KeyText(Seed("owner")) => "You, on this computer",
+        _ when who.StartsWith("ip ") => $"A computer at {who[3..]}",
+        _ when who.Split('.') is [var device, var h] => h == handle ? $"Your {device}" : h,
+        _ => who,
+    };
+
+    /* One lingo offered on the floor: whether it runs, why it can't, what it is, built into this app, what it needs, its
+       parts, its route, what it lacks, and what it can be asked. */
+    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts, string Route, string[] Missing, Function[] Calls);
+
+    // One thing an app can be asked for: its path, its name and what it does in words, and Group, the part of the app it
+    // is in, or empty.
+    public sealed record Function(string Path, string Name, string Does, string Group);
+
+    // 4.
+    public static string Title(string name) => name.Length > 0 ? char.ToUpper(name[0]) + name[1..] : name;
+
+    // The floor's table, home/offered.json, or null while the floor isn't answering.
+    static JsonObject? Table()
+    {
+        try
+        {
+            using var res = Http.GetAsync(Url + "/", new CancellationTokenSource(3000).Token).GetAwaiter().GetResult();
+            if (!res.IsSuccessStatusCode) return null;
         }
         catch (Exception) { return null; }
-        return all.Select(e =>
+        try { return JsonNode.Parse(File.ReadAllText(Path.Combine(Home, "offered.json"))) as JsonObject ?? new(); }
+        catch (Exception) { return new(); }
+    }
+
+    /* 4. From the table: each function a call, by its OpenAPI, its helpers left out. The app's own, the chat and
+          settings, are built in. Null while the floor isn't answering. */
+    public static List<Lingo>? Lingos()
+    {
+        var table = Table();
+        if (table is null) return null;
+        return table.Select(e =>
         {
-            var name = $"{e?["name"]}";
-            var doc = Control("manifest", new() { ["lingo"] = name }).answer;
-            var route = $"{doc?["x-lingo"]?["route"] ?? "/" + name}";
-            var (needs, parts) = (new SortedSet<string>(), new SortedSet<string>());
-            var calls = new List<Call>();
-            foreach (var (path, ops) in doc?["paths"]?.AsObject() ?? new JsonObject())
+            var calls = new List<Function>();
+            foreach (var (path, ops) in e.Value?["openapi"]?["paths"]?.AsObject() ?? new JsonObject())
             {
-                if (path.StartsWith(route + "/") && path[(route.Length + 1)..].Split('/')[0] is { Length: > 0 } part) parts.Add("/" + part);
-                foreach (var (_, op) in ops?.AsObject() ?? new JsonObject())
-                {
-                    foreach (var need in op?["x-lingo-needs"]?.AsArray() ?? new JsonArray()) needs.Add($"{need}");
-                    if ((bool?)op?["x-lingo-internal"] != true) calls.Add(CallAt(path, route, op));
-                }
+                var op = ops?["post"];
+                if ((bool?)op?["x-lingo-internal"] == true) continue;
+                calls.Add(new Function(path, Title(path.Split('/').Last().Replace('_', ' ')), $"{op?["description"] ?? op?["summary"]}", ""));
             }
-            var about = $"{doc?["info"]?["description"]}";
-            var builtIn = $"{doc?["x-lingo"]?["program"]}" == "built in";
-            var error = e?["error"] is { } why ? $"{why}" : null;
-            var missing = doc?["x-lingo"]?["missing"]?.AsArray().Select(m => $"{m}").ToArray() ?? Array.Empty<string>();
-            return new Lingo(name, (bool?)e?["running"] == true, error, about, builtIn, needs.ToArray(), parts.ToArray(), route, missing, calls.ToArray());
+            var builtIn = Host.Lingos.Any(l => l.Name == e.Key);
+            return new Lingo(e.Key, true, null, $"{e.Value?["about"]}", builtIn, Array.Empty<string>(), Array.Empty<string>(), "/" + e.Key, Array.Empty<string>(), calls.ToArray());
         }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    // 4. On offers a shipped lingo's code again, off takes it away. Why not, or null.
+    public static string? Switch(string name, bool on)
+    {
+        var file = Path.Combine(Shipped, name + ".ls");
+        if (on && !File.Exists(file)) return "Only the apps that come with Onsay can be turned back on here.";
+        return Call("/lingo/offer", new JsonArray(name, on ? File.ReadAllText(file) : "")).why;
+    }
+
+    ////////// 5. ONSAY //////////
+
+    // 5. Signing in comes to the floor as a lingo of its own. Until then he is signed out, and says so.
+    public static (JsonNode? answer, string? why) Onsay(string phrase, params JsonNode[] values) => phrase == "status"
+        ? (new JsonObject { ["signed_in"] = false }, null)
+        : (null, "Signing in to Onsay isn't in this version yet.");
 }

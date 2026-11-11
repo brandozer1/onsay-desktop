@@ -25,6 +25,8 @@ sealed class Settings
 
     // The lingos this app ships that it has started once (Core.cs), so one the person stops stays stopped.
     public List<string>? Started { get; set; }
+    // The chat key, which a program sends a message to him with, at the app's /onsay (Host.cs), made the first time.
+    public string? PromptKey { get; set; }
     // Whether setting him up, the window the first open shows (SetupWindow.cs), was finished or skipped. Null until then.
     // Welcomed is an older version's name for it, read so nobody who finished that is set up again.
     public bool? SetUp { get; set; }

@@ -241,8 +241,8 @@ sealed class SetupWindow : Window
                 problem.Text = $"Paste your {s.Name} key to go on, or pick Onsay AI.";
                 return;
             }
-            var why = Core.Control("set", new() { ["lingo"] = "ai", ["key"] = "service", ["value"] = picked == "onsay" ? null : picked }).why;
-            if (why is null && picked != "onsay") why = Core.Control("set", new() { ["lingo"] = "ai", ["key"] = s.Setting, ["value"] = typed }).why;
+            var why = Core.Set("ai", "service", picked == "onsay" ? null : picked);
+            if (why is null && picked != "onsay") why = Core.Set("ai", s.Setting, typed);
             if (why is not null)
             {
                 problem.Text = why;

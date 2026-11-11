@@ -5,26 +5,19 @@ setup, the lingo it ships. It is Apache 2.0 licensed and built to be built on.
 
 It is two things:
 
-- **The lingo client**, `onsay-core.exe`, from [lingo-client](https://github.com/brandozer1/lingo-client): a small
-  program that runs lingos, on port 6969, for this computer alone until its policy shares something. Each running lingo
-  in its lingos folder is a program at its route. Its **onsay lingo**, built into it, connects it to Onsay: signing in,
-  the connection, and `/onsay`, where it works each message through with Onsay, a step at a time.
-- **The app around it**: his character on the taskbar, the chat, setting him up, and Apps and settings: Apps, Devices,
-  People, Activity, Settings and Advanced. On screen a lingo is an app.
+- **The floor**, `floor.exe`, the lingo client made for Windows, from
+  [lingo-client](https://github.com/brandozer1/lingo-client): a small program that takes calls on port 6969, checks
+  who signed each and whether its policy lets them, runs the lingo script, and logs it. Nothing else.
+- **The app**, one of the floor's lingos: his character on the taskbar, the chat and its to-dos, setting him up, and
+  Apps and settings: Apps, Devices, People, Activity, Settings and Advanced. On screen a lingo is an app.
 
 ## Setting him up
 
 The first time he opens, a window walks through it one step at a time: hello, his look, where to find him, what is sent
 to Onsay (Agree and continue), his AI, and signing in, which can be skipped. Then his chat opens.
 
-**Signing in** is the onsay lingo's: `onsay.sign_in` gives the address of Onsay's page and a code. The page opens in the
-browser and the code shows in the app; once the person presses Connect there, the onsay lingo keeps its token and
-connects. "You're brandon. This computer is laptop." is `onsay.status`, and Sign out is `onsay.sign_out`. The app keeps
-no sign in of its own. Signing in works even with the onsay lingo turned off, and never holds anything up; when it
-fails, the reason shows in words (`failed` in `onsay.status`).
-
-**With the onsay lingo turned off** (`running` in `onsay.status`), the chat and Settings say so plainly, with Turn
-Onsay on.
+**Signing in** to Onsay isn't on the floor yet: it comes back as a lingo of its own. Until then he is signed out, and
+Settings says so.
 
 ## Using him
 
@@ -43,14 +36,10 @@ back to where he was. Drag a docked one's top bar away and it comes off, with hi
 wider or taller. It is kept as `Docked` and `DockSize` in `desktop.json`, and Windows gets the strip back when the
 card closes or the app ends.
 
-**The chat only draws; the onsay lingo does the work.** Each chat is a session of the onsay lingo. A message goes to
-`/onsay` on the lingo client with its prompt key, read from the onsay lingo's settings, in a session the app names when
-the chat starts, the way the onsay lingo names one. The onsay lingo works it through as
-the agent loop: Onsay decides each step from the whole session, a call or the reply, and the onsay lingo runs each call
-on this computer or through Onsay, until the reply (lingo-client `lingos/onsay/README.md`). It keeps the session, every
-call and what it gave included, so he remembers the chat and what he did in it. The app draws what comes back and what
-the lingos ask; Copy chat reads the session. New chat starts a new one. One message at a time; Stop, or the stop key,
-starts the lingo client again, which ends whatever it was doing.
+**The chat only draws; the agent does the work.** Each to-do is kept by the app (`src/Core/ToDos.cs`) and run by the
+`agent` lingo on the floor, `agent.ask`, with everything said in it before, so he remembers the to-do and what he did
+in it. A message goes to the app's own `/onsay` with the prompt key, which any program given that key can use too.
+Stop, or the stop key, starts the floor again, which ends whatever it was doing.
 
 **What he is doing shows as he does it.** While a message runs the app asks `/onsay/sessions/<session>/live` every
 moment, the way it asks for the questions waiting: each step is a line in plain words under your message, like
@@ -64,24 +53,23 @@ laptop", what a step asked indented under it, and the newest on the bar. Once he
 skip}` a button for each choice, with Something else and Skip unless `other` or `skip` is false. Send, once every one is
 answered, sends them as the next message in the same session, a line each, like `Where to? Rome`.
 
-**Any lingo can talk in the chat** through the `chat` base calls. `chat.ask` asks you while it works and
-waits: its questions come with any others from `/.lingo/asks`, open the chat and show as the same card, and
-your answers go back through `/.lingo/answer`, so the lingo, like the agent, carries on with them in the same turn
-(`ChatWindow.Poll` asks for them every second). `chat.say` adds his line to the chat and `chat.step` a step under the
-message running; neither opens the chat, so the work keeps the keyboard.
+**Any lingo can talk in the chat** through the app's `chat` lingo, which the floor sends on to the app, with the
+to-do it is for. `chat.ask` asks you while it works and waits: its questions open the chat and show as a card, and your
+answers go back to the lingo, so the agent carries on with them in the same turn. `chat.say` adds his line to the chat
+and `chat.step` a step under the to-do running; neither opens the chat, so the work keeps the keyboard.
 
 His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings, and the chat
-lines, come as lines of JSON on the lingo client's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his
+lines, come as lines of JSON on the floor's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his
 pointer glides to each click and ripples, and turns into a text cursor that ticks where he types (`HandWindow.cs`).
 That shows only with Hide where he clicks off, in Settings: then he flies along with it and the chat steps aside.
 Work in the background has him click and type in apps without bringing them to the front or moving your mouse, and
 brings an app forward for one action when it doesn't allow that, saying why. Both are on at first, so he works unseen
-until he must show something or you ask to see, and both are kept by the lingo client (`input.modes`).
+until he must show something or you ask to see, and both are kept by the floor (`input.modes`).
 
 **Screens** are canvases a lingo draws on as it works, like the browser's page, with `screen.open`, `screen.draw`,
 `screen.show` and `screen.close`: Canvas 2D instructions, drawn here by `Drawing.cs`, never pictures sent whole. Each to-do that opened some shows them in a small strip under its row, and above the box when it is
-open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. They come
-from the lingo client as a stream, `/onsay/screens`, kept by `Screens.cs` and shown by `ScreensWindow.cs`.
+open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. They aren't on the
+floor yet: they come back as calls of a lingo the app offers, kept by `Screens.cs` and shown by `ScreensWindow.cs`.
 
 **What an app may do is decided in one place.** This computer's own rules, a file in Onsay's folder that Advanced
 opens, let every app here do anything until someone narrows them. What an app says it uses is shown on its page, never
@@ -92,36 +80,38 @@ goes back through `/.lingo/answer`.
 
 | Page | What it has |
 |------|-------------|
-| Apps | a list of the apps on this computer, none of what is built into the lingo client. Each opens to tabs for what it says it uses; who can use it, with Stop sharing on what was shared (`share`, `unshare`) and Share with someone; and its settings, each with its value now (`set`). A map shows every address on this computer and what can be asked for there |
+| Apps | a list of the apps on this computer, none of what is built into the floor. Each opens to tabs for what it says it uses; who can use it, with Stop sharing on what was shared (`share`, `unshare`) and Share with someone; and its settings, each with its value now (`set`). A map shows every address on this computer and what can be asked for there |
 | Devices | the computers on the account, online or when last seen (`onsay.devices`) |
 | People | everyone an app is shared with, and what of it, with Stop sharing |
-| Activity | the lingo client's `requests.log` in words, requests from anyone but this computer and calls refused an app, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
+| Activity | the floor's `requests.log` in words, requests from anyone but this computer and calls refused an app, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
 | Settings | sections of one setting a row: the account and signing in and out, starting with Windows, Work in the background and Show where he clicks, his look, updates and Uninstall Onsay |
-| Advanced | the same rows, in plain labels: this computer's own rules, every rule in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: everything sent to Onsay (`sent.log`), every request (`requests.log`) as written, and the lingo client's `core.log` |
+| Advanced | the same rows, in plain labels: this computer's own rules, every rule in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: every request (`requests.log`) as written, which is what is sent to Onsay, sealed, and the floor's `floor.log` |
 
-**What it ships.** Every `.lingo` file in `..\lingo-client\core\bin\lingos`, today only `agent`, copied into the lingos
-folder each time the lingo client starts. The first time a shipped lingo appears the app starts it, and once it gives the
-base calls, which `onsay` holds, seeing the screen, using the mouse and keyboard and reading files. It remembers which it
-started (`Started` in `desktop.json`), so one you turn off stays off.
+**What it ships.** Each `.ls` file in `..\lingo-client\lingo-library`, like `agent` and `ai`, offered to the floor with
+its code each time the floor starts, so the floor keeps it and runs it. It remembers which it offered once (`Started` in
+`desktop.json`), so one you turn off stays off.
 
-**How it talks to the lingo client.** Through its control routes, `/.lingo/<verb>` (`start`, `stop`, `asks`, `answer`,
-`settings`, `set`, `manifest`, `policy`, and `call` for the onsay lingo's phrases), or its command line,
-`onsay-core core.json <verb> ...`, when nothing answers the port (`Core.Control`).
+**How it talks to the floor.** As a lingo: each call a request to the floor, signed by the app's own key and carrying a
+badge from you, the floor's owner, both kept in `keys\`, sealed for your Windows user (`src/Core/Core.cs`). The floor
+calls the app back the same way, signed by the floor, for its own lingos, `chat` and `settings`, which it answers on a
+port of its own on this computer (`src/Core/Host.cs`). Each to-do is the `agent` lingo's `agent.ask`, run on the floor
+(`src/Core/ToDos.cs`). Signing in to Onsay isn't on the floor yet, so for now he is signed out.
 
 ## Files
 
-Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `core.json` (the lingo client's home, and a port
-when one is written there) and `core.log` for the lingo client, `core\` for its home (lingos, settings, storage and
-`sent.log`), and `crash.log`, every error nothing caught, with its whole stack. A test sets `ONSAY_DATA` to a folder of its own before he
-starts, so it never touches yours, and runs beside yours, with its own port written in that folder's `core.json`. Uninstalling, from his settings or Windows' Installed apps, first stops everything
-running from Onsay, the lingo client and the browser he uses included, so its folder goes whole, then asks whether this
+Everything he keeps is in `%AppData%\Onsay`: `desktop.json` for the app, `todos.json` for your to-dos, `keys\` for the
+app's keys, `floor.json` (the floor's home, its owner, and a port when one is written there) and `floor.log` for the
+floor, `floor\` for its home (`policy.json`, `offered.json`, each lingo's settings and `requests.log`), and `crash.log`,
+every error nothing caught, with its whole stack. A test sets `ONSAY_DATA` to a folder of its own before he starts, so
+it never touches yours, and runs beside yours, with its own port written in that folder's `floor.json`. Uninstalling, from his settings or Windows' Installed apps, first stops everything
+running from Onsay, the floor and the browser he uses included, so its folder goes whole, then asks whether this
 folder and the browser's (`%LocalAppData%\lingo-browser`) go too, and keeps them unless you say so, since most who
 uninstall mean to install again.
 
 ## Building
 
 ```
-..\lingo-client\core\build.ps1   builds the lingo client and its lingos, in the lingo-client project beside this one
+..\lingo-client\core\build.ps1   builds the floor, in the lingo-client project beside this one
 .\start.ps1                       builds and starts the app. Needs the .NET SDK
 .\release.ps1 0.2.0               a release in Releases\. Needs Inno Setup 6, from jrsoftware.org
 ```
@@ -147,7 +137,7 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 
 | File | Job |
 |------|-----|
-| `Onsay.csproj` | the build, with the lingo client and its lingos copied in from `..\lingo-client` |
+| `Onsay.csproj` | the build, with the floor and the lingos the app offers it copied in from `..\lingo-client` |
 | `app.manifest` | tells Windows the app is per monitor DPI aware |
 | `onsay.ico` | his face as the app, launcher and installer icon |
 | `fonts/` | the website's fonts, Gabarito and IBM Plex, which every window uses, with their license (`OFL.txt`) |
@@ -157,10 +147,12 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 | `launcher.c`, `launcher.rc` | `Onsay.exe` in the install folder, starting the version `version.txt` names, with his icon |
 | `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
-| `src/Core/Core.cs` | runs the lingo client, ships its lingos, lists them, and makes every control call and onsay lingo call |
-| `src/Core/Screens.cs` | the screens lingos draw on, watched as the onsay lingo streams them from `/onsay/screens` |
+| `src/Core/Core.cs` | runs the floor, offers it the lingos, and signs every call the app makes to it |
+| `src/Core/Host.cs` | the app's own lingos, `chat` and `settings`, which the floor calls, and the to-dos at `/onsay` |
+| `src/Core/ToDos.cs` | your to-dos, each run by the `agent` lingo on the floor, with its steps and questions |
+| `src/Core/Screens.cs` | the screens lingos draw on, kept for the to-do list and the Screens window |
 | `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat, signing in and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`), Apps and settings, Apps to Advanced (`SettingsWindow`), his pointer (`HandWindow`), the ring (`RingWindow`), the screens, a strip under each to-do and full screen (`ScreensWindow`), and a screen drawn from its instructions (`Drawing`) |
-| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), updates and removing him (`Updates`), and what .NET Framework 4.8 lacks (`Compat`) |
+| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), what the base calls ask to be drawn or said in the chat (`Overlay`), the app's settings and starting with Windows (`Settings`), updates and removing him (`Updates`), Ed25519 signatures (`Ed25519`), and what .NET Framework 4.8 lacks (`Compat`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 
 ## License

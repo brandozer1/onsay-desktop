@@ -93,7 +93,7 @@ static class Screens
     // 2. A WebSocket to path on the lingo client here, its handshake read through to its 101, or a failure.
     static async Task<Stream> Connect(TcpClient tcp, string path, string? key)
     {
-        var at = new Uri(Core.Url);
+        var at = new Uri(Host.Url);
         await tcp.ConnectAsync(at.Host, at.Port);
         var s = tcp.GetStream();
         var nonce = new byte[16];
@@ -101,7 +101,6 @@ static class Screens
         var head = new StringBuilder();
         head.Append($"GET {path} HTTP/1.1\r\nHost: {at.Host}:{at.Port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n");
         head.Append($"Sec-WebSocket-Key: {Convert.ToBase64String(nonce)}\r\nSec-WebSocket-Version: 13\r\nAuthorization: Bearer {key}\r\n");
-        if (Core.Badge() is string badge) head.Append($"Onsay-Badge: {badge}\r\n");
         head.Append("\r\n");
         var bytes = Encoding.ASCII.GetBytes(head.ToString());
         await s.WriteAsync(bytes, 0, bytes.Length);
@@ -165,7 +164,7 @@ static class Screens
         try
         {
             using var http = new HttpClient();
-            using var req = Core.Request(HttpMethod.Delete, $"/onsay/screens/{id}");
+            using var req = new HttpRequestMessage(HttpMethod.Delete, $"{Host.Url}/onsay/screens/{id}");
             req.Headers.Authorization = new("Bearer", key);
             using var _ = await http.SendAsync(req);
         }
