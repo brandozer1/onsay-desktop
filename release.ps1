@@ -1,56 +1,63 @@
-# release.ps1 - makes a release of Onsay for Windows 7 and later, 32 and 64-bit, in Releases\: Onsay-Setup.exe, the
+# release.ps1 - makes a release of Onsay for Windows 7 and later, 32 and 64-bit, in Releases/: Onsay-Setup.exe, the
 # installer people download (setup.iss), and what installed copies update from (src/System/Updates.cs): release.json,
 # naming the version and each file of it with its sha256, and each file under the name release.json gives it. Onsay
-# signs release.json as it hands it out (onsay server routes/updates.js). Run it with: .\release.ps1 0.2.0
-# A release people get is made on GitHub by .github/workflows/release.yml, which runs this and puts Releases\ on the
-# release page: push a tag like v0.2.0, or run the action from the Actions tab. Installed copies update from there.
+# signs release.json as it hands it out (onsay server routes/updates.js). Run it with: ./release.ps1 0.2.0
+# It runs on Windows or Linux, where release.sh runs it on a server and puts Releases/ in Onsay's storage.
 #
-# Needs the .NET SDK, zig for the lingo client and the launcher (see ..\lingo-client\core\build.ps1), and Inno Setup 6,
-# from jrsoftware.org, which the release action installs first.
+# Needs the .NET SDK, zig for the lingo client and the launcher (see ../lingo-client/core/build.ps1), and Inno Setup 6,
+# from jrsoftware.org: on Linux under Wine, at $env:ISCC, with ImageMagick for the splash.
 param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
+$here = $PSScriptRoot -replace '\\', '/'
+$windows = $env:OS -eq "Windows_NT"
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"   # .NET collects nothing from a build
 
-# Why it stopped, as a line GitHub shows on the run's page too (::error::), then out.
-function stop($why) { Write-Host "::error::$why"; exit 1 }
-trap { stop "release.ps1 line $($_.InvocationInfo.ScriptLineNumber): $_" }
+function stop($why) { Write-Host "release.ps1 stopped: $why"; exit 1 }
+trap { stop "line $($_.InvocationInfo.ScriptLineNumber): $_" }
 
 $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
 if (-not $dotnet) { $dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }
-$iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
-if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-if (-not (Test-Path $iscc)) { stop "Inno Setup 6 isn't installed. Get it from jrsoftware.org" }
+$iscc = $env:ISCC
+if (-not $iscc) { $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source }
+if (-not $iscc -and $windows) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+if (-not $iscc -or -not (Test-Path $iscc)) { stop "Inno Setup 6 isn't installed. Get it from jrsoftware.org" }
 $zig = (Get-Command zig -ErrorAction SilentlyContinue).Source
-if (-not $zig) { $zig = Get-ChildItem "$env:LOCALAPPDATA\zig" -Recurse -Filter zig.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
+if (-not $zig -and $windows) { $zig = Get-ChildItem "$env:LOCALAPPDATA\zig" -Recurse -Filter zig.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
 if (-not $zig) { stop "zig wasn't found. Get it from ziglang.org/download" }
 
 # The lingo client and its floors, then the app, then the launcher, 32-bit so it runs on every Windows.
-$client = "$PSScriptRoot\..\lingo-client\core"
-& "$client\build.ps1"
+$client = "$here/../lingo-client/core"
+& "$client/build.ps1"
 if ($LASTEXITCODE -ne 0) { stop "The lingo client didn't build" }
 if (Test-Path publish) { Remove-Item publish -Recurse -Force }
 if (Test-Path Releases) { Remove-Item Releases -Recurse -Force }
-& $dotnet publish -c Release -p:Version=$Version -o publish
+& $dotnet publish -c Release -p:Version=$Version -p:EnableWindowsTargeting=true -o publish
 if ($LASTEXITCODE -ne 0) { stop "The app didn't build" }
-New-Item -ItemType Directory -Force obj\launcher, Releases | Out-Null
-& $zig cc -target x86-windows-gnu -Os -s "-Wl,--subsystem,windows" launcher.c launcher.rc -o obj\launcher\Onsay.exe
+New-Item -ItemType Directory -Force obj/launcher, Releases | Out-Null
+& $zig cc -target x86-windows-gnu -Os -s "-Wl,--subsystem,windows" launcher.c launcher.rc -o obj/launcher/Onsay.exe
 if ($LASTEXITCODE -ne 0) { stop "The launcher didn't build" }
-# The splash as a 24-bit BMP, the picture every Inno Setup shows, drawn on its own background colour.
-Add-Type -AssemblyName System.Drawing
-$png = [System.Drawing.Image]::FromFile("$PSScriptRoot\splash.png")
-$bmp = New-Object System.Drawing.Bitmap $png.Width, $png.Height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
-$paint = [System.Drawing.Graphics]::FromImage($bmp)
-$paint.Clear(([System.Drawing.Bitmap]$png).GetPixel(0, 0))
-$paint.DrawImage($png, 0, 0, $png.Width, $png.Height)
-$bmp.Save("$PSScriptRoot\obj\splash.bmp", [System.Drawing.Imaging.ImageFormat]::Bmp)
-$paint.Dispose(); $bmp.Dispose(); $png.Dispose()
+
+# The splash as a 24-bit BMP, the picture every Inno Setup shows: by Windows itself, else by ImageMagick.
+if ($windows) {
+    Add-Type -AssemblyName System.Drawing
+    $png = [System.Drawing.Image]::FromFile("$here/splash.png")
+    $bmp = New-Object System.Drawing.Bitmap $png.Width, $png.Height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $paint = [System.Drawing.Graphics]::FromImage($bmp)
+    $paint.DrawImage($png, 0, 0, $png.Width, $png.Height)
+    $bmp.Save("$here/obj/splash.bmp", [System.Drawing.Imaging.ImageFormat]::Bmp)
+    $paint.Dispose(); $bmp.Dispose(); $png.Dispose()
+} else {
+    convert splash.png -type TrueColor BMP3:obj/splash.bmp
+    if ($LASTEXITCODE -ne 0) { stop "The splash couldn't be made a BMP" }
+}
 
 # What installed copies update from: every file of the app, by its place in app-<version>, and the floor for each kind of
-# computer, each in Releases\ under a name with no folders, which is how GitHub keeps a release's files, starting
-# update- so the installer is the one file a person picks there.
+# computer, each in Releases/ under a name with no folders, starting update- so the installer is the one file a person
+# picks there.
 $files = @()
 function ship($from, $path, $name, $arch) {
-    Copy-Item $from "Releases\$name"
+    Copy-Item $from "Releases/$name"
     $file = [ordered]@{ path = $path; name = $name; sha256 = (Get-FileHash $from -Algorithm SHA256).Hash.ToLower(); size = (Get-Item $from).Length }
     if ($arch) { $file.arch = $arch }
     $script:files += $file
@@ -60,11 +67,16 @@ foreach ($f in Get-ChildItem publish -Recurse -File | Where-Object { $_.Name -ne
     $path = $f.FullName.Substring($published.Length + 1).Replace('\', '/')
     ship $f.FullName $path ("update-" + $path.Replace("/", ".")) $null
 }
-ship "$client\bin\windows\floor.exe" "floor.exe" "update-floor-x64.exe" "x64"
-ship "$client\bin\x86\windows\floor.exe" "floor.exe" "update-floor-x86.exe" "x86"
+ship "$client/bin/windows/floor.exe" "floor.exe" "update-floor-x64.exe" "x64"
+ship "$client/bin/x86/windows/floor.exe" "floor.exe" "update-floor-x86.exe" "x86"
 $release = [ordered]@{ version = $Version; files = $files } | ConvertTo-Json -Depth 4
-[IO.File]::WriteAllText("$PSScriptRoot\Releases\release.json", $release, (New-Object Text.UTF8Encoding $false))
+[IO.File]::WriteAllText("$here/Releases/release.json", $release, (New-Object Text.UTF8Encoding $false))
 
-& $iscc "/DVersion=$Version" "/DApp=$published" "/DLauncher=$PSScriptRoot\obj\launcher\Onsay.exe" "/DFloor64=$client\bin\windows\floor.exe" "/DFloor32=$client\bin\x86\windows\floor.exe" "/DSplash=$PSScriptRoot\obj\splash.bmp" setup.iss
+# The installer. Under Wine, each path as Windows sees it, the Linux root being drive Z:.
+function seen($path) { if ($windows) { $path } else { "Z:" + (($path -replace '\\', '/') -replace '/', '\') } }
+$defines = "/DVersion=$Version", "/DApp=$(seen $published)", "/DLauncher=$(seen "$here/obj/launcher/Onsay.exe")",
+    "/DFloor64=$(seen "$client/bin/windows/floor.exe")", "/DFloor32=$(seen "$client/bin/x86/windows/floor.exe")",
+    "/DSplash=$(seen "$here/obj/splash.bmp")"
+if ($windows) { & $iscc @defines setup.iss } else { & xvfb-run -a wine $iscc @defines setup.iss }
 if ($LASTEXITCODE -ne 0) { stop "The installer wasn't made" }
-Write-Host "Made Onsay $Version in Releases\."
+Write-Host "Made Onsay $Version in Releases/."

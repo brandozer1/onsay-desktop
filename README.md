@@ -121,18 +121,19 @@ uninstall mean to install again.
 
 ## Releasing
 
-Push a tag like `v0.2.0`, or run the release workflow from the Actions tab with a version. GitHub builds the lingo
-client and the app, makes the installer with Inno Setup (`release.ps1`, `setup.iss`), and puts them on this repo's
-release page: `Onsay-Setup.exe`, one installer for 32 and 64-bit Windows 7 and later, and `release.json` with the
-`update-` files installed copies update from. It needs no secrets: Onsay's server signs `release.json` as it hands it
-out.
+Push a tag like `v0.2.0`, then on the server run `./release.sh 0.2.0`, with `release.sh` and an `.env` holding the
+storage's keys beside it. It builds the lingo client and the app in a throwaway container, makes the installer with
+Inno Setup under Wine (`release.ps1`, `setup.iss`), and puts them in Onsay's storage, the `onsay` bucket at
+storage.brandongamez.com: `Onsay-Setup.exe`, one installer for 32 and 64-bit Windows 7 and later, always at
+`windows/Onsay-Setup.exe`, and `release.json` with the `update-` files installed copies update from. Onsay's server
+signs `release.json` as it hands it out.
 
 The installer has nothing to click: it shows his splash, `splash.png`, with a bar under it while it puts him in
 `%LocalAppData%\Onsay` for that person alone, with no admin rights, and opens him: the
 launcher `Onsay.exe` (`launcher.c`), `version.txt`, and the version itself in `app-<version>`. On Windows 7 it first
 checks for .NET Framework 4.8 and the update KB2999226, and says where to get either. Installed copies ask Onsay's server
-for a newer release half a minute after starting and every hour (`api.onsay.dev/updates`, which hands out this repo's
-newest release, onsay's `server/routes/updates.js`), through the update lingo built into the floor beside the app, which
+for a newer release half a minute after starting and every hour (`api.onsay.dev/updates`, which hands out the newest
+release in the storage, onsay's `server/routes/updates.js`), through the update lingo built into the floor beside the app, which
 puts it together beside the version running, downloading only the files that changed, each checked against what Onsay
 signed, and put it in by themselves the next time he isn't busy, his card put away and no to-do working, or as he next starts
 (`src/System/Updates.cs`). Nobody presses anything.
@@ -147,10 +148,10 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 | `splash.png` | what the installer shows while it puts him in |
 | `fonts/` | the website's fonts, Gabarito and IBM Plex, which every window uses, with their license (`OFL.txt`) |
 | `start.ps1` | builds and starts the app, closing a running one first |
-| `release.ps1` | a release: the installer and the files updates come from, in `Releases\` |
+| `release.ps1` | a release: the installer and the files updates come from, in `Releases\`, on Windows or Linux |
+| `release.sh` | a release made on a server in a throwaway container and put in Onsay's storage |
 | `setup.iss` | the installer, for Inno Setup: one for 32 and 64-bit Windows 7 and later |
 | `launcher.c`, `launcher.rc` | `Onsay.exe` in the install folder, starting the version `version.txt` names, with his icon |
-| `.github/workflows/release.yml` | the same on GitHub, for a pushed version tag |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the floor, offers it the lingos, and signs every call the app makes to it |
 | `src/Core/Host.cs` | the app's own lingos, `chat` and `settings`, which the floor calls, and the to-dos at `/onsay` |
