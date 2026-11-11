@@ -48,8 +48,8 @@ static class Core
 
     ////////// 1. RUNNING IT //////////
 
-    /* 1. floor.json: its home, its port, kept when one is written there, its owner, the person's key, where its lingo(...)
-          is asked, Onsay, and room for an agent's to-do, 10 minutes. From any thread: the stop key calls it from its own. */
+    /* 1. floor.json: its home, its port, kept when one is written there, its owner, the person's key, and room for an
+          agent's to-do, 10 minutes. From any thread: the stop key calls it from its own. */
     public static void Start(Settings s)
     {
         Stop();
@@ -67,7 +67,6 @@ static class Core
             ["owner"] = KeyText(Seed("owner")),
             ["ms"] = 600_000,
             ["steps"] = 1_000_000_000,
-            ["ask"] = $"{Account.Api}/search/ask",
         };
         Directory.CreateDirectory(Home);
         File.WriteAllText(Config, config.ToJsonString(Plain));
