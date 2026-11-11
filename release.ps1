@@ -6,7 +6,7 @@
 # release page: push a tag like v0.2.0, or run the action from the Actions tab. Installed copies update from there.
 #
 # Needs the .NET SDK, zig for the lingo client and the launcher (see ..\lingo-client\core\build.ps1), and Inno Setup 6,
-# from jrsoftware.org, which GitHub's Windows machines have already.
+# from jrsoftware.org, which the release action installs first.
 param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
