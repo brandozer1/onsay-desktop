@@ -7,7 +7,8 @@
 // 1. Api                       Onsay's address, ONSAY_API for a test
 // 2. Onsay(phrase, values)     what the app's windows ask: status, sign_in, sign_out, devices, ai, share and unshare,
 //                              its answer, or why not in words
-// 3. SignIn(), Finish(...)     a code and the page to open, then, asked every 2 seconds, the token and the floor's key
+// 3. SignIn(), Finish(...)     a code and the page to open, then, asked every second, the token and the floor's key,
+//                              and SignedIn, told the moment it is done, for him to jump in (BuddyWindow.Arrive)
 // 4. Get(path)                 one of Onsay's own routes with this computer's token
 using System.IO;
 using System.Net.Http;
@@ -26,6 +27,7 @@ static class Account
     static readonly string WhoFile = Path.Combine(Settings.Folder, "account.json");
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
     static bool signingIn;
+    public static event Action? SignedIn;   // 3. told on a background thread
     static string? failed;
 
     ////////// 2. WHAT THE WINDOWS ASK //////////
@@ -144,7 +146,8 @@ static class Account
         return (new JsonObject { ["code"] = got?["code"]?.DeepClone(), ["url"] = got?["url"]?.DeepClone() }, null);
     }
 
-    // 3. For up to 10 minutes, while the code is good. The floor sends its key with the token, through lingo.use.
+    // 3. For up to 10 minutes, while the code is good. The floor sends its key with the token, through lingo.use. Asked
+    //    every second, so he arrives here as he dives into the screen on the page.
     static async Task Finish(string poll)
     {
         try
@@ -153,7 +156,7 @@ static class Account
             string? token = null;
             while (token is null && DateTime.Now < until)
             {
-                await Task.Delay(2000);
+                await Task.Delay(1000);
                 using var res = await Http.PostAsync($"{Api}/connect/poll", new StringContent(new JsonObject { ["poll"] = poll }.ToJsonString(), Encoding.UTF8, "application/json"));
                 var got = JsonNode.Parse(await res.Content.ReadAsStringAsync());
                 if (!res.IsSuccessStatusCode) throw new Exception($"{got?["error"] ?? "Signing in didn't finish"}");
@@ -168,6 +171,8 @@ static class Account
             who["handle"] = ready["handle"]?.DeepClone();
             who["device"] = ready["device"]?.DeepClone();
             File.WriteAllText(WhoFile, who.ToJsonString());
+            signingIn = false;
+            SignedIn?.Invoke();
         }
         catch (Exception e) { failed = e.Message.TrimEnd('.'); }
         signingIn = false;

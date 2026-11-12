@@ -204,73 +204,21 @@ sealed class SetupWindow : Window
             Note("Everything sent is kept in a log you can read any time, under Advanced."));
     }
 
-    /* 2. His AI: Onsay's own, free for 30 days from his first message with no card, is picked first. Or one they already
-          have, with its key and where to get one. Next keeps the pick in the ai lingo's settings, and a service picked needs
-          its key before going on. Onsay's own leaves the service unset, so a key added later is used. */
+    /* 2. His AI: Onsay's own, free for 30 days from his first message with no card, and what the one subscription after it
+          gives. Anyone who already has an AI, a key or an agent of their own, sets it up in his settings instead. */
     UIElement Ai()
     {
-        Line("Which AI should I think with?");
-        var picked = "onsay";
-        var key = new PasswordBox { BorderThickness = new Thickness(0), FontSize = 13 };
-        var keyLabel = Label("");
-        var getKey = Button("", Kind.Quiet, () => Native.Open(Services.First(s => s.Value == picked).Keys));
-        var keyArea = new StackPanel { Visibility = Visibility.Collapsed, Children = { keyLabel, SettingsWindow.Boxed(key), getKey } };
-        getKey.HorizontalAlignment = HorizontalAlignment.Left;
-        getKey.Margin = new Thickness(0, 8, 0, 0);
-        var free = Note("Free for your first 30 days, no card needed. After that you can subscribe, or add a key of your own any time in his settings.");
-        var problem = Note("");
-        problem.Foreground = Bad;
-        problem.Margin = new Thickness(0, 10, 0, 0);
-
-        void Show()
-        {
-            var s = Services.First(x => x.Value == picked);
-            free.Visibility = picked == "onsay" ? Visibility.Visible : Visibility.Collapsed;
-            keyArea.Visibility = picked == "onsay" ? Visibility.Collapsed : Visibility.Visible;
-            keyLabel.Text = $"Your {s.Name} API key";
-            ((TextBlock)getKey.Child).Text = $"Get a {s.Name} key";
-            problem.Text = "";
-        }
-
-        void Next()
-        {
-            var s = Services.First(x => x.Value == picked);
-            var typed = key.Password.Trim();
-            if (picked != "onsay" && typed.Length == 0)
-            {
-                problem.Text = $"Paste your {s.Name} key to go on, or pick Onsay AI.";
-                return;
-            }
-            var why = Core.Set("ai", "service", picked == "onsay" ? null : picked);
-            if (why is null && picked != "onsay") why = Core.Set("ai", s.Setting, typed);
-            if (why is not null)
-            {
-                problem.Text = why;
-                return;
-            }
-            Go(5);
-        }
-
-        Actions(Button("Back", Kind.Quiet, () => Go(3)), Button("Next", Kind.Primary, Next));
-        var chips = Chips(Services.Select(s => (s.Value, s.Name)).ToArray(), () => picked, v =>
-        {
-            picked = v;
-            Show();
-        });
-        return Step("His AI", "He thinks with an AI. Start free with Onsay's, or use one you already have.",
-            new StackPanel { Children = { chips, free, keyArea, problem } });
+        Line("I think with Onsay AI.");
+        var mine = Button("Bring your own key or agent", Kind.Quiet, () => SettingsWindow.Open(settings, chat, "Apps"));
+        mine.HorizontalAlignment = HorizontalAlignment.Left;
+        mine.Margin = new Thickness(0, 12, 0, 0);
+        Actions(Button("Back", Kind.Quiet, () => Go(3)), Button("Next", Kind.Primary, () => Go(5)));
+        return Step("His AI", "Free for your first 30 days, with no card. After that, one subscription keeps his AI and puts your computers on the web.",
+            new StackPanel { Children = {
+                Note("Host a website in a snap, code just by asking, get work done from anywhere, and put him on all your devices."),
+                mine,
+            } });
     }
-
-    // The AIs he can think with from setting up: Onsay's, then the popular ones, each with the ai lingo's setting its key
-    // goes in and where a key is made. More are in ai's settings, under Apps.
-    static readonly (string Value, string Name, string Setting, string Keys)[] Services =
-    {
-        ("onsay", "Onsay AI, 30 days free", "", ""),
-        ("chatgpt", "ChatGPT", "openai_key", "https://platform.openai.com/api-keys"),
-        ("claude", "Claude", "claude_key", "https://console.anthropic.com/settings/keys"),
-        ("gemini", "Gemini", "gemini_key", "https://aistudio.google.com/apikey"),
-        ("grok", "Grok", "grok_key", "https://console.x.ai"),
-    };
 
     // 2. Signed in, here or before, it is the last word: all set.
     UIElement SignIn()

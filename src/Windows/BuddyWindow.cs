@@ -11,12 +11,16 @@
 //                                    the notification area while closed: bring him back, quit
 // 9. Follow(), Fly                   while his own pointer shows, he flies beside it, then goes home, and the chat comes back
 //                                    if it was open
+// 10. Arrive()                       the moment sign in is done, he pops up out of the taskbar with a burst, as he dives
+//                                    into the screen on the web page (website/src/pages/Connect.jsx)
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Onsay.Character;
 using static Onsay.Desktop.ChatWindow;
@@ -40,6 +44,8 @@ sealed class BuddyWindow : Window
     ////////// STATE //////////
 
     readonly OnsayView him = new() { Width = Body, Height = Body };
+    readonly Border lift = new();                           // holds him, so he can rise without his own breathing transform
+    readonly Canvas burst = new() { IsHitTestVisible = false };   // the dots and ring as he arrives
     readonly Settings settings = Settings.Load();
     readonly ChatWindow chat;
     readonly Stopwatch clock = Stopwatch.StartNew();
@@ -81,7 +87,9 @@ sealed class BuddyWindow : Window
         Bare(this);
         ShowActivated = false;
         Width = Height = Box;
-        Content = him;
+        lift.Child = him;
+        Content = new Grid { Children = { burst, lift } };
+        Account.SignedIn += () => Dispatcher.BeginInvoke(Arrive);
         chat = new ChatWindow(settings, Toggle, this);
         Overlay.Chat = chat;
 
@@ -537,5 +545,67 @@ sealed class BuddyWindow : Window
         fly = (fly.x + (tx - fly.x) * ease, fly.y + (ty - fly.y) * ease);
         Put(new POINT((int)Math.Round(fly.x), (int)Math.Round(fly.y)));
         him.Carry(new Vector(fly.x - was.x, fly.y - was.y) / Math.Max(dt, 0.004) / Scale);
+    }
+
+    ////////// 10. ARRIVING //////////
+
+    // 10. A beat under the bar, then up past his place and down with a bounce, and a burst where he came through.
+    void Arrive()
+    {
+        if (away || aside || hwnd == IntPtr.Zero) return;
+        var rise = new TranslateTransform(0, Box);
+        lift.RenderTransform = rise;
+        var up = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(950) };
+        up.KeyFrames.Add(new DiscreteDoubleKeyFrame(Box, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        up.KeyFrames.Add(new DiscreteDoubleKeyFrame(Box, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(250))));
+        up.KeyFrames.Add(new EasingDoubleKeyFrame(-16, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(520)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        up.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(950)), new BounceEase { Bounces = 2, Bounciness = 3, EasingMode = EasingMode.EaseOut }));
+        up.Completed += (_, _) =>
+        {
+            lift.RenderTransform = Transform.Identity;
+            him.React("celebrate");
+        };
+        rise.BeginAnimation(TranslateTransform.YProperty, up);
+        var wait = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(270) };
+        wait.Tick += (_, _) =>
+        {
+            wait.Stop();
+            Burst();
+        };
+        wait.Start();
+    }
+
+    // 10. Dots flying out from where he came up, and a ring opening there, all gone in half a second.
+    void Burst()
+    {
+        double x = Box / 2;
+        double y = Box / 2 + Body / 2 - 6;
+        var fade = TimeSpan.FromMilliseconds(520);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var ring = new Ellipse { Width = 12, Height = 12, Stroke = Accent, StrokeThickness = 2, RenderTransformOrigin = new Point(0.5, 0.5) };
+        var grow = new ScaleTransform(1, 1);
+        ring.RenderTransform = grow;
+        Canvas.SetLeft(ring, x - 6);
+        Canvas.SetTop(ring, y - 6);
+        burst.Children.Add(ring);
+        grow.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 7, fade) { EasingFunction = ease });
+        grow.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 2.4, fade) { EasingFunction = ease });
+        ring.BeginAnimation(OpacityProperty, new DoubleAnimation(0.9, 0, fade));
+        for (int i = 0; i < 10; i++)
+        {
+            double angle = Math.PI + Math.PI * i / 9;   // a fan upward from the bar
+            var dot = new Ellipse { Width = 6, Height = 6, Fill = i % 2 == 0 ? Accent : Brushes.White };
+            burst.Children.Add(dot);
+            dot.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation(x - 3, x - 3 + Math.Cos(angle) * 40, fade) { EasingFunction = ease });
+            dot.BeginAnimation(Canvas.TopProperty, new DoubleAnimation(y - 3, y - 3 + Math.Sin(angle) * 30, fade) { EasingFunction = ease });
+            dot.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, fade));
+        }
+        var clear = new DispatcherTimer { Interval = fade + TimeSpan.FromMilliseconds(60) };
+        clear.Tick += (_, _) =>
+        {
+            clear.Stop();
+            burst.Children.Clear();
+        };
+        clear.Start();
     }
 }

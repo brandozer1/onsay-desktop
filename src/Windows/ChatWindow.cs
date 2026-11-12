@@ -1269,12 +1269,12 @@ sealed class ChatWindow : Window
         offeredSubscription = true;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         var subscribe = Button("Subscribe", Kind.Primary, () => Native.Open(SubscribePage));
-        var key = Button("Use my own key", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Apps"));
+        var key = Button("Bring your own key or agent", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Apps"));
         key.Margin = new Thickness(10, 0, 0, 0);
         buttons.Children.Add(subscribe);
         buttons.Children.Add(key);
         var title = new TextBlock { Text = "Your free month of Onsay AI is over", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
-        var card = new StackPanel { Children = { title, Paragraph("Subscribe to keep using it, or think with an AI you already have, with its key."), buttons } };
+        var card = new StackPanel { Children = { title, Paragraph("Subscribe to keep his AI and your computers on the web, or bring your own key or agent."), buttons } };
         (session is null ? asksPanel : lines).Children.Add(new Border
         {
             Child = card,
