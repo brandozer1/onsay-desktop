@@ -124,6 +124,12 @@ static class ToDos
             log.Add(new JsonObject { ["role"] = "user", ["content"] = prompt });
         }
         var (got, why) = Core.Call("/agent/ask", new JsonArray(prompt, log), session);
+        // The person never sees an error: what went wrong is kept in floor.log, and they get a line they can act on.
+        if (why is not null)
+        {
+            try { File.AppendAllText(Core.Log, $"{DateTime.Now:s} agent: {why}\n"); } catch (Exception) { }
+            why = "Something went wrong on my side, so I stopped here. Send it again and I'll pick up where I left off.";
+        }
         lock (gate)
         {
             t.Status = "done";
