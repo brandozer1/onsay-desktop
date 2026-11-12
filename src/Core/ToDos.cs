@@ -123,24 +123,36 @@ static class ToDos
             log = (JsonArray)t.Log.DeepClone();
             log.Add(new JsonObject { ["role"] = "user", ["content"] = prompt });
         }
-        var (got, why) = Core.Call("/agent/ask", new JsonArray(prompt, log), session);
+        // What they typed goes to the floor's compiler; words that aren't Lingo go to the lingo search with the conversation,
+        // which finds what does it, like the agent, and tries the next best when one fails. Only its newest messages that
+        // fit go, from one of the person's, so a long to-do still reaches Onsay.
+        var newest = new JsonArray();
+        int room = 150_000;
+        for (int i = log.Count - 1; i >= 0 && (room -= log[i]!.ToJsonString().Length) > 0; i--) newest.Insert(0, log[i]!.DeepClone());
+        while (newest.Count > 1 && $"{newest[0]?["role"]}" != "user") newest.RemoveAt(0);
+        var (got, why) = Core.Run(prompt, new JsonObject { ["prompt"] = prompt, ["messages"] = newest }, session);
         // The person never sees an error: what went wrong is kept in floor.log, and they get a line they can act on.
         if (why is not null)
         {
-            try { File.AppendAllText(Core.Log, $"{DateTime.Now:s} agent: {why}\n"); } catch (Exception) { }
+            try { File.AppendAllText(Core.Log, $"{DateTime.Now:s} to-do: {why}\n"); } catch (Exception) { }
             why = "Something went wrong on my side, so I stopped here. Send it again and I'll pick up where I left off.";
         }
         lock (gate)
         {
             t.Status = "done";
             var turn = new JsonObject { ["prompt"] = prompt };
-            if (got?["questions"] is JsonArray questions) turn["questions"] = questions.DeepClone();
-            else turn["text"] = why ?? $"{got?["text"]}";
+            // An agent answers {text, messages} or {questions}; anything else the search found answers with its value.
+            var answered = got as JsonObject;
+            if (answered?["questions"] is JsonArray questions) turn["questions"] = questions.DeepClone();
+            else if (why is not null) turn["text"] = why;
+            else if (answered?["text"] is JsonNode text) turn["text"] = $"{text}";
+            else turn["text"] = got is JsonValue v && v.TryGetValue(out string? words) ? words : got?.ToJsonString() ?? "Done.";
             t.Turns.Add(turn);
             if (why is null)
             {
                 t.Log = log;
-                foreach (var m in got?["messages"] as JsonArray ?? new()) t.Log.Add(m?.DeepClone());
+                if (answered?["messages"] is JsonArray added) foreach (var m in added) t.Log.Add(m?.DeepClone());
+                else if (turn["text"] is JsonNode said) t.Log.Add(new JsonObject { ["role"] = "assistant", ["content"] = $"{said}" });
             }
             Save();
             if (why is not null) return (null, why);

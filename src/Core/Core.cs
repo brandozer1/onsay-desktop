@@ -9,7 +9,8 @@
 //    Stop(), Running          ends it, and keeps it ended, and whether it runs
 // 2. Call(path, values, run)  one function on the floor as the app, like /agent/ask with its values in order, run the
 //                             to-do it is for, passed on with each call it makes: its value, or why not in words
-//    Run(script)              a script on the floor as the app, the same way
+//    Run(script, values, run) what the person typed, given to the floor's compiler as a script, with values by name, like
+//                             the conversation, for the lingo search when it isn't Lingo, which finds what does it
 // 3. SettingsFor(lingo)       each setting a lingo's code reads, with its value, kept in the floor's home
 //    Setting(lingo, key), Set(lingo, key, value)   one of them, and keeping one
 //    Policy(), Keep(policy)   the grants in policy.json, which the floor reads at every call
@@ -161,7 +162,8 @@ static class Core
         Send(path, (values ?? new JsonArray()).ToJsonString(Plain), run);
 
     // 2.
-    public static (JsonNode? answer, string? why) Run(string script) => Send("/", script, null);
+    public static (JsonNode? answer, string? why) Run(string script, JsonObject? values = null, string? run = null) =>
+        Send("/", values is null ? script : new JsonObject { ["script"] = script, ["values"] = values }.ToJsonString(Plain), run);
 
     static (JsonNode? answer, string? why) Send(string path, string body, string? run)
     {
