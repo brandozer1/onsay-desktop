@@ -33,7 +33,8 @@ static class Host
         ("chat", "\"The person's chat in the Onsay app on this computer, where they see what is being done and answer questions.\"\n" +
             "fn ask(questions: list|text \"each a text, answered by typing, or \\{question, choices}, answered by picking one\", seconds: number \"how long to wait\" = 120) -> list \"Asks the person questions in Onsay's chat on this computer and waits for their answers, in order, so the work goes on with them. Nothing when nobody answered in time.\" {}\n" +
             "fn say(text: text \"what to tell them\") \"Tells the person something in Onsay's chat while the work goes on.\" {}\n" +
-            "fn step(text: text \"what is being done now\") \"Shows what is being done now as a step under the person's to-do. Say one as each part of a long job starts.\" {}\n"),
+            "fn step(text: text \"what is being done now\") \"Shows what is being done now as a step under the person's to-do. Say one as each part of a long job starts.\" {}\n" +
+            "fn showing() -> bool \"Whether the person is watching the work of the to-do this is for, Show your work in the app: true, work in front of them, windows coming forward, the real mouse and his hand following each action, a browser's window shown; false, work unseen. Ask again as the work goes on, since they may change it.\" {}\n"),
         ("settings", "\"Each lingo's settings on this computer, kept by the Onsay app.\"\n" +
             "fn get(key: text \"the setting's name\", reference: text \"the lingo whose setting it is\") \"A lingo's setting as the person set it, or nothing.\" {}\n"),
         ("screen", "\"Screens in the Onsay app on this computer: canvases a lingo draws on, which the person watches beside the to-do the work is for. Never video.\"\n" +
@@ -85,6 +86,11 @@ static class Host
             if (method == "GET" && rest is ["sessions"]) return (200, ToDos.List());
             if (method == "GET" && rest is ["sessions", var id]) return (200, ToDos.Turns(id));
             if (method == "GET" && rest is ["sessions", var live, "live"]) return (200, ToDos.Live(live));
+            if (method == "POST" && rest is ["sessions", var watched, "show"])
+            {
+                ToDos.Show(watched, (bool?)given?["show"] == true);
+                return (200, new JsonObject());
+            }
             if (method == "POST" && rest is ["sessions", var asked, "answers"])
             {
                 ToDos.Answer(null, asked, given?["answers"] as JsonArray ?? new());
@@ -100,6 +106,8 @@ static class Host
         {
             case "/chat/ask":
                 return (200, await ToDos.Ask(run, values.ElementAtOrDefault(0) ?? new JsonArray(), (double?)values.ElementAtOrDefault(1) ?? 120));
+            case "/chat/showing":
+                return (200, ToDos.Showing(run));
             case "/chat/say":
             case "/chat/step":
                 ToDos.Step(run, path.Substring(6), $"{values.ElementAtOrDefault(0)}");

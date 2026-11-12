@@ -84,6 +84,7 @@ sealed class ChatWindow : Window
     const string SitIcon = "";
     const string OpenIcon = "";
     const string FoldedIcon = "";
+    const string ShowIcon = "";   // an eye
 
     ////////// STATE //////////
 
@@ -120,6 +121,9 @@ sealed class ChatWindow : Window
     readonly TextBlock fixingText = new() { FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly Border send;
     readonly TextBlock sendGlyph = new() { Text = SendIcon, FontFamily = Icons, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    readonly Border showWork;                    // Show your work: on the list for the next to-do, in one for that one
+    readonly TextBlock showWorkGlyph = new() { Text = ShowIcon, FontFamily = Icons, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock showWorkText = new() { Text = "Show your work", FontSize = 12, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     readonly TextBox box = new()
     {
         BorderThickness = new Thickness(0),
@@ -344,6 +348,16 @@ sealed class ChatWindow : Window
             e.Handled = true;
             Send();
         };
+        showWork = new Border
+        {
+            CornerRadius = new CornerRadius(7), Padding = new Thickness(8, 0, 10, 0), Height = 30, Cursor = Cursors.Hand,
+            HorizontalAlignment = HorizontalAlignment.Left, Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { showWorkGlyph, showWorkText } },
+        };
+        showWork.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            ShowWork(!Watched());
+        };
         var field = new Border
         {
             BorderBrush = Edge_, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10),
@@ -353,7 +367,7 @@ sealed class ChatWindow : Window
                 Children =
                 {
                     new Grid { Children = { hint, box }, Margin = new Thickness(0, 0, 4, 6) },
-                    new DockPanel { Cursor = Cursors.Arrow, Children = { Right(send) } },
+                    new DockPanel { Cursor = Cursors.Arrow, Children = { Right(send), showWork } },
                 },
             },
         };
@@ -466,6 +480,41 @@ sealed class ChatWindow : Window
         send.Background = any ? Accent : Page_;
         sendGlyph.Foreground = any ? Brushes.White : Ink4;
         send.IsHitTestVisible = any;
+        bool watched = Watched();
+        showWork.Background = watched ? BlueSoft : Brushes.Transparent;
+        showWorkGlyph.Foreground = watched ? Accent : Ink3;
+        showWorkText.Foreground = watched ? Accent : Ink3;
+        if (session is null)
+            showWork.ToolTip = watched ? "Your next to-do shows its work: he works in front of you, his hand following. Click to have him work unseen" : "Your next to-do is done unseen. Click to watch him work";
+        else
+            showWork.ToolTip = watched ? "You're watching this to-do's work. Click to have him finish it unseen" : "This to-do is done unseen. Click to watch him work on it";
+    }
+
+    // Show your work, as the box shows it now: for the to-do open, else for the next one made from the list.
+    bool Watched()
+    {
+        if (session is null) return settings.ShowWork;
+        return (bool?)items.FirstOrDefault(i => $"{i?["session"]}" == session)?["show"] == true;
+    }
+
+    // On the list it is kept for each new to-do. In one, that to-do changes from its next step.
+    async void ShowWork(bool on)
+    {
+        if (session is null)
+        {
+            settings.ShowWork = on;
+            settings.Save();
+            ReadyInput();
+            return;
+        }
+        if (items.FirstOrDefault(i => $"{i?["session"]}" == session) is JsonObject item) item["show"] = on;
+        ReadyInput();
+        try
+        {
+            await ReadKey();
+            using var res = await Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/show", new JsonObject { ["show"] = on }));
+        }
+        catch (Exception) { }
     }
 
     ////////// 1-3. OPEN, CLOSE, WHERE IT SITS, STOP //////////
@@ -930,7 +979,7 @@ sealed class ChatWindow : Window
           once, following up the one Not quite was pressed on, if any. The list follows it from there. */
     async void Add(string text)
     {
-        var message = new JsonObject { ["prompt"] = text, ["session"] = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Compat.Shared.Next(0x1000000):x6}" };
+        var message = new JsonObject { ["prompt"] = text, ["session"] = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x12}{Compat.Shared.Next(0x1000000):x6}", ["show"] = settings.ShowWork };
         if (fixing is not null) message["from"] = fixing;
         Fix(null);
         face.React("thinking");
@@ -966,6 +1015,7 @@ sealed class ChatWindow : Window
             {
                 listed = text;
                 items = all;
+                ReadyInput();
                 Rows();
                 var open = items.FirstOrDefault(i => $"{i?["session"]}" == session);
                 if (session is not null && !waiting && watched != chat && $"{open?["status"]}" != loaded) Load(session);

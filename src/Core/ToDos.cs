@@ -3,10 +3,12 @@
 // as the run, and its turns, each prompt and its reply. Not quite on a done one makes a new one carrying everything
 // before it. Served at Host's /onsay, where the chat (ChatWindow.cs) and any program with the prompt key reach them.
 //
-// 1. List()                       every to-do, newest first: {session, prompt, status, step, text, from}, status
-//                                 working, asking or done
-// 2. Prompt(message)              {prompt, session, from}: a new to-do, or a reply to one, run and waited for: {session,
-//                                 text} or {session, questions}, or null with why
+// 1. List()                       every to-do, newest first: {session, prompt, status, step, text, from, show}, status
+//                                 working, asking or done, show whether the person watches its work
+// 2. Prompt(message)              {prompt, session, from, show}: a new to-do, or a reply to one, run and waited for:
+//                                 {session, text} or {session, questions}, or null with why. show, given, is the
+//                                 to-do's from then on
+//    Show(id, on), Showing(run)   whether the person watches a to-do's work: changed, and as chat.showing asks it
 // 3. Turns(id), Live(id)          one to-do's turns, {turns: [{prompt, text or questions}]}, and what it does now,
 //                                 {running, steps: [{text, depth}], questions}
 // 4. Step(run, text)              a step the floor's chat.step brings, for the to-do it runs for, else for the chat itself
@@ -26,6 +28,7 @@ static class ToDos
     {
         public string Session = "", Prompt = "", Status = "done";
         public string? From;
+        public bool Show;   // the person watches its work: he works in front of them (Show your work)
         public JsonArray Turns = new(), Log = new();
         public List<string> Steps = new();
     }
@@ -60,6 +63,7 @@ static class ToDos
                     Session = $"{t?["session"]}",
                     Prompt = $"{t?["prompt"]}",
                     From = t?["from"]?.ToString(),
+                    Show = (bool?)t?["show"] == true,
                     Turns = t?["turns"]?.DeepClone() as JsonArray ?? new(),
                     Log = t?["log"]?.DeepClone() as JsonArray ?? new(),
                 });
@@ -72,7 +76,7 @@ static class ToDos
     {
         var kept = new JsonArray(All().Take(Most).Select(t => (JsonNode)new JsonObject
         {
-            ["session"] = t.Session, ["prompt"] = t.Prompt, ["from"] = t.From, ["turns"] = t.Turns.DeepClone(), ["log"] = t.Log.DeepClone(),
+            ["session"] = t.Session, ["prompt"] = t.Prompt, ["from"] = t.From, ["show"] = t.Show, ["turns"] = t.Turns.DeepClone(), ["log"] = t.Log.DeepClone(),
         }).ToArray());
         try { File.WriteAllText(File_, kept.ToJsonString()); }
         catch (Exception) { }
@@ -85,7 +89,7 @@ static class ToDos
             return new JsonArray(All().Select(t =>
             {
                 var last = t.Turns.LastOrDefault();
-                var item = new JsonObject { ["session"] = t.Session, ["prompt"] = t.Prompt, ["status"] = t.Status, ["from"] = t.From };
+                var item = new JsonObject { ["session"] = t.Session, ["prompt"] = t.Prompt, ["status"] = t.Status, ["from"] = t.From, ["show"] = t.Show };
                 if (t.Steps.Count > 0) item["step"] = t.Steps[^1];
                 if (last?["text"] is JsonNode text) item["text"] = text.DeepClone();
                 return (JsonNode)item;
@@ -113,6 +117,7 @@ static class ToDos
                 All().Insert(0, t);
             }
             if (t.Status != "done") return (null, "That to-do is still working.");
+            if (message["show"] is JsonValue show) t.Show = (bool?)show == true;
             t.Status = "working";
             t.Steps.Clear();
             log = (JsonArray)t.Log.DeepClone();
@@ -162,6 +167,23 @@ static class ToDos
             if (asking.FirstOrDefault(a => a.Run == id) is { } q) now["questions"] = q.Questions.DeepClone();
             return now;
         }
+    }
+
+    // 2. A working one changes from its next step, as the agent asks again each turn.
+    public static void Show(string id, bool on)
+    {
+        lock (gate)
+        {
+            if (All().FirstOrDefault(x => x.Session == id) is not { } t) return;
+            t.Show = on;
+            Save();
+        }
+    }
+
+    // 2. A run that is no to-do's, like a program's, is never watched.
+    public static bool Showing(string? run)
+    {
+        lock (gate) return All().FirstOrDefault(x => x.Session == run)?.Show == true;
     }
 
     ////////// 4. WHAT THE CHAT LINGO BRINGS //////////

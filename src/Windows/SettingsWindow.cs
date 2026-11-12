@@ -895,25 +895,6 @@ sealed class SettingsWindow : Window
         p.Children.Add(Item("Start Onsay with Windows", "He appears on your taskbar when you sign in to Windows.", Toggle(Startup.IsOn, Startup.Set)));
         p.Children.Add(Item("Quit Onsay", "Closing him puts him by the clock and leaves Onsay running, so your devices can still use this computer. Quitting stops it until you open Onsay again.", Button("Quit", Kind.Quiet, () => Application.Current.MainWindow?.Close())));
 
-        /* 6. How he uses the mouse and keyboard, as the lingo client keeps it: input.modes(headless, no_follow), each
-              changed alone. Without no follow, his pointer's lines come and he and the chat follow it (Overlay.cs). */
-        p.Children.Add(Section("When he uses your computer"));
-        var (modes, notNow) = Core.Call("/input/modes");
-        if (modes is null)
-        {
-            p.Children.Add(Paragraph(notNow ?? Helper));
-        }
-        else
-        {
-            var said = Problem();
-            void Keep(JsonArray values) => said.Text = Core.Call("/input/modes", values).why ?? "";
-            var background = Toggle((bool?)modes["headless"] == true, on => Keep(new JsonArray(on)));
-            var follow = Toggle((bool?)modes["no_follow"] == false, on => Keep(new JsonArray(null, !on)));
-            p.Children.Add(Item("Work in the background", "He clicks and types in apps behind your other windows, without moving your mouse or bringing them to the front. When an app doesn't allow it, he brings it forward for that one step, tells you why, and gives you back the window you were in.", background));
-            p.Children.Add(Item("Show where he clicks", "His pointer goes to each click and he flies along with it, and the chat steps aside while he works.", follow));
-            p.Children.Add(said);
-        }
-
         // 6. The same picker as setting him up, with him beside it. He on the taskbar changes too.
         p.Children.Add(Section("His look"));
         var preview = new Character.OnsayView
