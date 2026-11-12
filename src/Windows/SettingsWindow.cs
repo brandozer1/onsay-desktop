@@ -8,10 +8,10 @@
 //    Fields      an app's own settings, as its openapi.json declares them, each with Copy, Show for a secret, and
 //                Required marked
 // 3. Devices     the computers on the account, online or not
-// 4. People      who each route is shared with, and Stop sharing
+// 4. Access      who else can use Onsay here: people each route is shared with, and programs on this computer allowed
+//                when they asked (Access.cs), each with a way to take it back
 // 5. Activity    what reached this computer and what apps were allowed or refused, by day, newest first
-// 6. Settings    the account, starting with Windows, how he uses the mouse and keyboard, his look, updates and
-//                removing Onsay
+// 6. Settings    the account, starting with Windows, his look, updates and removing Onsay
 // 7. Advanced    the most any app may do, who can reach this computer, the account, folders, and the logs to read
 // 8. Pieces      Section, a heading; Item, a row; Boxed, an input in its border; RoutesIn, a rule's routes in words;
 //                StopSharing, its button; Lines, a log's newest lines
@@ -73,7 +73,7 @@ sealed class SettingsWindow : Window
 
         Add("Apps", Apps);
         Add("Devices", Devices);
-        Add("People", People);
+        Add("Access", Shared);
         Add("Activity", Activity);
         Add("Settings", General);
         nav.Children.Add(new Border { Height = 1, Background = Rule, Margin = new Thickness(4, 10, 4, 10) });
@@ -347,7 +347,7 @@ sealed class SettingsWindow : Window
     }
 
     // The Onsay name a grant shares with, like james for laptop.james, or empty for anyone and Onsay.
-    static string PersonOf(JsonObject grant) => $"{grant["to"]}" is var to && to is not ("public" or "onsay") ? to.Split('.')[^1] : "";
+    static string PersonOf(JsonObject grant) => $"{grant["to"]}" is var to && to is not ("public" or "onsay") && !to.StartsWith("ed25519:") ? to.Split('.')[^1] : "";
 
     // 2. You, then each rule that reaches this app on this computer, with Stop sharing, and sharing with someone new first.
     static void Access(StackPanel into, Core.Lingo l, Action again)
@@ -715,29 +715,41 @@ sealed class SettingsWindow : Window
 
     ////////// 4. PEOPLE //////////
 
-    // 4. Everyone a rule names by their Onsay handle, with the routes they can reach and on which computers.
-    UIElement People()
+    /* 4. Everyone a rule names by their Onsay handle, with the routes they can reach and on which computers, then each
+          program on this computer that was allowed when it asked, with what it can do. */
+    UIElement Shared()
     {
-        var p = Page("People", "People you share with can use those routes from their own devices. They can't see or use anything else on your computers.");
-        var policy = Core.Policy();
-        var people = (policy["grants"] as JsonArray ?? new()).OfType<JsonObject>()
-            .Where(g => PersonOf(g).Length > 0)
-            .GroupBy(PersonOf);
+        var p = Page("Access", "Who else can use Onsay on this computer, and what each can do. You and your own devices can always use everything.");
+        var grants = (Core.Policy()["grants"] as JsonArray ?? new()).OfType<JsonObject>().ToList();
+        var people = grants.Where(g => PersonOf(g).Length > 0).GroupBy(PersonOf).ToList();
+        var programs = grants.Where(g => $"{g["to"]}".StartsWith("ed25519:")).ToList();
+
+        p.Children.Add(Section("People"));
         foreach (var person in people)
         {
-            p.Children.Add(Section(person.Key));
+            p.Children.Add(new TextBlock { Text = person.Key, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(0, 8, 0, 0) });
             foreach (var grant in person)
             {
                 var computers = Texts(grant["allow"]).Select(a => a.Split('/')[0]).Where(c => c.Contains('.')).Select(c => c.Split('.')[0]).Distinct().ToList();
                 var under = computers.Count > 0 ? $"On your {string.Join(", ", computers)}." : "On every computer.";
-                p.Children.Add(Item(RoutesIn(grant).TrimEnd('.'), under, StopSharing(grant, "People")));
+                p.Children.Add(Item(RoutesIn(grant).TrimEnd('.'), under, StopSharing(grant, "Access")));
             }
         }
-        if (!people.Any())
+        if (people.Count == 0)
         {
             p.Children.Add(Paragraph("You haven't shared anything yet. To share an app, open it in Apps and press Share with someone."));
             p.Children.Add(Button("Go to Apps", Kind.Quiet, () => Go("Apps")));
         }
+
+        p.Children.Add(Section("Programs"));
+        foreach (var grant in programs)
+        {
+            var name = $"{grant["data"]?["name"] ?? "A program"}";
+            var can = string.Join(", ", Texts(grant["allow"]).Select(a => Core.Wants(a.TrimStart('/').Split('/')[0])));
+            p.Children.Add(Item($"{name} can {can}", $"{grant["data"]?["program"] ?? grant["to"]}", StopSharing(grant, "Access", "Take it back")));
+        }
+        if (programs.Count == 0)
+            p.Children.Add(Paragraph("No other program can use Onsay here. When one asks, he asks you first, in the chat."));
         return p;
     }
 
@@ -1109,7 +1121,7 @@ sealed class SettingsWindow : Window
     };
 
     // 8. Ends every grant for whoever this one is for, then shows the page named again.
-    Border StopSharing(JsonObject grant, string page) => Button("Stop sharing", Kind.Quiet, () =>
+    Border StopSharing(JsonObject grant, string page, string words = "Stop sharing") => Button(words, Kind.Quiet, () =>
     {
         Account.Onsay("unshare", new JsonObject { ["to"] = $"{grant["to"]}" });
         Go(page);

@@ -134,6 +134,7 @@ static class Core
                 if (why is null) continue;
                 try { File.AppendAllText(Log, $"{DateTime.Now:s} The {name} lingo wasn't offered: {why}\n"); } catch { }
             }
+            Access.Watch();
         });
     }
 
