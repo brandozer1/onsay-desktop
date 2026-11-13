@@ -158,7 +158,7 @@ static class Core
     ////////// 2. CALLS //////////
 
     // 2. values in order. A call may take as long as the floor lets it, 10 minutes, like a to-do's agent or an update.
-    public static (JsonNode? answer, string? why) Call(string path, JsonArray? values = null, string? run = null) =>
+    public static (JsonNode? answer, string? why) Call(string path, JsonNode? values = null, string? run = null) =>
         Send(path, (values ?? new JsonArray()).ToJsonString(Plain), run);
 
     // 2.

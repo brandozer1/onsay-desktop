@@ -5,9 +5,13 @@
 //
 // 1. List()                       every to-do, newest first: {session, prompt, status, step, text, from, show}, status
 //                                 working, asking or done, show whether the person watches its work
+//    History(words)               the chat lingo's history: the 20 newest, or those whose prompt holds the words,
+//                                 {session, prompt, status, reply}
 // 2. Prompt(message)              {prompt, session, from, show}: a new to-do, or a reply to one, run and waited for:
 //                                 {session, text} or {session, questions}, or null with why. show, given, is the
-//                                 to-do's from then on
+//                                 to-do's from then on. An agent that says there is more, again, is called again by itself,
+//                                 a go at a time, up to Goes, each go's messages kept as it ends, and a go that fails
+//                                 leaves what went wrong in the conversation, so nothing they said is lost
 //    Show(id, on), Showing(run)   whether the person watches a to-do's work: changed, and as chat.showing asks it
 // 3. Turns(id), Live(id)          one to-do's turns, {turns: [{prompt, text or questions}]}, and what it does now,
 //                                 {running, steps: [{text, depth}], questions}
@@ -22,6 +26,7 @@ namespace Onsay.Desktop;
 static class ToDos
 {
     const int Most = 200;   // the newest to-dos kept
+    const int Goes = 50;    // the most goes a long job is carried on for by itself, each up to the floor's 10 minutes
 
     // A to-do: log is its whole conversation as the agent reads it, chat messages in OpenAI's shape.
     sealed class ToDo
@@ -96,6 +101,21 @@ static class ToDos
             }).ToArray());
     }
 
+    // 1. For the chat lingo's history: the 20 newest, or those whose prompt holds the words.
+    public static JsonArray History(string? words)
+    {
+        lock (gate)
+            return new JsonArray(All()
+                .Where(t => string.IsNullOrWhiteSpace(words) || t.Prompt.Contains(words!.Trim(), StringComparison.OrdinalIgnoreCase))
+                .Take(20)
+                .Select(t =>
+                {
+                    var reply = $"{t.Turns.LastOrDefault()?["text"]}";
+                    if (reply.Length > 300) reply = reply.Substring(0, 300) + "...";
+                    return (JsonNode)new JsonObject { ["session"] = t.Session, ["prompt"] = t.Prompt, ["status"] = t.Status, ["reply"] = reply };
+                }).ToArray());
+    }
+
     ////////// 2. A PROMPT //////////
 
     /* 2. Run by agent.ask with the conversation so far, a follow-up starting from the one it follows, its steps and
@@ -124,17 +144,29 @@ static class ToDos
             log.Add(new JsonObject { ["role"] = "user", ["content"] = prompt });
         }
         // What they typed goes to the floor's compiler; words that aren't Lingo go to the lingo search with the conversation,
-        // which finds what does it, like the agent, and tries the next best when one fails. Only its newest messages that
-        // fit go, from one of the person's, so a long to-do still reaches Onsay.
-        var newest = new JsonArray();
-        int room = 150_000;
-        for (int i = log.Count - 1; i >= 0 && (room -= log[i]!.ToJsonString().Length) > 0; i--) newest.Insert(0, log[i]!.DeepClone());
-        while (newest.Count > 1 && $"{newest[0]?["role"]}" != "user") newest.RemoveAt(0);
-        var (got, why) = Core.Run(prompt, new JsonObject { ["prompt"] = prompt, ["messages"] = newest }, session);
-        // The person never sees an error: what went wrong is kept in floor.log, and they get a line they can act on.
+        // which finds what does it, like the agent, and tries the next best when one fails.
+        var (got, why) = Core.Run(prompt, new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log) }, session);
+        // A long job goes on by itself, a go at a time, while the agent says there is more: each go's messages kept as it
+        // ends, so nothing done is lost, and the next asked of the same lingo with the line it gave to go on.
+        for (int go = 1; why is null && got?["again"] is JsonObject again && go < Goes; go++)
+        {
+            Kept(log, got, null);
+            lock (gate)
+            {
+                t.Log = (JsonArray)log.DeepClone();
+                Save();
+            }
+            var next = again["values"]?.DeepClone() as JsonObject ?? new JsonObject();
+            log.Add(new JsonObject { ["role"] = "user", ["content"] = $"{next["prompt"] ?? next["task"]}" });
+            next["messages"] = Newest(log);
+            (got, why) = Core.Call($"/{again["address"]}", next, session);
+        }
+        // The person never sees an error: what went wrong is kept in floor.log and in the conversation, so the agent knows
+        // next time, and they get a line they can act on.
         if (why is not null)
         {
             try { File.AppendAllText(Core.Log, $"{DateTime.Now:s} to-do: {why}\n"); } catch (Exception) { }
+            Kept(log, null, why);
             why = "Something went wrong on my side, so I stopped here. Send it again and I'll pick up where I left off.";
         }
         lock (gate)
@@ -148,12 +180,8 @@ static class ToDos
             else if (answered?["text"] is JsonNode text) turn["text"] = $"{text}";
             else turn["text"] = got is JsonValue v && v.TryGetValue(out string? words) ? words : got?.ToJsonString() ?? "Done.";
             t.Turns.Add(turn);
-            if (why is null)
-            {
-                t.Log = log;
-                if (answered?["messages"] is JsonArray added) foreach (var m in added) t.Log.Add(m?.DeepClone());
-                else if (turn["text"] is JsonNode said) t.Log.Add(new JsonObject { ["role"] = "assistant", ["content"] = $"{said}" });
-            }
+            if (why is null) Kept(log, got, null);
+            t.Log = log;
             Save();
             if (why is not null) return (null, why);
             var answer = new JsonObject { ["session"] = session };
@@ -161,6 +189,34 @@ static class ToDos
             else answer["text"] = turn["text"]!.DeepClone();
             return (answer, null);
         }
+    }
+
+    // The newest messages of a conversation that fit, from one of the person's, so a long to-do still reaches Onsay.
+    static JsonArray Newest(JsonArray log)
+    {
+        var newest = new JsonArray();
+        int room = 150_000;
+        for (int i = log.Count - 1; i >= 0 && (room -= log[i]!.ToJsonString().Length) > 0; i--) newest.Insert(0, log[i]!.DeepClone());
+        while (newest.Count > 1 && $"{newest[0]?["role"]}" != "user") newest.RemoveAt(0);
+        return newest;
+    }
+
+    // What a go adds to the conversation: the messages an agent gave, else what answered as the assistant's words, or, when
+    // it failed, what went wrong, for the agent to read next time.
+    static void Kept(JsonArray log, JsonNode? got, string? failed)
+    {
+        if (failed is not null)
+        {
+            log.Add(new JsonObject { ["role"] = "assistant", ["content"] = $"(That stopped before it was done: {failed})" });
+            return;
+        }
+        if (got?["messages"] is JsonArray added)
+        {
+            foreach (var m in added) log.Add(m?.DeepClone());
+            return;
+        }
+        var said = got?["text"] ?? got?["questions"] ?? got;
+        log.Add(new JsonObject { ["role"] = "assistant", ["content"] = said is JsonValue ? $"{said}" : said?.ToJsonString() ?? "Done." });
     }
 
     ////////// 3. ONE TO-DO //////////

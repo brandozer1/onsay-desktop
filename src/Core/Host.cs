@@ -34,6 +34,8 @@ static class Host
             "fn ask(questions: list|text \"each a text, answered by typing, or \\{question, choices}, answered by picking one\", seconds: number \"how long to wait\" = 120) -> list \"Asks the person questions in Onsay's chat on this computer and waits for their answers, in order, so the work goes on with them. Nothing when nobody answered in time.\" {}\n" +
             "fn say(text: text \"what to tell them\") \"Tells the person something in Onsay's chat while the work goes on.\" {}\n" +
             "fn step(text: text \"what is being done now\") \"Shows what is being done now as a step under the person's to-do. Say one as each part of a long job starts.\" {}\n" +
+            "fn history(words: text? \"words to find in what they asked, or nothing for the newest\" = nothing) -> list \"The person's to-dos in Onsay on this computer, newest first, the 20 newest or those whose prompt holds the words: each \\{session, prompt, status, reply}, reply the start of its last answer. To find what they asked before, or what came of it.\" {}\n" +
+            "fn turns(session: text \"a to-do's session, as history gives it\") -> list \"One to-do's turns, oldest first, each \\{prompt, text}: what the person said and what was answered.\" {}\n" +
             "fn showing() -> bool \"Whether the person is watching the work of the to-do this is for, Show your work in the app: true, work in front of them, windows coming forward, the real mouse and his hand following each action, a browser's window shown; false, work unseen. Ask again as the work goes on, since they may change it.\" {}\n"),
         ("settings", "\"Each lingo's settings on this computer, kept by the Onsay app.\"\n" +
             "fn get(key: text \"the setting's name\", reference: text \"the lingo whose setting it is\") \"A lingo's setting as the person set it, or nothing.\" {}\n"),
@@ -106,6 +108,10 @@ static class Host
         {
             case "/chat/ask":
                 return (200, await ToDos.Ask(run, values.ElementAtOrDefault(0) ?? new JsonArray(), (double?)values.ElementAtOrDefault(1) ?? 120));
+            case "/chat/history":
+                return (200, ToDos.History(values.ElementAtOrDefault(0)?.ToString()));
+            case "/chat/turns":
+                return (200, ToDos.Turns($"{values.ElementAtOrDefault(0)}")["turns"]!.DeepClone());
             case "/chat/showing":
                 return (200, ToDos.Showing(run));
             case "/chat/say":
