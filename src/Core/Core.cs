@@ -174,6 +174,8 @@ static class Core
             using var res = Http.SendAsync(request, new CancellationTokenSource(TimeSpan.FromMinutes(11)).Token).GetAwaiter().GetResult();
             var said = JsonNode.Parse(res.Content.ReadAsStringAsync().GetAwaiter().GetResult());
             if (res.IsSuccessStatusCode) return (said, null);
+            // The search looked and found nothing: what it says about that is written for the person, so it is the answer.
+            if ($"{said?["code"]}" == "nothing" && said?["error"] is JsonValue words) return (words.DeepClone(), null);
             return (null, $"{said?["error"] ?? "Onsay's helper on this computer couldn't do that."}");
         }
         catch (HttpRequestException) { return (null, "Onsay's helper on this computer isn't running. It starts again by itself, so try again in a moment."); }
