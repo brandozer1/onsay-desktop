@@ -8,6 +8,8 @@
 //
 // 1. Start(idle)              the checks, from startup. idle says whether nothing is happening that a restart would cut
 //                             short
+//    Now()                    the person's Update now: a newer version checked for, put in and started at once, or what
+//                             came of it in words
 // 2. Installed, Version       whether this copy was installed (so it updates and can be removed), and its version
 // 3. Shortcut(where, on)      his desktop or Start menu shortcut: whether it is there, and making or removing it
 // 4. Uninstall()              removes Onsay, its shortcuts and its startup, through the uninstaller Windows registered
@@ -44,16 +46,29 @@ static class Updates
             if (ready?["version"] is JsonNode newer && $"{newer}" != Version)
             {
                 while (!await idle()) await Task.Delay(TimeSpan.FromMinutes(1));
-                var (went, _) = await Task.Run(() => Core.Call("/update/apply", new JsonArray(Root, $"{newer}")));
-                if (went is not null)
-                {
-                    Process.Start(new ProcessStartInfo(Launcher, "--restarted") { UseShellExecute = true });
-                    Application.Current.Dispatcher.Invoke(() => Application.Current.Shutdown());
-                    return;
-                }
+                if (await Restarted($"{newer}")) return;
             }
             await Task.Delay(TimeSpan.FromHours(1));
         }
+    }
+
+    // 1. Nothing to say when it goes in, since he starts again on the newer version.
+    public static async Task<string> Now()
+    {
+        var (ready, why) = await Task.Run(() => Core.Call("/update/check", new JsonArray(Root)));
+        if (why is not null) return "Onsay couldn't check for updates just now. Try again in a moment.";
+        if (ready?["version"] is not JsonNode newer || $"{newer}" == Version) return $"You have the newest version, {Version}.";
+        return await Restarted($"{newer}") ? "" : "The update couldn't go in. Try again in a moment.";
+    }
+
+    // The newer version put in and started, this one ending, or false when it couldn't go in.
+    static async Task<bool> Restarted(string newer)
+    {
+        var (went, _) = await Task.Run(() => Core.Call("/update/apply", new JsonArray(Root, newer)));
+        if (went is null) return false;
+        Process.Start(new ProcessStartInfo(Launcher, "--restarted") { UseShellExecute = true });
+        Application.Current.Dispatcher.Invoke(() => Application.Current.Shutdown());
+        return true;
     }
 
     ////////// 2-3. THIS COPY //////////

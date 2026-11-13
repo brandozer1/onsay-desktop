@@ -924,7 +924,19 @@ sealed class SettingsWindow : Window
             p.Children.Add(Item("Built on this computer", "This copy doesn't update itself."));
             return p;
         }
-        p.Children.Add(Item($"Version {Updates.Version}", "Updates by itself: a newer version downloads quietly and goes in while he isn't busy."));
+        // Update now checks at once and, with a newer version, puts it in and starts him again on it; else it says why not.
+        var came = Note("");
+        Border? update = null;
+        update = Button("Update now", Kind.Quiet, async () =>
+        {
+            var label = (TextBlock)update!.Child;
+            if (label.Text == "Checking...") return;
+            label.Text = "Checking...";
+            came.Text = await Updates.Now();
+            label.Text = "Update now";
+        });
+        p.Children.Add(Item($"Version {Updates.Version}", "Updates by itself: a newer version downloads quietly and goes in while he isn't busy. Update now gets it straight away and starts him again.", update));
+        p.Children.Add(came);
         p.Children.Add(Section("Remove Onsay"));
         p.Children.Add(Item("Uninstall Onsay", "Takes the app, its shortcuts and its startup off this computer, and asks whether your settings and chats go too.", Button("Uninstall", Kind.Danger, () =>
         {
