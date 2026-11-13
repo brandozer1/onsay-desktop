@@ -12,8 +12,8 @@
 //                                 to-do's from then on. An agent that says there is more, again, is called again by itself,
 //                                 a go at a time, up to Goes, each go's messages kept as it ends, and a go that fails
 //                                 leaves what went wrong in the conversation, so nothing they said is lost
-//    Show(id, on), Showing(run)   whether the person watches a to-do's work: changed, its screens moved at once
-//                                 (ScreensWindow.Resync), and as chat.showing asks it
+//    Show(id, on), Showing(run)   whether the person watches a to-do's work: changed, told at once to every lingo
+//                                 here with a shown(on) function, and as chat.showing asks it
 // 3. Turns(id), Live(id)          one to-do's turns, {turns: [{prompt, text or questions}]}, and what it does now,
 //                                 {running, steps: [{text, depth}], questions}
 // 4. Step(run, text)              a step the floor's chat.step brings, for the to-do it runs for, else for the chat itself
@@ -253,8 +253,15 @@ static class ToDos
             t.Show = on;
             Save();
         }
-        // Its screens move at once: into a window of their own while watched, back into the chat when not.
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(ScreensWindow.Resync);
+        // Every lingo here with a shown function is told at once, as the to-do's run, so it reacts the moment it changes,
+        // like the browser showing its window or drawing its tabs on Onsay's screens.
+        Task.Run(() =>
+        {
+            var (lingos, _) = Core.Run("return lingo.list()");
+            foreach (var l in lingos as JsonArray ?? new JsonArray())
+                if (l?["functions"] is JsonArray functions && functions.Any(x => $"{x?["name"]}" == "shown"))
+                    Core.Call($"/{l["name"]}/shown", new JsonArray(on), id);
+        });
     }
 
     // 2. A run that is no to-do's, like a program's, is never watched.

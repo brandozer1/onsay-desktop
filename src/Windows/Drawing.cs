@@ -52,7 +52,8 @@ static class Drawing
                 if (one is not JsonObject o || o.Count != 1) continue;
                 var (key, value) = o.First();
                 var a = value as JsonArray ?? new JsonArray();
-                double N(int i) => i < a.Count && a[i] is JsonValue v && v.TryGetValue(out double d) ? d : 0;
+                // Read from the number's own text, so one made here as a whole number counts as much as one from JSON.
+                double N(int i) => i < a.Count && a[i] is JsonValue v && double.TryParse(v.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0;
                 bool Has(int i) => i < a.Count && a[i] is JsonValue;
                 try
                 {

@@ -231,7 +231,6 @@ sealed class ChatWindow : Window
         this.settings = settings;
         this.setOpen = setOpen;
         this.him = him;
-        ScreensWindow.Follow(Named, ToDos.Showing);
         Native.Bare(this);
         Width = Wide + Shadow * 2;
         Height = Tall + Shadow * 2;

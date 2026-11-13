@@ -1,17 +1,13 @@
 // ScreensWindow.cs - the screens lingos draw on, shown: a strip of small ones along a to-do, a grid of every screen open
 // for the chat's Screens page, and one window, full screen, that shows one to-do's screens full size, one at a time. What
-// is open comes from Screens.cs. A lingo has no say in where its screen shows: while the person watches a to-do's work,
-// Show your work, its screens show in a window of their own beside it instead, and go back into the chat when they stop.
+// is open comes from Screens.cs. A lingo has no say in where its screen shows.
 //
 // 1. Strip(session, height, named)          the small screens of one to-do in a row, hidden with none. A click shows
 //                                           that one full screen
 //    Every(named)                           every screen open, a card each with its title and its to-do, or a line
 //                                           saying there are none. A click shows that one full screen
-// 2. Open(named, session, screen, follows)  the window: one to-do's screens, from screen, full screen, or with follows
-//                                           a window of their own for Show your work
+// 2. Open(named, session, screen)           the window: one to-do's screens, from screen
 //    Esc, the arrows, Close                 put it away, go through them, close the one showing
-// 3. Follow(named, watched), Resync()       Show your work: the screens of a to-do the person watches kept in their own
-//                                           window as screens open and close, and Resync when the toggle changes
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -31,7 +27,6 @@ sealed class ScreensWindow : Window
     readonly TextBlock title = new() { FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     string session = "";   // the to-do whose screens show, "" for those of none
     long screen;           // the one showing full size
-    bool follows;          // opened for Show your work, a window of its own, rather than full screen by the person
 
     ////////// 1. SMALL SCREENS //////////
 
@@ -145,57 +140,14 @@ sealed class ScreensWindow : Window
     ////////// 2. FULL SCREEN //////////
 
     // 2. One window at a time: opened again, it shows what was asked for.
-    public static void Open(Func<string, string> named, string session, long screen, bool follows = false)
+    public static void Open(Func<string, string> named, string session, long screen)
     {
         shown ??= new ScreensWindow(named);
         shown.session = session;
         shown.screen = screen;
-        shown.follows = follows;
-        if (follows)
-        {
-            var area = SystemParameters.WorkArea;
-            shown.WindowState = WindowState.Normal;
-            shown.Width = Math.Min(1000, area.Width * 0.6);
-            shown.Height = Math.Min(680, area.Height * 0.7);
-            shown.Left = area.Right - shown.Width - 24;
-            shown.Top = area.Top + 24;
-        }
-        else shown.WindowState = WindowState.Maximized;
         shown.Draw();
         shown.Show();
-        if (!follows) shown.Activate();
-    }
-
-    ////////// 3. SHOW YOUR WORK //////////
-
-    static Action sync = () => { };
-    static string putAway = "";   // a to-do whose window the person closed while watching it, left closed until they toggle
-
-    // 3. Kept as screens open and close. A window the person opened full screen is theirs and left alone.
-    public static void Follow(Func<string, string> named, Func<string, bool> watched)
-    {
-        sync = () =>
-        {
-            var watching = Screens.All.Select(s => s.Session).Distinct().LastOrDefault(s => watched(s) && s != putAway);
-            if (shown is { follows: false }) return;
-            if (watching is null)
-            {
-                shown?.Close();
-                return;
-            }
-            if (shown?.session != watching) Open(named, watching, Screens.Of(watching)[0].Id, true);
-        };
-        Screens.Changed += id =>
-        {
-            if (id is null) sync();
-        };
-    }
-
-    // 3. On the UI thread.
-    public static void Resync()
-    {
-        putAway = "";
-        sync();
+        shown.Activate();
     }
 
     ScreensWindow(Func<string, string> named)
@@ -228,7 +180,6 @@ sealed class ScreensWindow : Window
         Closed += (_, _) =>
         {
             Screens.Changed -= Changed;
-            if (follows && Screens.Of(session).Count > 0) putAway = session;
             shown = null;
         };
     }
