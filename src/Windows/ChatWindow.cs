@@ -121,9 +121,9 @@ sealed class ChatWindow : Window
     readonly TextBlock fixingText = new() { FontSize = 12, Foreground = Ink2, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly Border send;
     readonly TextBlock sendGlyph = new() { Text = SendIcon, FontFamily = Icons, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-    readonly Border showWork;                    // Show your work: on the list for the next to-do, in one for that one
+    readonly Border showWork;                    // Use desktop: on the list for the next to-do, in one for that one
     readonly TextBlock showWorkGlyph = new() { Text = ShowIcon, FontFamily = Icons, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-    readonly TextBlock showWorkText = new() { Text = "Show your work", FontSize = 12, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock showWorkText = new() { Text = "Use desktop", FontSize = 12, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     readonly TextBox box = new()
     {
         BorderThickness = new Thickness(0),
@@ -490,7 +490,7 @@ sealed class ChatWindow : Window
             showWork.ToolTip = watched ? "You're watching this to-do's work. Click to have him finish it unseen" : "This to-do is done unseen. Click to watch him work on it";
     }
 
-    // Show your work, as the box shows it now: for the to-do open, else for the next one made from the list.
+    // Use desktop, as the box shows it now: for the to-do open, else for the next one made from the list.
     bool Watched()
     {
         if (session is null) return settings.ShowWork;

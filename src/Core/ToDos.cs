@@ -34,7 +34,7 @@ static class ToDos
     {
         public string Session = "", Prompt = "", Status = "done";
         public string? From;
-        public bool Show;   // the person watches its work: he works in front of them (Show your work)
+        public bool Show;   // the person watches its work: he works in front of them (Use desktop)
         public JsonArray Turns = new(), Log = new();
         public List<string> Steps = new();
     }
