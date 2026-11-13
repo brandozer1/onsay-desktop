@@ -17,8 +17,10 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"   # .NET collects nothing from a build
 function stop($why) { Write-Host "release.ps1 stopped: $why"; exit 1 }
 trap { stop "line $($_.InvocationInfo.ScriptLineNumber): $_" }
 
-$dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
-if (-not $dotnet) { $dotnet = "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe" }
+# The first .NET with an SDK in it: one on the path may be a runtime alone, which can't build.
+$dotnet = @((Get-Command dotnet -ErrorAction SilentlyContinue).Source, "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe") |
+  Where-Object { $_ -and (Test-Path $_) -and (& $_ --list-sdks) } | Select-Object -First 1
+if (-not $dotnet) { stop "The .NET SDK isn't installed. Get it from dotnet.microsoft.com" }
 $iscc = $env:ISCC
 if (-not $iscc) { $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source }
 if (-not $iscc -and $windows) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
