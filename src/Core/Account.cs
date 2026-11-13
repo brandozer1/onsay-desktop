@@ -5,8 +5,8 @@
 // keys\account.token, and who it is in account.json.
 //
 // 1. Api                       Onsay's address, ONSAY_API for a test
-// 2. Onsay(phrase, values)     what the app's windows ask: status, sign_in, sign_out, devices, ai, share and unshare,
-//                              its answer, or why not in words
+// 2. Onsay(phrase, values)     what the app's windows ask: status, sign_in, sign_out, lingos (every computer of the
+//                              account and what it offers), credits, ai, share and unshare: its answer, or why not in words
 // 3. SignIn(), Finish(...)     a code and the page to open, then, asked every second, the token and the floor's key,
 //                              and SignedIn, told the moment it is done, for him to jump in (BuddyWindow.Arrive)
 // 4. Get(path)                 one of Onsay's own routes with this computer's token
@@ -42,7 +42,8 @@ static class Account
                 "status" => (Status(), null),
                 "sign_in" => SignIn(),
                 "sign_out" => SignOut(),
-                "devices" => Devices(),
+                "lingos" => Get("/lingos"),
+                "credits" => Get("/credits"),
                 "ai" => Get("/ai"),
                 "share" => (null, Share(values.ElementAtOrDefault(0) as JsonObject)),
                 "unshare" => (null, Unshare($"{values.ElementAtOrDefault(0)?["to"]}")),
@@ -84,17 +85,6 @@ static class Account
         who.Remove("device");
         File.WriteAllText(WhoFile, who.ToJsonString());
         return (new JsonObject(), null);
-    }
-
-    // Each computer of the account, {name, online, seen}.
-    static (JsonNode?, string?) Devices()
-    {
-        var (got, why) = Get("/lingos");
-        if (got is null) return (null, why);
-        return (new JsonArray((got["computers"] as JsonArray ?? new()).Select(c => (JsonNode)new JsonObject
-        {
-            ["name"] = c?["name"]?.DeepClone(), ["online"] = c?["online"]?.DeepClone(), ["seen"] = c?["seen"]?.DeepClone(),
-        }).ToArray()), null);
     }
 
     /* Shared on this computer: a grant in the floor's policy.json, {to, allow}, to their handle, allow this computer's

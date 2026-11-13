@@ -9,7 +9,7 @@ It is two things:
   [lingo-client](https://github.com/brandozer1/lingo-client): a small program that takes calls on port 6969, checks
   who signed each and whether its policy lets them, runs the lingo script, and logs it. Nothing else.
 - **The app**, one of the floor's lingos: his character on the taskbar, the chat and its to-dos, setting him up, and
-  Apps and settings: Apps, Devices, People, Activity, Settings and Advanced. On screen a lingo is an app.
+  Apps and settings: Apps, Access, Activity, Settings and Advanced. On screen a lingo is an app.
 
 ## Setting him up
 
@@ -83,8 +83,7 @@ goes back through `/.lingo/answer`.
 
 | Page | What it has |
 |------|-------------|
-| Apps | a list of the apps on this computer, none of what is built into the floor. Each opens to tabs for what it says it uses; who can use it, with Stop sharing on what was shared (`share`, `unshare`) and Share with someone; and its settings, each with its value now (`set`). A map shows every address on this computer and what can be asked for there |
-| Devices | the computers on the account, online or when last seen (`onsay.devices`) |
+| Apps | a map of what is offered (`/lingos`, `/credits` on Onsay): the credit balance, with what was spent and earned lately under Recent; then this computer and each other one on the account, online or when last seen, and its trust as a level word, the numbers on hover; each app it offers opens to what it can be asked, with what a call costs ("Free", "5 credits a call", "At least 2 credits a call") and the going rate when known. An app on this computer opens to tabs for what it says it uses; who can use it, with Stop sharing on what was shared (`share`, `unshare`) and Share with someone; and its settings, each with its value now (`set`) |
 | People | everyone an app is shared with, and what of it, with Stop sharing |
 | Activity | the floor's `requests.log` in words, requests from anyone but this computer and calls refused an app, a row each under its day, newest first, the time on the left: "Your desk used Windows", "Native wasn't allowed to run a program" |
 | Settings | sections of one setting a row: the account and signing in and out, starting with Windows, Work in the background and Show where he clicks, his look, updates and Uninstall Onsay |

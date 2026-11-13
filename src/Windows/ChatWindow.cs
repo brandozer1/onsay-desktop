@@ -1766,7 +1766,7 @@ sealed class ChatWindow : Window
             }
             catch (Exception) { Tell("The chat couldn't be copied. Try again in a moment."); }
         }));
-        rows.Children.Add(Row("Apps and settings", "Your apps, devices, people, activity and account", () =>
+        rows.Children.Add(Row("Apps and settings", "What your computers offer, people, activity and account", () =>
         {
             menu.IsOpen = false;
             SettingsWindow.Open(settings, this);

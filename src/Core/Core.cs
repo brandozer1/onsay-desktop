@@ -352,9 +352,8 @@ static class Core
        parts, its route, what it lacks, and what it can be asked. */
     public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts, string Route, string[] Missing, Function[] Calls);
 
-    // One thing an app can be asked for: its path, its name and what it does in words, and Group, the part of the app it
-    // is in, or empty.
-    public sealed record Function(string Path, string Name, string Does, string Group);
+    // One thing an app can be asked for: its path, and its name and what it does in words.
+    public sealed record Function(string Path, string Name, string Does);
 
     // 4.
     public static string Title(string name) => name.Length > 0 ? char.ToUpper(name[0]) + name[1..] : name;
@@ -385,7 +384,7 @@ static class Core
             {
                 var op = ops?["post"];
                 if ((bool?)op?["x-lingo-internal"] == true) continue;
-                calls.Add(new Function(path, Title(path.Split('/').Last().Replace('_', ' ')), $"{op?["description"] ?? op?["summary"]}", ""));
+                calls.Add(new Function(path, Title(path.Split('/').Last().Replace('_', ' ')), $"{op?["description"] ?? op?["summary"]}"));
             }
             var builtIn = Host.Lingos.Any(l => l.Name == e.Key);
             return new Lingo(e.Key, true, null, $"{e.Value?["about"]}", builtIn, Array.Empty<string>(), Array.Empty<string>(), "/" + e.Key, Array.Empty<string>(), calls.ToArray());
