@@ -175,7 +175,7 @@ sealed class SettingsWindow : Window
 
     const string CanDo = "can do", WhoCan = "who", ItsSettings = "settings";
 
-    /* 2. A map of what is offered: the person's credits, then this computer, then each other computer on the account, each
+    /* 2. A map of what is offered: the person's tokens, then this computer, then each other computer on the account, each
           app it offers a row that opens to what it can be asked and what that costs. This computer's apps come from the
           program that runs them here, everything else and every price from Onsay, asked off this thread. */
     UIElement Apps()
@@ -330,13 +330,7 @@ sealed class SettingsWindow : Window
     }
 
     // The Onsay name a grant shares with, like james for laptop.james, or empty for anyone and Onsay.
-    // A grant letting someone spend the account's credits shares nothing, so it names no one here.
-    static string PersonOf(JsonObject grant)
-    {
-        var to = $"{grant["to"]}";
-        if (grant["spend"] != null || to is "public" or "onsay" || to.StartsWith("ed25519:")) return "";
-        return to.Split('.')[^1];
-    }
+    static string PersonOf(JsonObject grant) => $"{grant["to"]}" is var to && to is not ("public" or "onsay") && !to.StartsWith("ed25519:") ? to.Split('.')[^1] : "";
 
     // 2. You, then each rule that reaches this app on this computer, with Stop sharing, and sharing with someone new first.
     static void Access(StackPanel into, Core.Lingo l, Action again)
@@ -407,7 +401,7 @@ sealed class SettingsWindow : Window
     // says of it, its price among it, or null when Onsay hasn't said.
     sealed record Offered(string Name, string Does, string Address, JsonObject? Said);
 
-    /* 2. The credits, a search, then each computer under its heading, this one first, and every app it offers. Signed out,
+    /* 2. The tokens, a search, then each computer under its heading, this one first, and every app it offers. Signed out,
           only this computer, and a way to sign in. Everything starts closed, and searching opens what matches. */
     void Map(StackPanel map, JsonNode? status, List<Core.Lingo>? here, JsonNode? offered, string? why, JsonNode? credits)
     {
@@ -498,8 +492,8 @@ sealed class SettingsWindow : Window
         return new StackPanel { Margin = new Thickness(0, 0, 0, 4), Children = { total, list } };
     }
 
-    // 2. An amount in words: 1 credit, 5 credits.
-    static string Amount(JsonNode amount) => $"{amount}" == "1" ? "1 credit" : $"{amount} credits";
+    // 2. An amount in words: 1 token, 5 tokens.
+    static string Amount(JsonNode amount) => $"{amount}" == "1" ? "1 token" : $"{amount} tokens";
 
     // 2. A computer's heading: its name, whether it is online, and how far it is trusted, its numbers on hover.
     static StackPanel Computer(string name, JsonObject? c, bool here)
@@ -591,12 +585,19 @@ sealed class SettingsWindow : Window
         return new Border { Padding = new Thickness(22, 6, 6, 6), BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 1), Child = line };
     }
 
-    /* 2. What calls of it have cost lately, the going rate Onsay gives, in words: Calls of it cost about 12 credits
-          lately. Nothing when its code has never charged, since a function is free unless its code charges. */
+    /* 2. What it costs, as its code writes it, in words, with what calls of it came to lately: Costs 5 tokens a call.
+          Lately about 5 tokens a call. Nothing when it is free, since a function is free unless its returns charge. */
     static string? Price(JsonObject? said)
     {
-        if (said?["going"] is not JsonNode going) return null;
-        return $"Calls of it cost about {Amount(going)} lately.";
+        if (said?["prices"] is not JsonArray prices || prices.Count == 0) return null;
+        var words = string.Join(", or ", prices.OfType<JsonObject>().Select(p =>
+        {
+            if (p["rate"] != null) return $"{Amount(p["rate"]!)} a KB, its answer counted up to {p["ratio"]} times what is sent";
+            if (p["least"] != null) return $"priced by demand, at least {Amount(p["least"]!)} a call";
+            return $"{Amount(p["amount"]!)} a call";
+        }));
+        var lately = said["going"]?["request"] is JsonNode request ? $" Lately about {Amount(Math.Round(request.GetValue<double>(), 2))} a call." : "";
+        return $"Costs {words}.{lately}";
     }
 
     /* 2. An app's settings as its openapi.json declares them, each with its value now, kept on this computer wherever the
