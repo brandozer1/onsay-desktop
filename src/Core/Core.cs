@@ -182,8 +182,9 @@ static class Core
         catch (Exception) { return (null, "Onsay's helper on this computer took too long to answer. Try again in a moment."); }
     }
 
-    /* A POST to the floor signed by the app's key (RFC 9421): its method, its whole address and its body's digest, made
-       now, with a nonce never used before, the key naming itself as keyid; and the badge the owner gave the app. */
+    /* A POST to the floor signed by the app's key (RFC 9421): its method, its whole address, its body's digest and the
+       badge the owner gave the app, made now, with a nonce never used before, the key naming itself as keyid. The
+       signature covers the badge, so it can't be lifted onto another request. */
     static HttpRequestMessage Signed(string path, string body)
     {
         var url = $"{Url}{path}";
@@ -194,14 +195,15 @@ static class Core
         using (var random = RandomNumberGenerator.Create()) random.GetBytes(nonce);
         var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var hex = BitConverter.ToString(nonce).Replace("-", "").ToLower();
-        var signature = $"(\"@method\" \"@target-uri\" \"content-digest\");created={created};nonce=\"{hex}\";keyid=\"{KeyText(Seed("app"))}\"";
-        var basis = $"\"@method\": POST\n\"@target-uri\": {url}\n\"content-digest\": {digest}\n\"@signature-params\": {signature}";
+        var badge = Badge();
+        var signature = $"(\"@method\" \"@target-uri\" \"content-digest\" \"onsay-badge\");created={created};nonce=\"{hex}\";keyid=\"{KeyText(Seed("app"))}\"";
+        var basis = $"\"@method\": POST\n\"@target-uri\": {url}\n\"content-digest\": {digest}\n\"onsay-badge\": {badge}\n\"@signature-params\": {signature}";
         var sig = Ed25519.Sign(Seed("app"), Encoding.UTF8.GetBytes(basis));
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(bytes) };
         request.Headers.Add("Content-Digest", digest);
         request.Headers.Add("Signature-Input", $"sig={signature}");
         request.Headers.Add("Signature", $"sig=:{Convert.ToBase64String(sig)}:");
-        request.Headers.Add("Onsay-Badge", Badge());
+        request.Headers.Add("Onsay-Badge", badge);
         return request;
     }
 
@@ -233,7 +235,7 @@ static class Core
     static string KeyText(byte[] seed) => $"ed25519:{Convert.ToBase64String(Ed25519.Key(seed))}";
 
     /* The owner's grant to the app, everything on this computer for a day, made again an hour before it ends: {allow, by,
-       to, until}, written in that order, as Onsay signs, signed by the owner, and sent as the base64 of the list it is the
+       to, until, v}, written in that order, as Onsay signs, version 1, signed by the owner, and sent as the base64 of the list it is the
        one grant of. */
     static string? badge;
     static DateTime badgeMade;
@@ -241,7 +243,7 @@ static class Core
     {
         if (badge is not null && DateTime.Now - badgeMade < TimeSpan.FromHours(23)) return badge;
         var until = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 86_400;
-        var grant = new JsonObject { ["allow"] = new JsonArray("/"), ["by"] = KeyText(Seed("owner")), ["to"] = KeyText(Seed("app")), ["until"] = until };
+        var grant = new JsonObject { ["allow"] = new JsonArray("/"), ["by"] = KeyText(Seed("owner")), ["to"] = KeyText(Seed("app")), ["until"] = until, ["v"] = 1 };
         var sig = Ed25519.Sign(Seed("owner"), Encoding.UTF8.GetBytes(grant.ToJsonString(Plain)));
         grant["sig"] = Convert.ToBase64String(sig);
         badge = Convert.ToBase64String(Encoding.UTF8.GetBytes(new JsonArray(grant).ToJsonString(Plain)));
