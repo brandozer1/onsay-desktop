@@ -2,9 +2,10 @@
 // Setup) puts him in %LocalAppData%\Onsay: the launcher Onsay.exe, which never changes, version.txt naming the version
 // that runs, a folder for each version, app-<version>, and the uninstaller. Half a minute after he starts, and every hour
 // after, he asks the update lingo, built into the floor (Core.cs), for a newer version, which it puts together beside
-// this one, each file checked against the release Onsay signed. It goes in by itself the next time he isn't busy, his card put away and no to-do working: the update
-// lingo names it in version.txt and he starts again through the launcher, on the newer version. Quit before then, and it
-// goes in as he next starts. A build that was never installed (start.ps1's) does nothing here.
+// this one, each file checked against the release Onsay signed. It goes in by itself the next time he isn't busy, his
+// card put away and no to-do working: the update lingo names it in version.txt and he starts again through the
+// launcher, on the newer version. Quit before then, and it goes in as he next starts. A build that was never installed
+// (start.ps1's) does nothing here.
 //
 // 1. Start(idle)              the checks, from startup. idle says whether nothing is happening that a restart would cut
 //                             short
@@ -66,7 +67,11 @@ static class Updates
     {
         var (went, _) = await Task.Run(() => Core.Call("/update/apply", new JsonArray(Root, newer)));
         if (went is null) return false;
-        Process.Start(new ProcessStartInfo(Launcher, "--restarted") { UseShellExecute = true });
+        try
+        {
+            Process.Start(new ProcessStartInfo(Launcher, "--restarted") { UseShellExecute = true });
+        }
+        catch (Exception) { return false; }
         Application.Current.Dispatcher.Invoke(() => Application.Current.Shutdown());
         return true;
     }

@@ -3,7 +3,7 @@
 // person's: a lingo is an app and a rule is sharing.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
-// 2. Apps        a map of what is offered: the person's credits, then this computer and each other one on the account,
+// 2. Apps        a map of what is offered: the person's tokens, then this computer and each other one on the account,
 //                online or when last seen and how far it is trusted, each app it offers opening to what it can be asked
 //                and its price. An app on this computer opens to a page with tabs for what it can do, who can reach it
 //                and its settings
@@ -248,7 +248,7 @@ sealed class SettingsWindow : Window
         void Fill()
         {
             body.Children.Clear();
-            if (tab == CanDo) Abilities(body, l, Fill);
+            if (tab == CanDo) Abilities(body, l);
             else if (tab == WhoCan) Access(body, l, Fill);
             else Fields(body, l.Name);
         }
@@ -290,7 +290,7 @@ sealed class SettingsWindow : Window
 
     // 2. The things that matter that it says it uses. What it says is never a permission: this computer's rules decide, and
     //    they let its apps do anything until someone narrows them.
-    static void Abilities(StackPanel into, Core.Lingo l, Action again)
+    static void Abilities(StackPanel into, Core.Lingo l)
     {
         var asks = Core.Needs.Where(n => l.Needs.Contains(n.Name)).ToList();
         foreach (var (_, words) in asks) into.Children.Add(Item(words, null));
@@ -306,10 +306,13 @@ sealed class SettingsWindow : Window
         }
     }
 
-    // Whether a rule covers this app on this computer: no routes means every route, else one is the app's own path or under
-    // it, and no devices means every computer, else this one is named.
     // The path of a grant's address: laptop.brandon/photos and /photos are both /photos.
-    static string PathOf(string address) => address.IndexOf('/') is var at && at >= 0 ? address[at..] : "/";
+    static string PathOf(string address)
+    {
+        int at = address.IndexOf('/');
+        if (at < 0) return "/";
+        return address[at..];
+    }
 
     // Whether a grant reaches this app on this computer, here like desktop.brandon: an address starting with / is on every
     // computer of the account, and any other names a computer or a handle first.
@@ -330,7 +333,12 @@ sealed class SettingsWindow : Window
     }
 
     // The Onsay name a grant shares with, like james for laptop.james, or empty for anyone and Onsay.
-    static string PersonOf(JsonObject grant) => $"{grant["to"]}" is var to && to is not ("public" or "onsay") && !to.StartsWith("ed25519:") ? to.Split('.')[^1] : "";
+    static string PersonOf(JsonObject grant)
+    {
+        var to = $"{grant["to"]}";
+        if (to is "public" or "onsay" || to.StartsWith("ed25519:")) return "";
+        return to.Split('.')[^1];
+    }
 
     // 2. You, then each rule that reaches this app on this computer, with Stop sharing, and sharing with someone new first.
     static void Access(StackPanel into, Core.Lingo l, Action again)
@@ -361,8 +369,7 @@ sealed class SettingsWindow : Window
         }
     }
 
-    // Sharing an app: their Onsay name, and all of it or one part, picked. The grant is the account's, so onsay.dev and every
-    // computer see the same one.
+    // Sharing an app: their Onsay name, and all of it or one part, picked, kept as a grant in this computer's rules.
     static StackPanel ShareForm(Core.Lingo l, TextBlock said, Action<string?> did)
     {
         var form = new StackPanel { Margin = new Thickness(0, 12, 0, 12) };
@@ -472,7 +479,7 @@ sealed class SettingsWindow : Window
         Draw();
     }
 
-    // 2. The person's credits, one balance for all their computers, with what was spent and earned lately under Recent.
+    // 2. The person's tokens, one balance for all their computers, with what was spent and earned lately under Recent.
     static StackPanel Balance(JsonNode balance, JsonArray? recent)
     {
         var list = new StackPanel { Visibility = Visibility.Collapsed };
@@ -596,8 +603,10 @@ sealed class SettingsWindow : Window
             if (p["least"] != null) return $"priced by demand, at least {Amount(p["least"]!)} a call";
             return $"{Amount(p["amount"]!)} a call";
         }));
-        var lately = said["going"]?["request"] is JsonNode request ? $" Lately about {Amount(Math.Round(request.GetValue<double>(), 2))} a call." : "";
-        return $"Costs {words}.{lately}";
+        var price = $"Costs {words}.";
+        if (said["going"]?["request"] is JsonValue request && request.TryGetValue(out double lately))
+            price += $" Lately about {Amount(Math.Round(lately, 2))} a call.";
+        return price;
     }
 
     /* 2. An app's settings as its openapi.json declares them, each with its value now, kept on this computer wherever the
@@ -845,7 +854,7 @@ sealed class SettingsWindow : Window
             if (caller.Split('.') is [_, var them] && them != handle && allowed && why.StartsWith("grant: "))
             {
                 var path = $"{d?["route"]}";
-                shared = (policy?["grants"] as JsonArray ?? new()).OfType<JsonObject>().FirstOrDefault(g =>
+                shared = (policy["grants"] as JsonArray ?? new()).OfType<JsonObject>().FirstOrDefault(g =>
                     $"{g["to"]}" == why[7..] && Texts(g["allow"]).Select(PathOf).Any(x => x == "/" || path == x || path.StartsWith($"{x}/")));
             }
             if (shared is not null)
@@ -1014,21 +1023,18 @@ sealed class SettingsWindow : Window
 
         p.Children.Add(Section("Who can reach this computer"));
         Hint("Anyone not listed gets nothing, as if this computer weren't there. You, on this computer, always can.");
-        foreach (var grant in (policy?["grants"] as JsonArray ?? new()).OfType<JsonObject>())
+        foreach (var grant in (policy["grants"] as JsonArray ?? new()).OfType<JsonObject>())
             p.Children.Add(Item(Core.Who($"{grant["to"]}", null), RoutesIn(grant)));
         var rules = Path.Combine(Core.Home, "policy.json");
         if (File.Exists(rules))
         {
             p.Children.Add(Item("This computer's own rules", "What the apps here may do, kept in a file in Onsay's folder. With none, they may do anything.", Button("Open", Kind.Quiet, () => Native.Open(rules))));
         }
-        if (policy is not null)
-        {
-            var version = policy["account"]?["version"];
-            var inForce = version is null
-                ? "Your account has no rules yet, so this computer is closed to everyone but you."
-                : $"Your account's rules are version {version}, beside this computer's own.";
-            Log("Every rule in force here", inForce, () => policy.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        }
+        var version = policy["account"]?["version"];
+        var inForce = version is null
+            ? "Your account has no rules yet, so this computer is closed to everyone but you."
+            : $"Your account's rules are version {version}, beside this computer's own.";
+        Log("Every rule in force here", inForce, () => policy.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 
         p.Children.Add(Section("Keys"));
         var copied = Note("");

@@ -27,7 +27,7 @@
 //                                         opened in a row along its bottom, and
 //                                         Fix(item), Not quite on one. Named(id) is one by what was asked
 //     Load(id), Follow(...)               one to-do open, its whole conversation, and what it does as it runs
-//     ReadKey(), To(method, path, body)   the prompt key, and a request to the app's /onsay with it
+//     To(method, path, body)              a request to the app's /onsay with the prompt key
 //     Replied(...)                        his answer, with how it ended and how long it took
 //     Trial()                             once Onsay's AI trial is over, a card offering the subscription or your own key
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
@@ -146,7 +146,6 @@ sealed class ChatWindow : Window
     bool refreshing;
     string? session;                             // the to-do open, its session in the onsay lingo, or null for the list
     bool showingScreens;                         // the Screens page shows, over the list or the to-do open
-    string? promptKey;                           // the onsay lingo's prompt key, read again for each message
     int chat;                                    // which page this is, so an answer to one left behind is dropped
     bool waiting;                                // a reply to the one open is out
     JsonArray items = new();                     // every to-do as /onsay/sessions last gave them, the newest first
@@ -192,7 +191,6 @@ sealed class ChatWindow : Window
         if (Showing || waiting) return false;
         try
         {
-            await ReadKey();
             using var res = await Http.SendAsync(To(HttpMethod.Get, "/sessions"));
             if (JsonNode.Parse(await res.Content.ReadAsStringAsync()) is not JsonArray all) return false;
             return all.All(i => $"{i?["status"]}" != "working");
@@ -511,7 +509,6 @@ sealed class ChatWindow : Window
         ReadyInput();
         try
         {
-            await ReadKey();
             using var res = await Http.SendAsync(To(HttpMethod.Post, $"/sessions/{session}/show", new JsonObject { ["show"] = on }));
         }
         catch (Exception) { }
@@ -905,6 +902,7 @@ sealed class ChatWindow : Window
             }
             finally
             {
+                signing?.Dispose();
                 signing = null;
                 codeShown.Visibility = Visibility.Collapsed;
                 start.Visibility = Visibility.Visible;
@@ -985,7 +983,6 @@ sealed class ChatWindow : Window
         face.React("thinking");
         try
         {
-            await ReadKey();
             using var ask = To(HttpMethod.Post, "", message);
             var sending = Http.SendAsync(ask);
             await Task.Delay(300);
@@ -1008,7 +1005,6 @@ sealed class ChatWindow : Window
         listing = true;
         try
         {
-            if (promptKey is null) await ReadKey();
             using var res = await Http.SendAsync(To(HttpMethod.Get, "/sessions"));
             var text = await res.Content.ReadAsStringAsync();
             if (res.IsSuccessStatusCode && text != listed && JsonNode.Parse(text) is JsonArray all)
@@ -1212,7 +1208,6 @@ sealed class ChatWindow : Window
         Task<Border?>? followed = null;
         try
         {
-            await ReadKey();
             followed = Follow(mine, steps, done.Token, untilIdle: false);
             var message = new JsonObject { ["prompt"] = text, ["session"] = session };
             using var ask = To(HttpMethod.Post, "", message);
@@ -1289,19 +1284,12 @@ sealed class ChatWindow : Window
         listPage.ScrollToHome();
     }
 
-    // 6. The chat key, which the app's /onsay asks for (Host.cs).
-    Task ReadKey()
-    {
-        promptKey = Host.PromptKey;
-        return Task.CompletedTask;
-    }
-
-    // 6. A request to the onsay lingo's /onsay, with its prompt key as each message last read it.
+    // 6. A request to the app's /onsay, with the chat key it asks for (Host.cs).
     HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
     {
         var req = new HttpRequestMessage(method, $"{Host.Url}/onsay{path}");
         if (body is not null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-        req.Headers.Authorization = new("Bearer", promptKey);
+        req.Headers.Authorization = new("Bearer", Host.PromptKey);
         return req;
     }
 

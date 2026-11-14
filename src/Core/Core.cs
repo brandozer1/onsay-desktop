@@ -65,7 +65,7 @@ static class Core
         {
             ["home"] = Home,
             ["port"] = port,
-            ["owner"] = KeyText(Seed("owner")),
+            ["owner"] = KeyText("owner"),
             ["ms"] = 600_000,
             ["steps"] = 1_000_000_000,
         };
@@ -171,7 +171,8 @@ static class Core
         {
             using var request = Signed(path, body);
             if (run is not null) request.Headers.Add("Onsay-Run", run);
-            using var res = Http.SendAsync(request, new CancellationTokenSource(TimeSpan.FromMinutes(11)).Token).GetAwaiter().GetResult();
+            using var limit = new CancellationTokenSource(TimeSpan.FromMinutes(11));
+            using var res = Http.SendAsync(request, limit.Token).GetAwaiter().GetResult();
             var said = JsonNode.Parse(res.Content.ReadAsStringAsync().GetAwaiter().GetResult());
             if (res.IsSuccessStatusCode) return (said, null);
             // The search looked and found nothing: what it says about that is written for the person, so it is the answer.
@@ -196,7 +197,7 @@ static class Core
         var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var hex = BitConverter.ToString(nonce).Replace("-", "").ToLower();
         var badge = Badge();
-        var signature = $"(\"@method\" \"@target-uri\" \"content-digest\" \"onsay-badge\");created={created};nonce=\"{hex}\";keyid=\"{KeyText(Seed("app"))}\"";
+        var signature = $"(\"@method\" \"@target-uri\" \"content-digest\" \"onsay-badge\");created={created};nonce=\"{hex}\";keyid=\"{KeyText("app")}\"";
         var basis = $"\"@method\": POST\n\"@target-uri\": {url}\n\"content-digest\": {digest}\n\"onsay-badge\": {badge}\n\"@signature-params\": {signature}";
         var sig = Ed25519.Sign(Seed("app"), Encoding.UTF8.GetBytes(basis));
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(bytes) };
@@ -232,18 +233,27 @@ static class Core
         }
     }
 
-    static string KeyText(byte[] seed) => $"ed25519:{Convert.ToBase64String(Ed25519.Key(seed))}";
+    // The public key of one of them as the floor writes keys, worked out once, since Activity asks it of every row.
+    static readonly Dictionary<string, string> keyTexts = new();
+    static string KeyText(string name)
+    {
+        lock (keyTexts)
+        {
+            if (keyTexts.TryGetValue(name, out var known)) return known;
+            return keyTexts[name] = $"ed25519:{Convert.ToBase64String(Ed25519.Key(Seed(name)))}";
+        }
+    }
 
     /* The owner's grant to the app, everything on this computer for a day, made again an hour before it ends: {allow, by,
-       to, until, v}, written in that order, as Onsay signs, version 1, signed by the owner, and sent as the base64 of the list it is the
-       one grant of. */
+       to, until, v}, written in that order, as Onsay signs, version 1, signed by the owner, and sent as the base64 of the
+       list it is the one grant of. */
     static string? badge;
     static DateTime badgeMade;
     static string Badge()
     {
         if (badge is not null && DateTime.Now - badgeMade < TimeSpan.FromHours(23)) return badge;
         var until = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 86_400;
-        var grant = new JsonObject { ["allow"] = new JsonArray("/"), ["by"] = KeyText(Seed("owner")), ["to"] = KeyText(Seed("app")), ["until"] = until, ["v"] = 1 };
+        var grant = new JsonObject { ["allow"] = new JsonArray("/"), ["by"] = KeyText("owner"), ["to"] = KeyText("app"), ["until"] = until, ["v"] = 1 };
         var sig = Ed25519.Sign(Seed("owner"), Encoding.UTF8.GetBytes(grant.ToJsonString(Plain)));
         grant["sig"] = Convert.ToBase64String(sig);
         badge = Convert.ToBase64String(Encoding.UTF8.GetBytes(new JsonArray(grant).ToJsonString(Plain)));
@@ -344,15 +354,15 @@ static class Core
     {
         "this computer" => "You, on this computer",
         "public" => "Anyone",
-        _ when who == KeyText(Seed("app")) || who == KeyText(Seed("owner")) => "You, on this computer",
+        _ when who == KeyText("app") || who == KeyText("owner") => "You, on this computer",
         _ when who.StartsWith("ip ") => $"A computer at {who[3..]}",
         _ when who.Split('.') is [var device, var h] => h == handle ? $"Your {device}" : h,
         _ => who,
     };
 
     /* One lingo offered on the floor: whether it runs, why it can't, what it is, built into this app, what it needs, its
-       parts, its route, what it lacks, and what it can be asked. */
-    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts, string Route, string[] Missing, Function[] Calls);
+       parts, its route, and what it can be asked. */
+    public sealed record Lingo(string Name, bool Running, string? Error, string About, bool BuiltIn, string[] Needs, string[] Parts, string Route, Function[] Calls);
 
     // One thing an app can be asked for: its path, and its name and what it does in words.
     public sealed record Function(string Path, string Name, string Does);
@@ -365,7 +375,8 @@ static class Core
     {
         try
         {
-            using var res = Http.GetAsync(Url + "/", new CancellationTokenSource(3000).Token).GetAwaiter().GetResult();
+            using var limit = new CancellationTokenSource(3000);
+            using var res = Http.GetAsync(Url + "/", limit.Token).GetAwaiter().GetResult();
             if (!res.IsSuccessStatusCode) return null;
         }
         catch (Exception) { return null; }
@@ -389,7 +400,7 @@ static class Core
                 calls.Add(new Function(path, Title(path.Split('/').Last().Replace('_', ' ')), $"{op?["description"] ?? op?["summary"]}"));
             }
             var builtIn = Host.Lingos.Any(l => l.Name == e.Key);
-            return new Lingo(e.Key, true, null, $"{e.Value?["about"]}", builtIn, Array.Empty<string>(), Array.Empty<string>(), "/" + e.Key, Array.Empty<string>(), calls.ToArray());
+            return new Lingo(e.Key, true, null, $"{e.Value?["about"]}", builtIn, Array.Empty<string>(), Array.Empty<string>(), "/" + e.Key, calls.ToArray());
         }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
