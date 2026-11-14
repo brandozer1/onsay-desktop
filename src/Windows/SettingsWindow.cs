@@ -330,7 +330,13 @@ sealed class SettingsWindow : Window
     }
 
     // The Onsay name a grant shares with, like james for laptop.james, or empty for anyone and Onsay.
-    static string PersonOf(JsonObject grant) => $"{grant["to"]}" is var to && to is not ("public" or "onsay") && !to.StartsWith("ed25519:") ? to.Split('.')[^1] : "";
+    // A grant letting someone spend the account's credits shares nothing, so it names no one here.
+    static string PersonOf(JsonObject grant)
+    {
+        var to = $"{grant["to"]}";
+        if (grant["spend"] != null || to is "public" or "onsay" || to.StartsWith("ed25519:")) return "";
+        return to.Split('.')[^1];
+    }
 
     // 2. You, then each rule that reaches this app on this computer, with Stop sharing, and sharing with someone new first.
     static void Access(StackPanel into, Core.Lingo l, Action again)
@@ -585,19 +591,12 @@ sealed class SettingsWindow : Window
         return new Border { Padding = new Thickness(22, 6, 6, 6), BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 1), Child = line };
     }
 
-    /* 2. What one call costs in words, with what work like it goes for beside it when Onsay knows: Free, 5 credits a call,
-          or At least 2 credits a call. Nothing when Onsay hasn't said. */
+    /* 2. What calls of it have cost lately, the going rate Onsay gives, in words: Calls of it cost about 12 credits
+          lately. Nothing when its code has never charged, since a function is free unless its code charges. */
     static string? Price(JsonObject? said)
     {
-        if (said is null || !said.ContainsKey("price")) return null;
-        var price = said["price"];
-        string words;
-        if (price is null) words = "Free";
-        else if (price["amount"] is JsonNode amount) words = $"{Amount(amount)} a call";
-        else if (price["minimum"] is JsonNode least) words = $"At least {Amount(least)} a call";
-        else return null;
-        if (said["going"] is JsonNode going) words += $", tools like this clear at about {going}";
-        return words + ".";
+        if (said?["going"] is not JsonNode going) return null;
+        return $"Calls of it cost about {Amount(going)} lately.";
     }
 
     /* 2. An app's settings as its openapi.json declares them, each with its value now, kept on this computer wherever the
