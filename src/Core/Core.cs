@@ -16,7 +16,7 @@
 //    Policy(), Keep(policy)   the grants in policy.json, which the floor reads at every call
 // 4. Lingos()                 every lingo offered on the floor, an app on screen. Title(name) is its name on screen
 //    Switch(name, on)         an app turned on, offered again, or off, taken away
-//    Needs, Wants(call), Who(who, handle)   what an app uses, what a refused call does, and who a caller is, in words
+//    Wants(call), Who(who, handle)   what a call does, and who a caller is, in words
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -321,18 +321,7 @@ static class Core
 
     ////////// 4. THE LINGOS //////////
 
-    // 4. Each in words. What an app says it uses is never a permission: this computer's rules decide.
-    public static readonly (string Name, string Words)[] Needs =
-    {
-        ("screen.read", "Sees windows and what is in them"),
-        ("screen.act", "Clicks, types and opens apps"),
-        ("files.read", "Reads your files"),
-        ("files.write", "Changes, moves and deletes files"),
-        ("run", "Runs commands"),
-        ("lingos", "Makes and changes apps"),
-    };
-
-    // 4. What one of this computer's calls an app was refused does, in words, by its group, like files for files.read.
+    // 4. What one of this computer's calls does, in words, by its group, like files for files.read.
     public static string Wants(string call) => call.Split('.')[0] switch
     {
         "files" => "use your files",
@@ -384,14 +373,23 @@ static class Core
         catch (Exception) { return new(); }
     }
 
-    /* 4. From the table: each function a call, by its OpenAPI, its helpers left out. The app's own, the chat and
-          settings, are built in. Null while the floor isn't answering. */
+    // 4. The groups of this computer's own calls a lingo's code makes, like files for files.read(...).
+    static string[] Uses(string code)
+    {
+        var found = System.Text.RegularExpressions.Regex.Matches(code, @"\b([a-z]+)\.[a-z_]+\(");
+        return found.Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value).Where(g => Wants(g) != "do that").Distinct().ToArray();
+    }
+
+    /* 4. From the table: each function a call, by its OpenAPI, its helpers left out, and what its code uses. The app's
+          own, the chat and settings, are built in. A shipped lingo turned off is there too, not running. Null while the
+          floor isn't answering. */
     public static List<Lingo>? Lingos()
     {
         var table = Table();
         if (table is null) return null;
-        return table.Select(e =>
+        var lingos = table.Select(e =>
         {
+            var route = "/" + e.Key;
             var calls = new List<Function>();
             foreach (var (path, ops) in e.Value?["openapi"]?["paths"]?.AsObject() ?? new JsonObject())
             {
@@ -399,9 +397,17 @@ static class Core
                 if ((bool?)op?["x-lingo-internal"] == true) continue;
                 calls.Add(new Function(path, Title(path.Split('/').Last().Replace('_', ' ')), $"{op?["description"] ?? op?["summary"]}"));
             }
+            var parts = calls.Where(c => c.Path.StartsWith(route + "/")).Select(c => c.Path[route.Length..]).ToArray();
             var builtIn = Host.Lingos.Any(l => l.Name == e.Key);
-            return new Lingo(e.Key, true, null, $"{e.Value?["about"]}", builtIn, Array.Empty<string>(), Array.Empty<string>(), "/" + e.Key, calls.ToArray());
-        }).OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            return new Lingo(e.Key, true, null, $"{e.Value?["about"]}", builtIn, Uses($"{e.Value?["code"]}"), parts, route, calls.ToArray());
+        }).ToList();
+        foreach (var name in settings.Off ?? new())
+        {
+            var file = Path.Combine(Shipped, name + ".ls");
+            if (!File.Exists(file) || lingos.Any(l => l.Name == name)) continue;
+            lingos.Add(new Lingo(name, false, null, "", false, Uses(File.ReadAllText(file)), Array.Empty<string>(), "/" + name, Array.Empty<Function>()));
+        }
+        return lingos.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     // 4. On offers a shipped lingo's code again, off takes it away. Why not, or null.

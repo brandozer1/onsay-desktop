@@ -288,22 +288,13 @@ sealed class SettingsWindow : Window
         return said;
     }
 
-    // 2. The things that matter that it says it uses. What it says is never a permission: this computer's rules decide, and
+    // 2. What its code uses of this computer, in words. That is never a permission: this computer's rules decide, and
     //    they let its apps do anything until someone narrows them.
     static void Abilities(StackPanel into, Core.Lingo l)
     {
-        var asks = Core.Needs.Where(n => l.Needs.Contains(n.Name)).ToList();
-        foreach (var (_, words) in asks) into.Children.Add(Item(words, null));
-
-        string? reach = null;
-        if (l.Needs.Contains("net")) reach = "It reaches the internet.";
-        else if (asks.Count == 0) reach = "It needs nothing from this computer: not your screen, your files or your programs.";
-        if (reach is not null)
-        {
-            var line = Note(reach);
-            line.Margin = new Thickness(0, 10, 0, 0);
-            into.Children.Add(line);
-        }
+        var uses = l.Needs.Select(Core.Wants).Distinct().ToList();
+        foreach (var words in uses) into.Children.Add(Item(Core.Title(words), null));
+        if (uses.Count == 0) into.Children.Add(Note("It needs nothing from this computer: not your screen, your files or your programs."));
     }
 
     // The path of a grant's address: laptop.brandon/photos and /photos are both /photos.
