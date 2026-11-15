@@ -157,19 +157,21 @@ static class Core
 
     ////////// 2. CALLS //////////
 
-    // 2. values in order. A call may take as long as the floor lets it, 10 minutes, like a to-do's agent or an update.
-    public static (JsonNode? answer, string? why) Call(string path, JsonNode? values = null, string? run = null) =>
-        Send(path, (values ?? new JsonArray()).ToJsonString(Plain), run);
+    /* 2. values in order. A call may take as long as the floor lets it, 10 minutes, like a to-do's agent or an update.
+          task names the job it is part of, a to-do and its follow-ups, so each carries that job's badge and Onsay counts
+          how many times it was asked; with none, the call is a job of its own. */
+    public static (JsonNode? answer, string? why) Call(string path, JsonNode? values = null, string? run = null, string? task = null) =>
+        Send(path, (values ?? new JsonArray()).ToJsonString(Plain), run, task);
 
     // 2.
-    public static (JsonNode? answer, string? why) Run(string script, JsonObject? values = null, string? run = null) =>
-        Send("/", values is null ? script : new JsonObject { ["script"] = script, ["values"] = values }.ToJsonString(Plain), run);
+    public static (JsonNode? answer, string? why) Run(string script, JsonObject? values = null, string? run = null, string? task = null) =>
+        Send("/", values is null ? script : new JsonObject { ["script"] = script, ["values"] = values }.ToJsonString(Plain), run, task);
 
-    static (JsonNode? answer, string? why) Send(string path, string body, string? run)
+    static (JsonNode? answer, string? why) Send(string path, string body, string? run, string? task)
     {
         try
         {
-            using var request = Signed(path, body);
+            using var request = Signed(path, body, task ?? Guid.NewGuid().ToString("N"));
             if (run is not null) request.Headers.Add("Onsay-Run", run);
             using var limit = new CancellationTokenSource(TimeSpan.FromMinutes(11));
             using var res = Http.SendAsync(request, limit.Token).GetAwaiter().GetResult();
@@ -184,9 +186,9 @@ static class Core
     }
 
     /* A POST to the floor signed by the app's key (RFC 9421): its method, its whole address, its body's digest and the
-       badge the owner gave the app, made now, with a nonce never used before, the key naming itself as keyid. The
-       signature covers the badge, so it can't be lifted onto another request. */
-    static HttpRequestMessage Signed(string path, string body)
+       badge the owner gave the app for this task, made now, with a nonce never used before, the key naming itself as
+       keyid. The signature covers the badge, so it can't be lifted onto another request. */
+    static HttpRequestMessage Signed(string path, string body, string task)
     {
         var url = $"{Url}{path}";
         var bytes = Encoding.UTF8.GetBytes(body);
@@ -196,7 +198,7 @@ static class Core
         using (var random = RandomNumberGenerator.Create()) random.GetBytes(nonce);
         var created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var hex = BitConverter.ToString(nonce).Replace("-", "").ToLower();
-        var badge = Badge();
+        var badge = Badge(task);
         var signature = $"(\"@method\" \"@target-uri\" \"content-digest\" \"onsay-badge\");created={created};nonce=\"{hex}\";keyid=\"{KeyText("app")}\"";
         var basis = $"\"@method\": POST\n\"@target-uri\": {url}\n\"content-digest\": {digest}\n\"onsay-badge\": {badge}\n\"@signature-params\": {signature}";
         var sig = Ed25519.Sign(Seed("app"), Encoding.UTF8.GetBytes(basis));
@@ -244,21 +246,29 @@ static class Core
         }
     }
 
-    /* The owner's grant to the app, everything on this computer for a day, made again an hour before it ends: {allow, by,
-       to, until, v}, written in that order, as Onsay signs, version 1, signed by the owner, and sent as the base64 of the
-       list it is the one grant of. */
-    static string? badge;
-    static DateTime badgeMade;
-    static string Badge()
+    /* The owner's grant to the app for one task, everything on this computer for a day, made again an hour before it
+       ends: {allow, by, data, to, until, v}, written in that order, as Onsay signs, version 1, data naming the task so
+       each task's grant is its own, signed by the owner, and sent as the base64 of the list it is the one grant of. Its
+       signature is the task Onsay counts prompts by, so a to-do's follow-ups carry the same one. */
+    static readonly Dictionary<string, (string badge, DateTime made)> badges = new();
+    static string Badge(string task)
     {
-        if (badge is not null && DateTime.Now - badgeMade < TimeSpan.FromHours(23)) return badge;
-        var until = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 86_400;
-        var grant = new JsonObject { ["allow"] = new JsonArray("/"), ["by"] = KeyText("owner"), ["to"] = KeyText("app"), ["until"] = until, ["v"] = 1 };
-        var sig = Ed25519.Sign(Seed("owner"), Encoding.UTF8.GetBytes(grant.ToJsonString(Plain)));
-        grant["sig"] = Convert.ToBase64String(sig);
-        badge = Convert.ToBase64String(Encoding.UTF8.GetBytes(new JsonArray(grant).ToJsonString(Plain)));
-        badgeMade = DateTime.Now;
-        return badge;
+        lock (badges)
+        {
+            foreach (var old in badges.Where(b => DateTime.Now - b.Value.made >= TimeSpan.FromHours(23)).Select(b => b.Key).ToList()) badges.Remove(old);
+            if (badges.TryGetValue(task, out var known)) return known.badge;
+            var until = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 86_400;
+            var grant = new JsonObject
+            {
+                ["allow"] = new JsonArray("/"), ["by"] = KeyText("owner"), ["data"] = new JsonObject { ["task"] = task },
+                ["to"] = KeyText("app"), ["until"] = until, ["v"] = 1,
+            };
+            var sig = Ed25519.Sign(Seed("owner"), Encoding.UTF8.GetBytes(grant.ToJsonString(Plain)));
+            grant["sig"] = Convert.ToBase64String(sig);
+            var badge = Convert.ToBase64String(Encoding.UTF8.GetBytes(new JsonArray(grant).ToJsonString(Plain)));
+            badges[task] = (badge, DateTime.Now);
+            return badge;
+        }
     }
 
     ////////// 3. SETTINGS AND THE POLICY //////////

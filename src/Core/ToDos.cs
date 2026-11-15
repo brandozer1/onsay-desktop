@@ -129,6 +129,7 @@ static class ToDos
         if (prompt.Length == 0 || session.Length == 0) return (null, "A to-do needs what to do, and its session.");
         ToDo t;
         JsonArray log;
+        string task;
         lock (gate)
         {
             t = All().FirstOrDefault(x => x.Session == session) ?? new ToDo { Session = session, Prompt = prompt, From = message["from"]?.ToString() };
@@ -143,10 +144,14 @@ static class ToDos
             t.Steps.Clear();
             log = (JsonArray)t.Log.DeepClone();
             log.Add(new JsonObject { ["role"] = "user", ["content"] = prompt });
+            // The job: the first to-do of the ones this follows up, so a follow-up and a reply count as asking it again.
+            var first = t;
+            while (first.From is { Length: > 0 } from && All().FirstOrDefault(x => x.Session == from) is { } earlier) first = earlier;
+            task = first.Session;
         }
         // What they typed goes to the floor's compiler; words that aren't Lingo go to the lingo search with the conversation,
         // which finds what does it, like the agent, and tries the next best when one fails.
-        var (got, why) = Core.Run(prompt, new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log) }, session);
+        var (got, why) = Core.Run(prompt, new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log) }, session, task);
         // A long job goes on by itself, a go at a time, while the agent says there is more: each go's messages kept as it
         // ends, so nothing done is lost, and the next asked of the same lingo with the line it gave to go on.
         for (int go = 1; why is null && got?["again"] is JsonObject again && go < Goes; go++)
@@ -160,7 +165,7 @@ static class ToDos
             var next = again["values"]?.DeepClone() as JsonObject ?? new JsonObject();
             log.Add(new JsonObject { ["role"] = "user", ["content"] = $"{next["prompt"] ?? next["task"]}" });
             next["messages"] = Newest(log);
-            (got, why) = Core.Call($"/{again["address"]}", next, session);
+            (got, why) = Core.Call($"/{again["address"]}", next, session, task);
         }
         // The person never sees an error: what went wrong is kept in floor.log and in the conversation, so the agent knows
         // next time, and they get a line they can act on.
