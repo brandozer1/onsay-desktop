@@ -383,10 +383,10 @@ static class Core
         catch (Exception) { return new(); }
     }
 
-    // 4. The groups of this computer's own calls a lingo's code makes, like files for files.read(...).
+    // 4. The groups of this computer's own calls a lingo's code makes, like files for "/files/read"(...).
     static string[] Uses(string code)
     {
-        var found = System.Text.RegularExpressions.Regex.Matches(code, @"\b([a-z]+)\.[a-z_]+\(");
+        var found = System.Text.RegularExpressions.Regex.Matches(code, @"""/([a-z]+)/[a-z_]+""\(");
         return found.Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value).Where(g => Wants(g) != "do that").Distinct().ToArray();
     }
 

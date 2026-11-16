@@ -262,7 +262,7 @@ static class ToDos
         // like the browser showing its window or drawing its tabs on Onsay's screens.
         Task.Run(() =>
         {
-            var (lingos, _) = Core.Run("return lingo.list()");
+            var (lingos, _) = Core.Run("return \"/lingo/list\"()");
             foreach (var l in lingos as JsonArray ?? new JsonArray())
                 if (l?["functions"] is JsonArray functions && functions.Any(x => $"{x?["name"]}" == "shown"))
                     Core.Call($"/{l["name"]}/shown", new JsonArray(on), id);
