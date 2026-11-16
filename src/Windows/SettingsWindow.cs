@@ -876,7 +876,7 @@ sealed class SettingsWindow : Window
     {
         var p = Page("Settings", "Your account, how he looks, and Onsay on this computer.");
 
-        // 5. As the onsay lingo says: who this computer is signed in as, and its name on Onsay.
+        // 5. As Account.cs says: who this computer is signed in as, and its name on Onsay.
         p.Children.Add(Section("Your account"));
         var (status, why) = Account.Onsay("status");
         if (status is null)

@@ -56,9 +56,9 @@ skip}` a button for each choice, with Something else and Skip unless `other` or 
 answered, sends them as the next message in the same session, a line each, like `Where to? Rome`.
 
 **Any lingo can talk in the chat** through the app's `chat` lingo, which the floor sends on to the app, with the
-to-do it is for. `chat.ask` asks you while it works and waits: its questions open the chat and show as a card, and your
-answers go back to the lingo, so the agent carries on with them in the same turn. `chat.say` adds his line to the chat
-and `chat.step` a step under the to-do running; neither opens the chat, so the work keeps the keyboard.
+to-do it is for. `"/chat/ask"` asks you while it works and waits: its questions open the chat and show as a card, and your
+answers go back to the lingo, so the agent carries on with them in the same turn. `"/chat/say"` adds his line to the chat
+and `"/chat/step"` a step under the to-do running; neither opens the chat, so the work keeps the keyboard.
 
 His replies are drawn as Markdown, with Copy. What the base calls draw, his pointer, rings, and the chat
 lines, come as lines of JSON on the floor's output (`Overlay.cs`). Whatever lingo uses the mouse and keyboard, his
@@ -68,16 +68,16 @@ Work in the background has him click and type in apps without bringing them to t
 brings an app forward for one action when it doesn't allow that, saying why. Both are on at first, so he works unseen
 until he must show something or you ask to see, and both are kept by the floor (`input.modes`).
 
-**Screens** are canvases a lingo draws on as it works, like the browser's page, with `screen.open`, `screen.draw`,
-`screen.show` and `screen.close`: Canvas 2D instructions, drawn here by `Drawing.cs`, never pictures sent whole. Each to-do that opened some shows them in a small strip under its row, and above the box when it is
+**Screens** are canvases a lingo draws on as it works, like the browser's page, with `"/screen/open"`, `"/screen/draw"`,
+`"/screen/show"` and `"/screen/close"`: Canvas 2D instructions, drawn here by `Drawing.cs`, never pictures sent whole. Each to-do that opened some shows them in a small strip under its row, and above the box when it is
 open; a click shows them full screen, one at a time, and Screens, above the list, shows every one in a grid. `screen` is one
 of the app's own lingos, beside `chat` and `settings`: the floor sends each call here, `Screens.cs` keeps the screens with
 their to-do and `ScreensWindow.cs` shows them.
 
 **What an app may do is decided in one place.** This computer's own rules, a file in Onsay's folder that Advanced
 opens, let every app here do anything until someone narrows them. What an app says it uses is shown on its page, never
-a permission. Nothing asks per request. A question a lingo asks you with `chat.ask` shows in the chat, and your answer
-goes back through `/.lingo/answer`.
+a permission. Nothing asks per request. A question a lingo asks you with `"/chat/ask"` shows in the chat, and your answer goes
+back to it.
 
 ## Apps and settings
 

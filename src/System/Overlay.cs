@@ -8,11 +8,11 @@
 //                                                               moment it goes on
 //   {"show":"point","x":..,"y":..,"w":..,"h":..,"say":"..","seconds":n}   a ring around that box, him beside it
 //   {"show":"clear"}                                            the ring goes
-//   {"show":"say","text":".."}                                  he says that in the chat while the work goes on (chat.say)
-//   {"show":"step","text":".."}                                 a step line in the chat, under the message running (chat.step)
+//   {"show":"say","text":".."}                                  he says that in the chat while the work goes on ("/chat/say")
+//   {"show":"step","text":".."}                                 a step line in the chat, under the message running ("/chat/step")
 // glide, press and type come only while no follow is off (input.modes, set in Settings), so with it on his pointer never
 // shows, he stays where he is and the chat stays open: BuddyWindow and the chat follow Hand. Positions are real pixels
-// on the whole desktop. Each window is made once, on first use, and kept. chat.ask's questions
+// on the whole desktop. Each window is made once, on first use, and kept. "/chat/ask"'s questions
 // come another way, as the lingo client's questions for the app, see ChatWindow.Poll.
 //
 // 1. Line(text)    one line from the lingo client, on any thread

@@ -16,8 +16,8 @@
 //                                 here with a shown(on) function, and as chat.showing asks it
 // 3. Turns(id), Live(id)          one to-do's turns, {turns: [{prompt, text or questions}]}, and what it does now,
 //                                 {running, steps: [{text, depth}], questions}
-// 4. Step(run, text)              a step the floor's chat.step brings, for the to-do it runs for, else for the chat itself
-//    Ask(run, questions, seconds) what chat.ask brings: waited for until the person answers, or seconds pass
+// 4. Step(run, text)              a step the floor's "/chat/step" brings, for the to-do it runs for, else for the chat itself
+//    Ask(run, questions, seconds) what "/chat/ask" brings: waited for until the person answers, or seconds pass
 //    Asks(), Answer(id, answers)  the questions waiting that are no to-do's, {id, questions}, and the person's answers
 using System.IO;
 using System.Text.Json.Nodes;

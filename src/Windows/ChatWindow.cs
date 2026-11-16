@@ -19,7 +19,7 @@
 //                                         ends whatever it was doing
 // 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
 //                                         Settings, Account, and signing out from there
-// 5.  Refresh(), Page()                   the onsay lingo's status, and the page that fits it: sign in, the list,
+// 5.  Refresh(), Page()                   the account's status (Account.cs), and the page that fits it: sign in, the list,
 //                                         one to-do open, or Screens, every screen open
 // 6.  Send(), Add(text), Ask(text)        the box: a new to-do from the list, or a reply to the one open, followed as it
 //                                         runs, and his answer or his questions
@@ -140,11 +140,11 @@ sealed class ChatWindow : Window
     };
     readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, Margin = new Thickness(2, 0, 0, 0) };
 
-    // The onsay lingo's status: {signed_in, signing_in, failed, running, connected, handle, device, key}. Null until it
+    // The account's status (Account.cs): {signed_in, signing_in, failed, running, connected, handle, device, key}. Null until it
     // first answers.
     JsonObject? status;
     bool refreshing;
-    string? session;                             // the to-do open, its session in the onsay lingo, or null for the list
+    string? session;                             // the to-do open, its session (ToDos.cs), or null for the list
     bool showingScreens;                         // the Screens page shows, over the list or the to-do open
     int chat;                                    // which page this is, so an answer to one left behind is dropped
     bool waiting;                                // a reply to the one open is out
@@ -169,13 +169,13 @@ sealed class ChatWindow : Window
         public required TextBlock Head;
         public required StackPanel Body;
         public int Count;
-        public int Heard;                        // of the steps the onsay lingo kept, how many are lines here
+        public int Heard;                        // of the steps the app kept, how many are lines here
         public double Ms;
     }
     readonly List<StepList> stepLists = new();
     // The cards of the questions a lingo waits on, by their id in the lingo client (chat.ask).
     readonly Dictionary<double, Border> lingoCards = new();
-    // A prompt is waited for as long as it works: each of its calls ends within 10 minutes in the onsay lingo, its steps
+    // A prompt is waited for as long as it works: each of its calls ends within 10 minutes on the floor, its steps
     // show meanwhile, and Stop ends it.
     static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
     // Where Onsay's AI is subscribed to, on Onsay's website, and whether that was offered since the app started.
@@ -185,7 +185,7 @@ sealed class ChatWindow : Window
     public bool Busy => waiting;                    // a message sent from here is being answered
 
     /* Whether nothing is happening that a restart would cut short, so an update may go in: the card put away, which a
-       lingo's question opens, and no to-do working, as the onsay lingo lists them. Not knowing counts as busy. */
+       lingo's question opens, and no to-do working, as ToDos.cs lists them. Not knowing counts as busy. */
     public async Task<bool> Idle()
     {
         if (Showing || waiting) return false;
@@ -830,7 +830,7 @@ sealed class ChatWindow : Window
 
     ////////// 4-5. SIGNING IN, AND THE PAGES //////////
 
-    /* 4. Sign in asks the onsay lingo, which gives the address to open and the code that page shows, and finishes on its own
+    /* 4. Sign in asks Account.cs, which gives the address to open and the code that page shows, and finishes on its own
           once the person presses Connect there. The code shows here too, so they know it is theirs, with Cancel. done runs
           once signed in. centre lines it up for the chat's own page. */
     public FrameworkElement SignInBox(Action? done = null, bool centre = false)
@@ -933,7 +933,7 @@ sealed class ChatWindow : Window
         Page();
     }
 
-    // 5. The list until a to-do is opened, and while the onsay lingo hasn't answered yet, getting ready.
+    // 5. The list until a to-do is opened, and while the app hasn't answered yet, getting ready.
     void Page()
     {
         bool known = status is not null;
@@ -973,7 +973,7 @@ sealed class ChatWindow : Window
         else Add(text);
     }
 
-    /* 6. A new to-do: sent to /onsay in a session of its own, named here the onsay lingo's way so the list shows it at
+    /* 6. A new to-do: kept by ToDos.cs in a session of its own, named here so the list shows it at
           once, following up the one Not quite was pressed on, if any. The list follows it from there. */
     async void Add(string text)
     {
@@ -997,7 +997,7 @@ sealed class ChatWindow : Window
         Trial();
     }
 
-    /* 6. Every to-do, as the onsay lingo lists them: drawn again when anything changed, and the open one loaded again once
+    /* 6. Every to-do, as ToDos.cs lists them: drawn again when anything changed, and the open one loaded again once
           its status moves on, unless it is followed already. */
     async void List()
     {
@@ -1091,7 +1091,7 @@ sealed class ChatWindow : Window
     // 6. A to-do's name by its session, what was asked, for the screens it opened.
     string Named(string id) => $"{items.FirstOrDefault(i => $"{i?["session"]}" == id)?["prompt"] ?? "A to-do"}";
 
-    /* 6. One to-do open: its whole conversation as the onsay lingo keeps it, each prompt, then its reply, or the questions
+    /* 6. One to-do open: its whole conversation as ToDos.cs keeps it, each prompt, then its reply, or the questions
           it ended with as a card. One working or asking shows what it does as it happens, until it stops and the list
           loads it again. */
     async void Load(string id)
@@ -1180,13 +1180,13 @@ sealed class ChatWindow : Window
         return card;
     }
 
-    // 6. Lines for the steps the onsay lingo kept that aren't drawn yet.
+    // 6. Lines for the steps the app kept that aren't drawn yet.
     void Hear(StepList steps, JsonArray all)
     {
         for (; steps.Heard < all.Count; steps.Heard++) AddStep(steps, $"{all[steps.Heard]?["text"]}", (int?)all[steps.Heard]?["depth"] ?? 0);
     }
 
-    /* 6. A reply to the one open: shown as yours at once, then sent to the onsay lingo's /onsay with its prompt key, in
+    /* 6. A reply to the one open: shown as yours at once, then sent to ToDos.cs, in
           its session, followed as it runs (Follow). Its answer is his reply, or
           questions back. */
     async void Ask(string text)
@@ -1735,7 +1735,7 @@ sealed class ChatWindow : Window
     {
         var rows = new StackPanel();
         var menu = Pop(anchor, rows);
-        // The chat as the onsay lingo keeps it in its session: each message, then his reply or his questions.
+        // The chat as ToDos.cs keeps it in its session: each message, then his reply or his questions.
         if (session is not null) rows.Children.Add(Row("Copy chat", "The whole chat, as text", async () =>
         {
             menu.IsOpen = false;
