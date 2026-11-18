@@ -38,13 +38,11 @@
     <Resource Include="fonts\*.ttf" />
   </ItemGroup>
 
-  <!-- The floor, the lingo client made for Windows, with the Windows lingos and the update lingo built in, ships beside
-       the app, and so do the lingos the app offers it, a .ls file each, like agent, the AI agent: from the lingo-client
-       project beside this one, built first with ..\lingo-client\core\build.ps1. release.ps1 ships the 32-bit floor for
-       32-bit Windows. -->
+  <!-- The floor, the lingo client made for Windows, with its base calls and updates built in, ships beside the app: from
+       the lingo-client project beside this one, built first with ..\lingo-client\ports\c\build.ps1. release.ps1 ships the
+       32-bit floor for 32-bit Windows. -->
   <ItemGroup>
-    <None Include="..\lingo-client\core\bin\windows\floor.exe" Link="floor.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\core\bin\windows\floor.exe')" />
-    <None Include="..\lingo-client\lingo-library\*\*.ls" Link="lingos\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\lingo-client\ports\c\bin\windows\floor.exe" Link="floor.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\ports\c\bin\windows\floor.exe')" />
   </ItemGroup>
 
 </Project>

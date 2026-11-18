@@ -1,5 +1,5 @@
 // Overlay.cs - what the base calls ask to be drawn while Onsay acts, read from the lingo client's output a line of JSON at
-// a time (Core.cs). See ../lingo-client/lingos/windows/windows.c, the hand:
+// a time (Core.cs). See ../lingo-client/ports/c/builtin/windows/windows.c, the hand:
 //   {"show":"glide","from":[x,y],"to":[x,y],"ms":n,"bend":b,"real":r,"text":t}   his pointer glides there along that
 //                                                               curve, the real mouse with it when r, as a text cursor
 //                                                               where he is about to type when t

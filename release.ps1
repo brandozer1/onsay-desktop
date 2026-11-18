@@ -5,7 +5,7 @@
 # routes/updates.js). Run it with: ./release.ps1 0.2.0
 # It runs on Windows or Linux, and release.sh puts what it made in Onsay's storage.
 #
-# Needs the .NET SDK, zig for the lingo client and the launcher (see ../lingo-client/core/build.ps1), and Inno Setup 6,
+# Needs the .NET SDK, zig for the lingo client and the launcher (see ../lingo-client/ports/c/build.ps1), and Inno Setup 6,
 # from jrsoftware.org: on Linux under Wine, at $env:ISCC, with ImageMagick for the splash.
 param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version)
 $ErrorActionPreference = "Stop"
@@ -30,7 +30,7 @@ if (-not $zig -and $windows) { $zig = Get-ChildItem "$env:LOCALAPPDATA\zig" -Rec
 if (-not $zig) { stop "zig wasn't found. Get it from ziglang.org/download" }
 
 # The lingo client and its floors, then the app, then the launcher, 32-bit so it runs on every Windows.
-$client = "$here/../lingo-client/core"
+$client = "$here/../lingo-client/ports/c"
 & "$client/build.ps1"
 if ($LASTEXITCODE -ne 0) { stop "The lingo client didn't build" }
 if (Test-Path publish) { Remove-Item publish -Recurse -Force }

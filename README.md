@@ -89,8 +89,9 @@ back to it.
 | Settings | sections of one setting a row: the account and signing in and out, starting with Windows, Work in the background and Show where he clicks, his look, updates and Uninstall Onsay |
 | Advanced | the same rows, in plain labels: this computer's own rules, every rule in force and all of them in full, this computer's key and the chat (prompt) key to copy, the folders, and the logs, each read in place in a monospace viewer with Copy and Open the file: every request (`requests.log`) as written, which is what is sent to Onsay, sealed, and the floor's `floor.log` |
 
-**What it ships.** Each `.ls` file in `..\lingo-client\lingo-library`, like `agent` and `ai`, offered to the floor with
-its code each time the floor starts, so the floor keeps it and runs it. It remembers which it offered once (`Started` in
+**What it ships.** Each `.ls` file in its own `lingos` folder beside the app, offered to the floor with its code each
+time the floor starts, so the floor keeps it and runs it. It ships none for now: the old library (`agent`, `ai` and the
+rest) was archived on 2026-11-17. It remembers which it offered once (`Started` in
 `desktop.json`), so one you turn off stays off.
 
 **How it talks to the floor.** As a lingo: each call a request to the floor, signed by the app's own key and carrying a
@@ -113,7 +114,7 @@ uninstall mean to install again.
 ## Building
 
 ```
-..\lingo-client\core\build.ps1   builds the floor, in the lingo-client project beside this one
+..\lingo-client\ports\c\build.ps1   builds the floor, in the lingo-client project beside this one
 .\start.ps1                       builds and starts the app. Needs the .NET SDK
 .\release.ps1 0.2.0               a release in Releases\. Needs Inno Setup 6, from jrsoftware.org
 ```
@@ -141,7 +142,7 @@ signed, and put it in by themselves the next time he isn't busy, his card put aw
 
 | File | Job |
 |------|-----|
-| `Onsay.csproj` | the build, with the floor and the lingos the app offers it copied in from `..\lingo-client` |
+| `Onsay.csproj` | the build, with the floor copied in from `..\lingo-client\ports\c` |
 | `app.manifest` | tells Windows the app is per monitor DPI aware |
 | `onsay.ico` | his face as the app, launcher and installer icon |
 | `splash.png` | what the installer shows while it puts him in |
