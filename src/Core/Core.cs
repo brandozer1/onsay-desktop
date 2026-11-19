@@ -23,7 +23,7 @@ namespace Onsay.Desktop;
 
 static class Core
 {
-    const int Port = 6969;   // where the port answers, on this computer alone
+    static int port;   // where the port answers, on this computer alone: a free one, picked each time it starts
     public static readonly string Home = Path.Combine(Settings.Folder, "port");
     public static readonly string Log = Path.Combine(Settings.Folder, "port.log");
     static readonly string KeyFile = Path.Combine(Settings.Folder, "keys", "device.key");
@@ -46,6 +46,10 @@ static class Core
     {
         Stop();
         Directory.CreateDirectory(Home);
+        var free = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        free.Start();
+        port = ((System.Net.IPEndPoint)free.LocalEndpoint).Port;
+        free.Stop();
         wanted = true;
         Run();
     }
@@ -60,7 +64,7 @@ static class Core
             WorkingDirectory = Home,
         };
         info.EnvironmentVariables["ONSAY_HOME"] = Home;
-        info.EnvironmentVariables["ONSAY_PORT"] = $"{Port}";
+        info.EnvironmentVariables["ONSAY_PORT"] = $"{port}";
         info.EnvironmentVariables["ONSAY_KEY"] = $"onsay_device_{Base64Url(Seed())}";
         var p = new Process { StartInfo = info, EnableRaisingEvents = true };
         void Write(string? line)
@@ -113,7 +117,7 @@ static class Core
         try
         {
             var local = File.ReadAllText(Path.Combine(Home, "local.key")).Trim();
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{Port}{path}")
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}{path}")
             {
                 Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
             };
