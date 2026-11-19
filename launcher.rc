@@ -1,0 +1,2 @@
+// launcher.rc - the launcher's icon, his round face, so his shortcuts and Programs and Features show it.
+1 ICON "onsay.ico"

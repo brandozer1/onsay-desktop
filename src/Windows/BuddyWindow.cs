@@ -108,6 +108,7 @@ sealed class BuddyWindow : Window
             // The first time, he is set up, and then the chat opens.
             if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, chat, () => Toggle(true)));
             chat.Poll();   // a lingo's questions for the person, in the chat
+            Updates.Start(chat.Idle);
         };
         DpiChanged += (_, _) =>
         {

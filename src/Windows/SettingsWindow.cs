@@ -2,7 +2,7 @@
 // the right. One window at a time, above his chat, and every change takes effect as it is made.
 //
 // 1. Open(settings, chat, page)   shows it, or brings the one already open to the front, on the page named
-// 2. Settings    the account, starting with Windows, his look and his version
+// 2. Settings    the account, starting with Windows, his look, updates and removing Onsay
 // 3. Advanced    this computer's key, its folders, and the logs to read
 // 4. Pieces      Section, a heading; Item, a row; Boxed, an input in its border; Lines, a log's newest lines
 using System.IO;
@@ -194,8 +194,31 @@ sealed class SettingsWindow : Window
         };
         p.Children.Add(new DockPanel { Children = { preview, SetupWindow.LookPicker(settings, () => preview.React("yes")) } });
 
-        p.Children.Add(Section("About"));
-        p.Children.Add(Item($"Version {Core.Version}", "Onsay for Windows."));
+        p.Children.Add(Section("Updates"));
+        if (!Updates.Installed)
+        {
+            p.Children.Add(Item($"Version {Core.Version}", "Built on this computer, so this copy doesn't update itself."));
+            return p;
+        }
+        // Update now checks at once and, with a newer version, puts it in and starts him again on it; else it says why not.
+        var came = Note("");
+        Border? update = null;
+        update = Button("Update now", Kind.Quiet, async () =>
+        {
+            var label = (TextBlock)update!.Child;
+            if (label.Text == "Checking...") return;
+            label.Text = "Checking...";
+            came.Text = await Updates.Now();
+            label.Text = "Update now";
+        });
+        p.Children.Add(Item($"Version {Core.Version}", "Updates by itself: a newer version downloads quietly and goes in while he isn't busy. Update now gets it straight away and starts him again.", update));
+        p.Children.Add(came);
+        p.Children.Add(Section("Remove Onsay"));
+        p.Children.Add(Item("Uninstall Onsay", "Takes the app, its shortcuts and its startup off this computer, and asks whether your settings and chats go too.", Button("Uninstall", Kind.Danger, () =>
+        {
+            Updates.Uninstall();
+            Application.Current.Shutdown();
+        })));
         return p;
     }
 

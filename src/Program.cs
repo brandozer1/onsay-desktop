@@ -15,6 +15,14 @@ static class Program
         // TLS 1.2 for every web request, which Windows 7 leaves off unless asked.
         System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
 
+        // The uninstaller's turn first (src/System/Updates.cs): it stops him starting with Windows, and asks whether his data
+        // goes too.
+        if (args.Contains("--uninstalling"))
+        {
+            Updates.Uninstalling();
+            return;
+        }
+
         /* One of him. A second launch is somebody opening Onsay again, maybe after closing him, not asking for twins: it
            brings the first one back and ends. A newer version started by an update, with --restarted, waits for the one
            before it to end instead. A test, with a folder of its own in ONSAY_DATA, is one of him for that folder, so it

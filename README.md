@@ -11,7 +11,7 @@ It is two things:
   came out. That log goes to Onsay, sealed, and is how the lingo search learns what works. He thinks with Onsay's AI
   and works with two tools, the shell and the lingo search.
 
-Everything from before, the lingo client, screens, his pointer, the installer and updates, is on the `archive` branch.
+Everything from before, the lingo client, screens and his pointer, is on the `archive` branch.
 
 ## Setting him up
 
@@ -46,7 +46,15 @@ before he starts, so it never touches yours.
 ```
 cd agent && npm install    the agent and the port, from ../onsay-ports beside this one
 .\start.ps1                builds and starts the app. Needs the .NET SDK and Node
+.\release.ps1 0.27.0       a release in Releases\: the installer and the files updates come from. Also needs zig
+                           and Inno Setup 6, and downloads Node for 64 and 32-bit Windows
+sh release.sh upload 0.27.0   puts a release made here in Onsay's storage (keys in .env, never in git)
 ```
+
+The installer puts him in `%LocalAppData%\Onsay` with no admin rights, on Windows 10 and later, the oldest Node runs on.
+Installed, he checks Onsay every hour for a newer release, checks Onsay signed it, downloads only the files that changed,
+checks each one, and goes in by himself the next time he isn't busy (`src/System/Updates.cs`). Update now and Uninstall
+are in Settings.
 
 ## Layout
 
@@ -57,12 +65,17 @@ cd agent && npm install    the agent and the port, from ../onsay-ports beside th
 | `onsay.ico` | his face as the app's icon |
 | `fonts/` | the website's fonts, Gabarito and IBM Plex, which every window uses, with their license (`OFL.txt`) |
 | `start.ps1` | builds and starts the app, closing a running one first |
+| `release.ps1` | a release: the installer and the files updates come from, in `Releases\`, on Windows or Linux |
+| `release.sh` | a release made on a server in a throwaway container and put in Onsay's storage, or one made here uploaded |
+| `setup.iss` | the installer, for Inno Setup: one for 32 and 64-bit Windows 10 and later |
+| `launcher.c`, `launcher.rc` | `Onsay.exe` in the install folder, starting the version `version.txt` names, with his icon |
+| `splash.png` | what the installer shows while it puts him in |
 | `agent/` | his agent, a Node app on Onsay's port |
 | `src/Program.cs` | the entry point: one of him, sitting on the taskbar |
 | `src/Core/Core.cs` | runs the port with the agent, this computer's key, and adding it to your account |
 | `src/Core/ToDos.cs` | your to-dos, each run by the agent, with its steps |
 | `src/Windows/` | every window: him on the taskbar (`BuddyWindow`), the chat and the look every window shares (`ChatWindow`), replies drawn as Markdown (`Markdown`), setting him up (`SetupWindow`) and settings (`SettingsWindow`) |
-| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), the app's settings and starting with Windows (`Settings`), Ed25519 keys (`Ed25519`), and what .NET Framework 4.8 lacks (`Compat`) |
+| `src/System/` | Windows itself: Win32 calls (`Native`), docking maths (`Dock`), the stop key (`StopKey`), the app's settings and starting with Windows (`Settings`), updates and removing him (`Updates`), Ed25519 keys (`Ed25519`), and what .NET Framework 4.8 lacks (`Compat`) |
 | `src/Character/` | his face as data (`Face`) and the view that animates it (`OnsayView`) |
 
 ## License

@@ -177,12 +177,19 @@ sealed class SetupWindow : Window
         return Step("Make him yours", "Pick his colour, his face and his surface. He changes as you pick.", LookPicker(settings, () => him.React("yes")));
     }
 
-    // 2.
+    // 2. Shortcuts are only for a copy that was installed, since a built one has nowhere fixed to point them.
     UIElement Find()
     {
         Line("Where should I be?");
         Actions(Button("Back", Kind.Quiet, () => Go(1)), Button("Next", Kind.Primary, () => Go(3)));
         var list = new StackPanel();
+        if (Updates.Installed)
+        {
+            bool onDesktop = Updates.Shortcut(Updates.Place.Desktop);
+            bool inStart = Updates.Shortcut(Updates.Place.StartMenu);
+            list.Children.Add(Switch("A shortcut on your desktop", "Open his chat from your desktop.", onDesktop, on => Updates.Shortcut(Updates.Place.Desktop, on)));
+            list.Children.Add(Switch("In the Start menu", "Find him by typing Onsay in Start.", inStart, on => Updates.Shortcut(Updates.Place.StartMenu, on)));
+        }
         list.Children.Add(Switch("Start with Windows", "He appears on your taskbar when you sign in.", Startup.IsOn, Startup.Set));
         return Step("Where to find him", "He always sits on your taskbar. Click him to chat, or drag him anywhere you like.", list);
     }
