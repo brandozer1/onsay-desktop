@@ -1,0 +1,9 @@
+{
+  "name": "onsay-port",
+  "private": true,
+  "type": "module",
+  "description": "Onsay's port for Node, which Onsay Desktop runs, making this computer a device of the person's account",
+  "dependencies": {
+    "onsay": "file:../../onsay-ports/node"
+  }
+}

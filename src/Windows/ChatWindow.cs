@@ -1,6 +1,6 @@
 // ChatWindow.cs - the card that opens beside him, or docked along a side of his screen: signing in, your to-dos, or one
-// to-do open, and the look every window shares. It only draws: each to-do is kept by the app (ToDos.cs) and run by the agent on
-// this computer's port (Core.cs), and what comes back is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
+// to-do open, and the look every window shares. It only draws: each to-do is kept by the app (ToDos.cs) and asked of Onsay
+// through this computer's port (Core.cs), and what comes back is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
 // it has got, and Not quite on a done one makes a new one that follows it up. Opening one shows its whole conversation,
 // and the box there replies to it. Its X closes it, and so do he (his back has an X while it is open) and Esc. While he
 // works his steps show as they happen, folded under one line once he answers. It sits beside him and moves with him, or docked to the left,

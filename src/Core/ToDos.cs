@@ -1,5 +1,5 @@
-// ToDos.cs - the person's to-dos, kept by the app in todos.json: each what they asked, run by the agent on this
-// computer's port (Core.cs, /agent/ask), the steps it shows coming as it works, and its turns, each prompt and its reply.
+// ToDos.cs - the person's to-dos, kept by the app in todos.json: each what they asked, asked of Onsay through this
+// computer's port (Core.cs, /onsay/ask), and its turns, each prompt and its reply.
 // Not quite on a done one makes a new one carrying everything before it. The chat (ChatWindow.cs) reaches them through
 // Local, answered in this app.
 //
@@ -13,7 +13,7 @@
 //    Show(id, on), Showing(run)   whether the person watches a to-do's work
 // 3. Turns(id), Live(id)          one to-do's turns, {turns: [{prompt, text or questions}]}, and what it does now,
 //                                 {running, steps: [{text, depth}], questions}
-// 4. Step(run, text)              a step the agent shows, for the to-do it runs for
+// 4. Step(run, text)              a step shown under the to-do it is for
 //    Ask(run, questions, seconds) questions waited on until the person answers, or seconds pass
 //    Asks(), Answer(id, answers)  the questions waiting that are no to-do's, {id, questions}, and the person's answers
 // 5. Local                        the chat's requests, answered here: POST / a prompt, GET /sessions, /sessions/<id>,
@@ -30,7 +30,7 @@ static class ToDos
 {
     const int Most = 200;   // the newest to-dos kept
 
-    // A to-do: log is its whole conversation as the agent reads it, chat messages in OpenAI's shape.
+    // A to-do: log is its whole conversation, chat messages in OpenAI's shape, sent with each prompt.
     sealed class ToDo
     {
         public string Session = "", Prompt = "", Status = "done";
@@ -120,9 +120,8 @@ static class ToDos
 
     ////////// 2. A PROMPT //////////
 
-    /* 2. Run by agent.ask with the conversation so far, a follow-up starting from the one it follows, its steps and
-          questions coming as the run named by its id. The agent gives back its reply, or questions, and the messages it
-          added, which the conversation keeps. */
+    /* 2. Asked of Onsay with the conversation so far, a follow-up starting from the one it follows. Onsay gives back its
+          answer, which the conversation keeps. */
     public static (JsonObject? answer, string? why) Prompt(JsonObject message)
     {
         var prompt = $"{message["prompt"]}".Trim();
@@ -150,9 +149,9 @@ static class ToDos
             while (first.From is { Length: > 0 } from && All().FirstOrDefault(x => x.Session == from) is { } earlier) first = earlier;
             task = first.Session;
         }
-        // The agent on the port, with the conversation so far, its steps shown as they come.
-        var (got, why) = Core.Ask("/agent/ask", new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log), ["show"] = t.Show }, step => Step(session, "step", step));
-        // The person never sees an error: what went wrong is kept in port.log and in the conversation, so the agent knows
+        // Asked of Onsay from this computer's port, with the conversation so far.
+        var (got, why) = Core.Ask("/onsay/ask", new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log) }, step => Step(session, "step", step));
+        // The person never sees an error: what went wrong is kept in port.log and in the conversation, so Onsay knows
         // next time, and they get a line they can act on.
         if (why is not null)
         {
@@ -164,7 +163,7 @@ static class ToDos
         {
             t.Status = "done";
             var turn = new JsonObject { ["prompt"] = prompt };
-            // An agent answers {text, messages} or {questions}; anything else the search found answers with its value.
+            // Onsay answers {text} or {questions}.
             var answered = got as JsonObject;
             if (answered?["questions"] is JsonArray questions) turn["questions"] = questions.DeepClone();
             else if (why is not null) turn["text"] = why;
@@ -192,8 +191,8 @@ static class ToDos
         return newest;
     }
 
-    // What a go adds to the conversation: the messages an agent gave, else what answered as the assistant's words, or, when
-    // it failed, what went wrong, for the agent to read next time.
+    // What a go adds to the conversation: the messages given back, else what answered as the assistant's words, or, when
+    // it failed, what went wrong, for Onsay to read next time.
     static void Kept(JsonArray log, JsonNode? got, string? failed)
     {
         if (failed is not null)
@@ -234,7 +233,7 @@ static class ToDos
         }
     }
 
-    // 2. A working one changes from its next step, as the agent asks again each turn.
+    // 2. A working one changes from its next step, as it is asked again each turn.
     public static void Show(string id, bool on)
     {
         lock (gate)

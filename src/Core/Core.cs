@@ -1,11 +1,12 @@
-// Core.cs - this computer's port: Onsay's port for Node (../onsay-ports/node) running the agent (agent/agent.js), which
-// makes this computer a device of the person's Onsay account. The device key is made here, its private half sealed for
+// Core.cs - this computer's port: Onsay's port for Node (../onsay-ports/node, installed in port/), which makes this
+// computer a device of the person's Onsay account: its shell callable, every call logged raw, and the person's prompts
+// asked of Onsay from here (/onsay/ask). The device key is made here, its private half sealed for
 // this Windows user and never sent anywhere; signing in is adding its public half on onsay.dev's Devices page. The app
 // calls the port on this computer alone, with the owner's local key it keeps in its folder.
 //
-// 1. Start()                  starts the port with the agent, and starts it again if it ever stops: on startup and the
+// 1. Start()                  starts the port, and starts it again if it ever stops: on startup and the
 //                             stop key. Stop(), Running ends it, keeps it ended, and whether it runs
-// 2. Ask(path, body, step)    one call on the port, like /agent/ask, its answer read a line at a time: each { step }
+// 2. Ask(path, body, step)    one call on the port, like /onsay/ask, its answer read a line at a time: each { step }
 //                             given to step as it comes, and the last line the answer, or why not in words
 // 3. Status()                 { signed_in, connected, handle, device, key }: whether Onsay knows this computer's key,
 //                             as the port last heard, and its name there. SignedIn fires the first time it is
@@ -27,7 +28,7 @@ static class Core
     public static readonly string Home = Path.Combine(Settings.Folder, "port");
     public static readonly string Log = Path.Combine(Settings.Folder, "port.log");
     static readonly string KeyFile = Path.Combine(Settings.Folder, "keys", "device.key");
-    static readonly string Agent = Path.Combine(AppContext.BaseDirectory, "agent", "agent.js");
+    static readonly string Port = Path.Combine(AppContext.BaseDirectory, "port", "node_modules", "onsay", "bin", "onsay.js");
     // Node, as shipped beside the app, else the one on the path.
     static readonly string Node = File.Exists(Path.Combine(AppContext.BaseDirectory, "node", "node.exe"))
         ? Path.Combine(AppContext.BaseDirectory, "node", "node.exe")
@@ -57,8 +58,8 @@ static class Core
     // Its errors go to port.log.
     static void Run()
     {
-        if (!wanted || process is { HasExited: false } || !File.Exists(Agent)) return;
-        var info = new ProcessStartInfo(Node, $"\"{Agent}\"")
+        if (!wanted || process is { HasExited: false } || !File.Exists(Port)) return;
+        var info = new ProcessStartInfo(Node, $"\"{Port}\" start")
         {
             CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true,
             WorkingDirectory = Home,

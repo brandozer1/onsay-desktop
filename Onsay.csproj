@@ -1,4 +1,4 @@
-<!-- Onsay.csproj - the Windows app's build: a WPF program, with his agent (agent/) beside it, which runs on Onsay's port for Node. -->
+<!-- Onsay.csproj - the Windows app's build: a WPF program, with Onsay's port for Node (port/) beside it. -->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -7,7 +7,7 @@
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
     <!-- What a release makes is never a part of the build. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);publish/**;Releases/**;agent/node_modules/.package-lock.json</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);publish/**;Releases/**;port/node_modules/.package-lock.json</DefaultItemExcludes>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <UseWPF>true</UseWPF>
@@ -38,9 +38,9 @@
     <Resource Include="fonts\*.ttf" />
   </ItemGroup>
 
-  <!-- His agent and the port it runs on, installed with npm install in agent/, beside the app, run by Node (src/Core/Core.cs). -->
+  <!-- Onsay's port for Node, installed with npm install in port/, beside the app, run by Node (src/Core/Core.cs). -->
   <ItemGroup>
-    <None Include="agent\**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="port\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -184,7 +184,7 @@ static class Updates
     }
 
     /* 4. However it is removed, from his settings or Programs and Features: the uninstaller starts him with --uninstalling
-          first. Everything running from Onsay is stopped, the port and its agent included, so no file in its folder is
+          first. Everything running from Onsay is stopped, the port included, so no file in its folder is
           held open and the folder goes whole. Everything he keeps, in Settings.Folder, stays unless the person says to
           delete it, since most who uninstall mean to install again. */
     public static void Uninstalling()

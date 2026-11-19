@@ -5,7 +5,7 @@
 # ./release.ps1 0.2.0
 # It runs on Windows or Linux, and release.sh puts what it made in Onsay's storage.
 #
-# Needs the .NET SDK, Node and npm for his agent (agent/, with the port from ../onsay-ports beside this repo), zig for the
+# Needs the .NET SDK, Node and npm for the port (port/, from ../onsay-ports beside this repo), zig for the
 # launcher, and Inno Setup 6, from jrsoftware.org: on Linux under Wine, at $env:ISCC, with ImageMagick for the splash.
 # Node itself, the version below, is downloaded for 64 and 32-bit Windows and checked against Node's own checksums.
 param([Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version)
@@ -14,7 +14,7 @@ Set-Location $PSScriptRoot
 $here = $PSScriptRoot -replace '\\', '/'
 $windows = $env:OS -eq "Windows_NT"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"   # .NET collects nothing from a build
-$node = "22.12.0"                        # the Node his agent runs on, shipped beside the app
+$node = "22.12.0"                        # the Node the port runs on, shipped beside the app
 
 function stop($why) { Write-Host "release.ps1 stopped: $why"; exit 1 }
 trap { stop "line $($_.InvocationInfo.ScriptLineNumber): $_" }
@@ -33,20 +33,20 @@ $zig = (Get-Command zig -ErrorAction SilentlyContinue).Source
 if (-not $zig -and $windows) { $zig = Get-ChildItem "$env:LOCALAPPDATA\zig" -Recurse -Filter zig.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
 if (-not $zig) { stop "zig wasn't found. Get it from ziglang.org/download" }
 
-# His agent, with the port copied in rather than linked, so the release holds every file it runs.
-Push-Location agent
+# The port, copied in rather than linked, so the release holds every file it runs.
+Push-Location port
 & npm install --omit=dev --install-links --no-audit --no-fund
-if ($LASTEXITCODE -ne 0) { Pop-Location; stop "The agent's packages didn't install" }
+if ($LASTEXITCODE -ne 0) { Pop-Location; stop "The port didn't install" }
 Pop-Location
 
-# The app, with the agent beside it, then the launcher, 32-bit so it runs on every Windows.
+# The app, with the port beside it, then the launcher, 32-bit so it runs on every Windows.
 if (Test-Path publish) { Remove-Item publish -Recurse -Force }
 if (Test-Path Releases) { Remove-Item Releases -Recurse -Force }
 # Built in a folder of its own, so a copy running from bin never holds a file the release needs.
 & $dotnet publish -c Release -p:Version=$Version -p:EnableWindowsTargeting=true "-p:OutDir=$here/obj/release/" -o publish
 if ($LASTEXITCODE -ne 0) { stop "The app didn't build" }
-# The agent linked to ../onsay-ports again, as start.ps1 runs it, once the release has its own copy.
-Push-Location agent
+# The port linked to ../onsay-ports again, as start.ps1 runs it, once the release has its own copy.
+Push-Location port
 & npm install --no-audit --no-fund | Out-Null
 Pop-Location
 $out = "Releases/windows/$Version"   # this release, as it goes in the storage
