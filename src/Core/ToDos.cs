@@ -1,25 +1,27 @@
-// ToDos.cs - the person's to-dos, kept by the app in todos.json: each what they asked, run by the agent lingo on the floor
-// (agent.ask), the steps it shows and the questions it asks coming to the app's chat lingo (Host.cs) with the to-do's id
-// as the run, and its turns, each prompt and its reply. Not quite on a done one makes a new one carrying everything
-// before it. Served at Host's /onsay, where the chat (ChatWindow.cs) and any program with the prompt key reach them.
+// ToDos.cs - the person's to-dos, kept by the app in todos.json: each what they asked, run by the agent on this
+// computer's port (Core.cs, /agent/ask), the steps it shows coming as it works, and its turns, each prompt and its reply.
+// Not quite on a done one makes a new one carrying everything before it. The chat (ChatWindow.cs) reaches them through
+// Local, answered in this app.
 //
 // 1. List()                       every to-do, newest first: {session, prompt, status, step, text, from, show}, status
 //                                 working, asking or done, show whether the person watches its work
-//    History(words)               the chat lingo's history: the 20 newest, or those whose prompt holds the words,
-//                                 {session, prompt, status, reply}
+//    History(words)               the 20 newest, or those whose prompt holds the words, {session, prompt, status, reply}
 // 2. Prompt(message)              {prompt, session, from, show}: a new to-do, or a reply to one, run and waited for:
 //                                 {session, text} or {session, questions}, or null with why. show, given, is the
-//                                 to-do's from then on. An agent that says there is more, again, is called again by itself,
-//                                 a go at a time, up to Goes, each go's messages kept as it ends, and a go that fails
-//                                 leaves what went wrong in the conversation, so nothing they said is lost
-//    Show(id, on), Showing(run)   whether the person watches a to-do's work: changed, told at once to every lingo
-//                                 here with a shown(on) function, and as chat.showing asks it
+//                                 to-do's from then on. A run that fails leaves what went wrong in the conversation, so
+//                                 nothing they said is lost
+//    Show(id, on), Showing(run)   whether the person watches a to-do's work
 // 3. Turns(id), Live(id)          one to-do's turns, {turns: [{prompt, text or questions}]}, and what it does now,
 //                                 {running, steps: [{text, depth}], questions}
-// 4. Step(run, text)              a step the floor's "/chat/step" brings, for the to-do it runs for, else for the chat itself
-//    Ask(run, questions, seconds) what "/chat/ask" brings: waited for until the person answers, or seconds pass
+// 4. Step(run, text)              a step the agent shows, for the to-do it runs for
+//    Ask(run, questions, seconds) questions waited on until the person answers, or seconds pass
 //    Asks(), Answer(id, answers)  the questions waiting that are no to-do's, {id, questions}, and the person's answers
+// 5. Local                        the chat's requests, answered here: POST / a prompt, GET /sessions, /sessions/<id>,
+//                                 /sessions/<id>/live, POST /sessions/<id>/show and /sessions/<id>/answers
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace Onsay.Desktop;
@@ -27,7 +29,6 @@ namespace Onsay.Desktop;
 static class ToDos
 {
     const int Most = 200;   // the newest to-dos kept
-    const int Goes = 50;    // the most goes a long job is carried on for by itself, each up to the floor's 10 minutes
 
     // A to-do: log is its whole conversation as the agent reads it, chat messages in OpenAI's shape.
     sealed class ToDo
@@ -149,25 +150,9 @@ static class ToDos
             while (first.From is { Length: > 0 } from && All().FirstOrDefault(x => x.Session == from) is { } earlier) first = earlier;
             task = first.Session;
         }
-        // What they typed goes to the floor's compiler; words that aren't Lingo go to the lingo search with the conversation,
-        // which finds what does it, like the agent, and tries the next best when one fails.
-        var (got, why) = Core.Run(prompt, new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log) }, session, task);
-        // A long job goes on by itself, a go at a time, while the agent says there is more: each go's messages kept as it
-        // ends, so nothing done is lost, and the next asked of the same lingo with the line it gave to go on.
-        for (int go = 1; why is null && got?["again"] is JsonObject again && go < Goes; go++)
-        {
-            Kept(log, got, null);
-            lock (gate)
-            {
-                t.Log = (JsonArray)log.DeepClone();
-                Save();
-            }
-            var next = again["values"]?.DeepClone() as JsonObject ?? new JsonObject();
-            log.Add(new JsonObject { ["role"] = "user", ["content"] = $"{next["prompt"] ?? next["task"]}" });
-            next["messages"] = Newest(log);
-            (got, why) = Core.Call($"/{again["address"]}", next, session, task);
-        }
-        // The person never sees an error: what went wrong is kept in floor.log and in the conversation, so the agent knows
+        // The agent on the port, with the conversation so far, its steps shown as they come.
+        var (got, why) = Core.Ask("/agent/ask", new JsonObject { ["prompt"] = prompt, ["messages"] = Newest(log), ["show"] = t.Show }, step => Step(session, "step", step));
+        // The person never sees an error: what went wrong is kept in port.log and in the conversation, so the agent knows
         // next time, and they get a line they can act on.
         if (why is not null)
         {
@@ -184,7 +169,7 @@ static class ToDos
             if (answered?["questions"] is JsonArray questions) turn["questions"] = questions.DeepClone();
             else if (why is not null) turn["text"] = why;
             else if (answered?["text"] is JsonNode text) turn["text"] = $"{text}";
-            else turn["text"] = got is JsonValue v && v.TryGetValue(out string? words) ? words : got?.ToJsonString() ?? "Done.";
+            else turn["text"] = "Done.";
             t.Turns.Add(turn);
             if (why is null) Kept(log, got, null);
             t.Log = log;
@@ -258,15 +243,6 @@ static class ToDos
             t.Show = on;
             Save();
         }
-        // Every lingo here with a shown function is told at once, as the to-do's run, so it reacts the moment it changes,
-        // like the browser showing its window or drawing its tabs on Onsay's screens.
-        Task.Run(() =>
-        {
-            var (lingos, _) = Core.Run("return \"/lingo/list\"()");
-            foreach (var l in lingos as JsonArray ?? new JsonArray())
-                if (l?["functions"] is JsonArray functions && functions.Any(x => $"{x?["name"]}" == "shown"))
-                    Core.Call($"/{l["name"]}/shown", new JsonArray(on), id);
-        });
     }
 
     // 2. A run that is no to-do's, like a program's, is never watched.
@@ -275,9 +251,9 @@ static class ToDos
         lock (gate) return All().FirstOrDefault(x => x.Session == run)?.Show == true;
     }
 
-    ////////// 4. WHAT THE CHAT LINGO BRINGS //////////
+    ////////// 4. WHAT THE AGENT BRINGS //////////
 
-    // 4. One that is no to-do's is drawn as the chat draws a lingo's own steps (Overlay.cs).
+    // 4.
     public static void Step(string? run, string kind, string text)
     {
         lock (gate)
@@ -285,10 +261,8 @@ static class ToDos
             if (All().FirstOrDefault(x => x.Session == run && x.Status != "done") is { } t)
             {
                 t.Steps.Add(text);
-                return;
             }
         }
-        Overlay.Line(new JsonObject { ["show"] = kind, ["text"] = text }.ToJsonString());
     }
 
     // 4. Its to-do says it is asking while it waits. Nothing when nobody answered in time.
@@ -330,5 +304,30 @@ static class ToDos
         Asking? a;
         lock (gate) a = asking.FirstOrDefault(x => id is not null ? x.Id == id : x.Run == run);
         a?.Answers.TrySetResult((JsonArray)answers.DeepClone());
+    }
+    ////////// 5. THE CHAT'S REQUESTS //////////
+
+    // 5. Each answered as JSON, the way a small web server would, with nothing listening.
+    public sealed class Local : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel)
+        {
+            var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync();
+            var given = body.Length > 0 ? JsonNode.Parse(body) : null;
+            var rest = request.RequestUri!.AbsolutePath.Trim('/').Split('/');
+            var get = request.Method == HttpMethod.Get;
+            JsonNode? answer = null;
+            string? why = null;
+            if (!get && rest is [""]) (answer, why) = await Task.Run(() => Prompt(given as JsonObject ?? new()), cancel);
+            else if (get && rest is ["sessions"]) answer = List();
+            else if (get && rest is ["sessions", var id]) answer = Turns(id);
+            else if (get && rest is ["sessions", var live, "live"]) answer = Live(live);
+            else if (rest is ["sessions", var watched, "show"]) Show(watched, (bool?)given?["show"] == true);
+            else if (rest is ["sessions", var asked, "answers"]) Answer(null, asked, given?["answers"] as JsonArray ?? new());
+            else why = "Nothing is there";
+            var status = why is null ? HttpStatusCode.OK : HttpStatusCode.InternalServerError;
+            var json = why is null ? (answer ?? new JsonObject()).ToJsonString() : new JsonObject { ["error"] = why }.ToJsonString();
+            return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        }
     }
 }

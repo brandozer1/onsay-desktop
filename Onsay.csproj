@@ -1,4 +1,4 @@
-<!-- Onsay.csproj - the Windows app's build: a WPF program, with the floor and the lingos it offers from ..\lingo-client beside it. -->
+<!-- Onsay.csproj - the Windows app's build: a WPF program, with his agent (agent/) beside it, which runs on Onsay's port for Node. -->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -6,8 +6,8 @@
     <!-- .NET Framework 4.8, the WPF that runs on Windows 7 SP1 and later, 32 and 64 bit, and comes with Windows 10 and 11. -->
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <!-- What release.ps1 makes is never a part of the build. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);publish/**;Releases/**</DefaultItemExcludes>
+    <!-- What a release makes is never a part of the build. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);publish/**;Releases/**;agent/node_modules/.package-lock.json</DefaultItemExcludes>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <UseWPF>true</UseWPF>
@@ -16,9 +16,9 @@
     <AssemblyName>Onsay</AssemblyName>
     <RootNamespace>Onsay</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- His face, the Onsay mark, on the app, its windows and its taskbar button. The installer uses it too (release.ps1). -->
+    <!-- His face, the Onsay mark, on the app, its windows and its taskbar button. -->
     <ApplicationIcon>onsay.ico</ApplicationIcon>
-    <!-- The version the installer and updates go by, set by release.ps1 for each release. -->
+    <!-- The version this build goes by. -->
     <Version>0.1.0</Version>
   </PropertyGroup>
 
@@ -38,11 +38,9 @@
     <Resource Include="fonts\*.ttf" />
   </ItemGroup>
 
-  <!-- The floor, the lingo client made for Windows, with its base calls and updates built in, ships beside the app: from
-       the lingo-client project beside this one, built first with ..\lingo-client\ports\c\build.ps1. release.ps1 ships the
-       32-bit floor for 32-bit Windows. -->
+  <!-- His agent and the port it runs on, installed with npm install in agent/, beside the app, run by Node (src/Core/Core.cs). -->
   <ItemGroup>
-    <None Include="..\lingo-client\ports\c\bin\windows\floor.exe" Link="floor.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\lingo-client\ports\c\bin\windows\floor.exe')" />
+    <None Include="agent\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -177,19 +177,12 @@ sealed class SetupWindow : Window
         return Step("Make him yours", "Pick his colour, his face and his surface. He changes as you pick.", LookPicker(settings, () => him.React("yes")));
     }
 
-    // 2. Shortcuts are only for a copy that was installed, since a built one has nowhere fixed to point them.
+    // 2.
     UIElement Find()
     {
         Line("Where should I be?");
         Actions(Button("Back", Kind.Quiet, () => Go(1)), Button("Next", Kind.Primary, () => Go(3)));
         var list = new StackPanel();
-        if (Updates.Installed)
-        {
-            bool onDesktop = Updates.Shortcut(Updates.Place.Desktop);
-            bool inStart = Updates.Shortcut(Updates.Place.StartMenu);
-            list.Children.Add(Switch("A shortcut on your desktop", "Open his chat from your desktop.", onDesktop, on => Updates.Shortcut(Updates.Place.Desktop, on)));
-            list.Children.Add(Switch("In the Start menu", "Find him by typing Onsay in Start.", inStart, on => Updates.Shortcut(Updates.Place.StartMenu, on)));
-        }
         list.Children.Add(Switch("Start with Windows", "He appears on your taskbar when you sign in.", Startup.IsOn, Startup.Set));
         return Step("Where to find him", "He always sits on your taskbar. Click him to chat, or drag him anywhere you like.", list);
     }
@@ -205,25 +198,20 @@ sealed class SetupWindow : Window
     }
 
     /* 2. His AI: Onsay's own, free for 30 days from his first message with no card, and what the one subscription after it
-          gives. Anyone who already has an AI, a key or an agent of their own, sets it up in his settings instead. */
+          gives. */
     UIElement Ai()
     {
         Line("I think with Onsay AI.");
-        var mine = Button("Bring your own key or agent", Kind.Quiet, () => SettingsWindow.Open(settings, chat, "Apps"));
-        mine.HorizontalAlignment = HorizontalAlignment.Left;
-        mine.Margin = new Thickness(0, 12, 0, 0);
         Actions(Button("Back", Kind.Quiet, () => Go(3)), Button("Next", Kind.Primary, () => Go(5)));
-        return Step("His AI", "Free for your first 30 days, with no card. After that, one subscription keeps his AI and puts your computers on the web.",
-            new StackPanel { Children = {
-                Note("Host a website in a snap, code just by asking, get work done from anywhere, and put him on all your devices."),
-                mine,
-            } });
+        return Step("His AI", "Free for your first 30 days, with no card. After that, one subscription keeps his AI on all your devices.",
+            Note("Code just by asking, get work done from anywhere, and put him on all your devices."));
     }
 
     // 2. Signed in, here or before, it is the last word: all set.
     UIElement SignIn()
     {
-        if (Account.Onsay("status").answer is { } status && (bool?)status["signed_in"] == true)
+        var status = Core.Status();
+        if ((bool?)status["signed_in"] == true)
         {
             Line("All set. Click me any time.");
             him.React("celebrate");
@@ -233,7 +221,7 @@ sealed class SetupWindow : Window
         }
         Line("Let's sign you in.");
         Actions(Button("Back", Kind.Quiet, () => Go(4)), Button("Skip for now", Kind.Quiet, Finish));
-        return Step("Sign in", "Signing in gives this computer its own name on Onsay, like laptop.yourname, so he can answer you in the chat, and turns on Onsay's AI.",
+        return Step("Sign in", "Adding this computer to your account gives it its own name on Onsay, like laptop.yourname, so he can answer you in the chat, and turns on Onsay's AI.",
             chat.SignInBox(() => Go(5)));
     }
 

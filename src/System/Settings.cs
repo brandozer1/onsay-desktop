@@ -23,10 +23,6 @@ sealed class Settings
     public int? FreeX { get; set; }
     public int? FreeY { get; set; }
 
-    // The lingos this app ships that the person turned off (Core.cs), so they stay off. Every other one is offered.
-    public List<string>? Off { get; set; }
-    // The chat key, which a program sends a message to him with, at the app's /onsay (Host.cs), made the first time.
-    public string? PromptKey { get; set; }
     // Use desktop as the list's prompt bar has it: whether a new to-do starts with its work shown (ToDos.cs).
     public bool ShowWork { get; set; }
     // Whether setting him up, the window the first open shows (SetupWindow.cs), was finished or skipped. Null until then.

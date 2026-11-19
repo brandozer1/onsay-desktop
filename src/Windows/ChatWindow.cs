@@ -1,6 +1,6 @@
 // ChatWindow.cs - the card that opens beside him, or docked along a side of his screen: signing in, your to-dos, or one
-// to-do open, and the look every window shares. It only draws: each to-do is kept by the app (ToDos.cs) and run by the agent lingo on the floor,
-// every prompt going to the app's /onsay (Host.cs), and what comes back and what the lingos ask is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
+// to-do open, and the look every window shares. It only draws: each to-do is kept by the app (ToDos.cs) and run by the agent on
+// this computer's port (Core.cs), and what comes back is shown here. The list is a to-do list that does what you say: the box at the bottom adds one, each row says how far
 // it has got, and Not quite on a done one makes a new one that follows it up. Opening one shows its whole conversation,
 // and the box there replies to it. Its X closes it, and so do he (his back has an X while it is open) and Esc. While he
 // works his steps show as they happen, folded under one line once he answers. It sits beside him and moves with him, or docked to the left,
@@ -15,21 +15,19 @@
 //     Resize()                            the docked card's inner edge dragged
 //     Grab, Carry, LetGo, Preview         its top bar dragged, carrying him, and the strip it would dock to
 // 2.  Dismiss()                           puts the card away, shrinking back into him, and finishes anything half said
-// 3.  Stop()                              Stop, or Alt+Shift+O from any thread: the lingo client starts again, which
-//                                         ends whatever it was doing
-// 4.  SignInBox(done, centre), SignOut()  signing in through the browser, the same box here, in setting him up and in
-//                                         Settings, Account, and signing out from there
-// 5.  Refresh(), Page()                   the account's status (Account.cs), and the page that fits it: sign in, the list,
-//                                         one to-do open, or Screens, every screen open
+// 3.  Stop()                              Stop, or Alt+Shift+O from any thread: the port starts again, which ends
+//                                         whatever it was doing
+// 4.  SignInBox(done, centre), SignOut()  adding this computer on onsay.dev, the same box here, in setting him up and in
+//                                         Settings, and signing out from there
+// 5.  Refresh(), Page()                   this computer's status (Core.cs), and the page that fits it: sign in, the list,
+//                                         or one to-do open
 // 6.  Send(), Add(text), Ask(text)        the box: a new to-do from the list, or a reply to the one open, followed as it
 //                                         runs, and his answer or his questions
-//     List(), Rows(), Item(item)          every to-do, asked every second, each a row of one height with the screens it
-//                                         opened in a row along its bottom, and
-//                                         Fix(item), Not quite on one. Named(id) is one by what was asked
+//     List(), Rows(), Item(item)          every to-do, asked every second, each a row of one height, and Fix(item),
+//                                         Not quite on one
 //     Load(id), Follow(...)               one to-do open, its whole conversation, and what it does as it runs
-//     To(method, path, body)              a request to the app's /onsay with the prompt key
+//     To(method, path, body)              a request to the to-dos
 //     Replied(...)                        his answer, with how it ended and how long it took
-//     Trial()                             once Onsay's AI trial is over, a card offering the subscription or your own key
 // 7.  Working(text)                       the bar: what he is doing right now and for how long, null hides it
 // 8.  Tell(text)                          a line across the top, like "Copied the chat."
 // 9.  Say(text), Yours(text), His()       his line spoken by the face in the header, drawn as Markdown, and the rows
@@ -39,7 +37,7 @@
 //     Lingo(kind, text)                   a lingo's own: what it says (chat.say) and a step it shows (chat.step)
 //     Steps(), AddStep(...), Fold(...)    a message's steps as it runs, each a line, nested ones indented, then folded
 // 11. Clear()                             back to the list, nothing open
-// 12. Menu(), SitMenu()                   the header's menu: Copy chat, from the session, and Apps and settings, and
+// 12. Menu(), SitMenu()                   the header's menu: Copy chat, from the session, and Settings, and
 //                                         where the chat sits, as four small pictures of a screen. Pop is a menu, Row its row
 // 13. The look every window shares        Brand, the colour tokens and the fonts, Hex, and the pieces: Lifted, Button,
 //                                         Paragraph, Label, Note, Toggle, Switch, Selectable, Right, ScaleBoth, Shown,
@@ -94,17 +92,14 @@ sealed class ChatWindow : Window
     readonly OnsayView face = new() { Width = 28, Height = 28 };
     readonly TextBlock subtitle = new() { FontSize = 11.5, Foreground = Ink3, TextTrimming = TextTrimming.CharacterEllipsis };
     readonly Border back;   // the header's way back to the list, while a to-do is open
-    readonly Border screensButton;
 
     // The pages. Only one shows at a time, see Page.
     readonly FrameworkElement signInPage;
     readonly ScrollViewer listPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly StackPanel listRows = new();
     readonly StackPanel asksPanel = new();       // a lingo's own questions, while the list shows
-    readonly Border screensBar = new() { Margin = new Thickness(14, 8, 14, 0), MaxWidth = Column };   // the open to-do's screens, over the box
     readonly FrameworkElement empty;             // the greeting, while there are no to-dos yet
     readonly ScrollViewer chatPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    readonly ScrollViewer screensPage = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };   // every screen open, a card each
     readonly StackPanel lines = new() { Margin = new Thickness(18, 16, 18, 6), MaxWidth = Column };
     readonly TextBlock ready = new() { FontSize = 12.5, Foreground = Ink3, TextWrapping = TextWrapping.Wrap };
     readonly Ellipse readyDot = new() { Width = 7, Height = 7, Margin = new Thickness(0, 0, 8, 0) };
@@ -140,12 +135,11 @@ sealed class ChatWindow : Window
     };
     readonly TextBlock hint = new() { FontSize = 14, Foreground = Ink4, IsHitTestVisible = false, Margin = new Thickness(2, 0, 0, 0) };
 
-    // The account's status (Account.cs): {signed_in, signing_in, failed, running, connected, handle, device, key}. Null until it
+    // This computer's status (Core.cs): {signed_in, connected, handle, device, key}. Null until it
     // first answers.
     JsonObject? status;
     bool refreshing;
     string? session;                             // the to-do open, its session (ToDos.cs), or null for the list
-    bool showingScreens;                         // the Screens page shows, over the list or the to-do open
     int chat;                                    // which page this is, so an answer to one left behind is dropped
     bool waiting;                                // a reply to the one open is out
     JsonArray items = new();                     // every to-do as /onsay/sessions last gave them, the newest first
@@ -177,10 +171,7 @@ sealed class ChatWindow : Window
     readonly Dictionary<double, Border> lingoCards = new();
     // A prompt is waited for as long as it works: each of its calls ends within 10 minutes on the floor, its steps
     // show meanwhile, and Stop ends it.
-    static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
-    // Where Onsay's AI is subscribed to, on Onsay's website, and whether that was offered since the app started.
-    const string SubscribePage = "https://onsay.dev/subscribe";
-    bool offeredSubscription;
+    static readonly HttpClient Http = new(new ToDos.Local()) { Timeout = Timeout.InfiniteTimeSpan };
 
     public bool Busy => waiting;                    // a message sent from here is being answered
 
@@ -234,22 +225,15 @@ sealed class ChatWindow : Window
         Height = Tall + Shadow * 2;
         FontFamily = Ui;
 
-        // The header: him and who he is, every screen open, where the card sits, the menu and close. Dragged, it carries
+        // The header: him and who he is, where the card sits, the menu and close. Dragged, it carries
         // him and the card together, and dropped on a side of the screen, it docks there.
         back = Button(BackIcon, Kind.Icon, () =>
         {
-            if (showingScreens) showingScreens = false;
-            else Clear();
+            Clear();
             Page();
             box.Focus();
         }, "Back");
         back.Margin = new Thickness(0, 0, 4, 0);
-        screensButton = Button("Screens", Kind.Ghost, () =>
-        {
-            showingScreens = true;
-            Page();
-        }, "Every screen open, what your apps are showing as they work");
-        screensButton.Margin = new Thickness(0, 0, 2, 0);
         Border sit = null!;
         sit = Button(SitIcon, Kind.Icon, () => SitMenu(sit), "Where the chat sits");
         Border more = null!;
@@ -259,7 +243,6 @@ sealed class ChatWindow : Window
         header.Children.Add(Right(close));
         header.Children.Add(Right(more));
         header.Children.Add(Right(sit));
-        header.Children.Add(Right(screensButton));
         header.Children.Add(back);
         header.Children.Add(face);
         header.Children.Add(new StackPanel
@@ -298,17 +281,6 @@ sealed class ChatWindow : Window
         readyDot.VerticalAlignment = VerticalAlignment.Top;
         readyDot.Margin = new Thickness(0, 6, 8, 0);
         listPage.Content = new StackPanel { Margin = new Thickness(8, 4, 8, 6), MaxWidth = Column, Children = { empty, asksPanel, listRows } };
-
-        // The Screens page: every screen open, a card each, a click showing it full screen.
-        screensPage.Content = new StackPanel
-        {
-            Margin = new Thickness(10, 10, 10, 6),
-            Children =
-            {
-                new TextBlock { Text = "Screens", FontFamily = Display, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Ink, Margin = new Thickness(8, 0, 0, 4) },
-                ScreensWindow.Every(Named),
-            },
-        };
 
         // The chat page follows new content only while you are at the bottom, so scrolling up to read stays put.
         chatPage.Content = lines;
@@ -389,9 +361,9 @@ sealed class ChatWindow : Window
         box.LostKeyboardFocus += (_, _) => field.BorderBrush = Edge_;
 
         // Everything stacked: the pages share the one row that grows.
-        var pages = new Grid { Children = { signInPage, listPage, chatPage, screensPage } };
+        var pages = new Grid { Children = { signInPage, listPage, chatPage } };
         var layout = new Grid();
-        UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, screensBar, input };
+        UIElement[] rows = { header, new Border { Height = 1, Background = Rule }, banner, pages, working, input };
         for (int i = 0; i < rows.Length; i++)
         {
             layout.RowDefinitions.Add(new RowDefinition { Height = rows[i] == pages ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
@@ -450,7 +422,7 @@ sealed class ChatWindow : Window
             return IntPtr.Zero;
         });
         Page();
-        Core.Start(settings);
+        Core.Start();
         // Whether this computer is signed in and connected, asked again every few seconds while the card shows.
         var look = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         look.Tick += (_, _) =>
@@ -817,11 +789,11 @@ sealed class ChatWindow : Window
     }
 
 
-    // 3. Whatever the lingo client is running ends as it starts again, the message waiting here with it.
+    // 3. Whatever the port is running ends as it starts again, the message waiting here with it.
     public void Stop()
     {
         stopping = true;
-        Core.Start(settings);
+        Core.Start();
         Dispatcher.BeginInvoke(() =>
         {
             if (Busy) Working("Stopping");
@@ -830,8 +802,8 @@ sealed class ChatWindow : Window
 
     ////////// 4-5. SIGNING IN, AND THE PAGES //////////
 
-    /* 4. Sign in asks Account.cs, which gives the address to open and the code that page shows, and finishes on its own
-          once the person presses Connect there. The code shows here too, so they know it is theirs, with Cancel. done runs
+    /* 4. Sign in opens onsay.dev with this computer's key filled in, and finishes on its own once the person presses Add
+          there. Its name shows here too, so they know it is theirs, with Cancel. done runs
           once signed in. centre lines it up for the chat's own page. */
     public FrameworkElement SignInBox(Action? done = null, bool centre = false)
     {
@@ -848,7 +820,7 @@ sealed class ChatWindow : Window
             HorizontalAlignment = align,
             Children =
             {
-                new TextBlock { Text = "Your code", FontSize = 12, Foreground = Ink3, HorizontalAlignment = align },
+                new TextBlock { Text = "This computer", FontSize = 12, Foreground = Ink3, HorizontalAlignment = align },
                 new Border
                 {
                     Background = Page_,
@@ -860,7 +832,7 @@ sealed class ChatWindow : Window
                     HorizontalAlignment = align,
                     Child = code,
                 },
-                Paragraph("Your browser opened. Sign in there, and press Connect if it shows this code.", centre),
+                Paragraph("Your browser opened on Onsay. Sign in there and press Add this computer.", centre),
                 cancel,
             },
         };
@@ -874,22 +846,10 @@ sealed class ChatWindow : Window
             start.Visibility = Visibility.Collapsed;
             try
             {
-                var (got, why) = await Task.Run(() => Account.Onsay("sign_in"));
-                if (got is null) throw new Exception(why);
-                if (got["url"] is { } url)
-                {
-                    code.Text = $"{got["code"]}";
-                    codeShown.Visibility = Visibility.Visible;
-                    Native.Open($"{url}");
-                    JsonNode? now = null;
-                    while ((bool?)now?["signed_in"] != true)
-                    {
-                        await Task.Delay(2000, stop);
-                        (now, _) = await Task.Run(() => Account.Onsay("status"));
-                        if (now is null || (bool?)now["signed_in"] == true || (bool?)now["signing_in"] == true) continue;
-                        throw new Exception(now["failed"] is { } failed ? $"{failed}." : "Signing in didn't finish. Try again.");
-                    }
-                }
+                code.Text = Core.Name;
+                codeShown.Visibility = Visibility.Visible;
+                Native.Open(Core.AddUrl());
+                while ((bool?)Core.Status()["signed_in"] != true) await Task.Delay(2000, stop);
                 Refresh();
                 face.React("greet");
                 done?.Invoke();
@@ -915,7 +875,7 @@ sealed class ChatWindow : Window
     // 4. Why it couldn't, or null. The lingo client runs on, for this computer alone.
     public string? SignOut()
     {
-        var why = Account.Onsay("sign_out").why;
+        var why = Core.SignOut();
         status = null;
         Clear();
         Refresh();
@@ -927,8 +887,7 @@ sealed class ChatWindow : Window
     {
         if (refreshing || !Core.Running) return;
         refreshing = true;
-        var (answer, _) = await Task.Run(() => Account.Onsay("status"));
-        if (answer is JsonObject now) status = now;
+        status = await Task.Run(Core.Status);
         refreshing = false;
         Page();
     }
@@ -941,12 +900,10 @@ sealed class ChatWindow : Window
         bool open = on && session is not null;
         bool connected = (bool?)status?["connected"] == true;
         signInPage.Visibility = Shown(known && !on);
-        listPage.Visibility = Shown(!known || (on && !open && !showingScreens));
-        chatPage.Visibility = Shown(open && !showingScreens);
-        screensPage.Visibility = Shown(on && showingScreens);
-        back.Visibility = Shown(open || (on && showingScreens));
+        listPage.Visibility = Shown(!known || (on && !open));
+        chatPage.Visibility = Shown(open);
+        back.Visibility = Shown(open);
         input.Visibility = Shown(on);
-        screensButton.Visibility = Shown(on && !showingScreens);
 
         if (!known) subtitle.Text = "";
         else if (on) subtitle.Text = $"{status!["handle"]}";
@@ -994,7 +951,6 @@ sealed class ChatWindow : Window
         catch (Exception) { Tell("Onsay's helper on this computer isn't answering. It starts again by itself, so try again in a moment."); }
         face.React("answered");
         List();
-        Trial();
     }
 
     /* 6. Every to-do, as ToDos.cs lists them: drawn again when anything changed, and the open one loaded again once
@@ -1052,9 +1008,6 @@ sealed class ChatWindow : Window
         var body = new StackPanel();
         body.Children.Add(new TextBlock { Text = $"{item["prompt"]}", FontSize = 13.5, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis });
         body.Children.Add(new TextBlock { Text = line, FontSize = 12, Foreground = now == "asking" ? Accent : Ink3, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0) });
-        var strip = ScreensWindow.Strip(id, 48, Named);
-        strip.Margin = new Thickness(0, 6, 0, 0);
-        body.Children.Add(strip);
         var mark = new TextBlock
         {
             Text = icon, FontFamily = Icons, FontSize = 14, Foreground = tint, Margin = new Thickness(0, 2, 10, 0),
@@ -1089,7 +1042,6 @@ sealed class ChatWindow : Window
     }
 
     // 6. A to-do's name by its session, what was asked, for the screens it opened.
-    string Named(string id) => $"{items.FirstOrDefault(i => $"{i?["session"]}" == id)?["prompt"] ?? "A to-do"}";
 
     /* 6. One to-do open: its whole conversation as ToDos.cs keeps it, each prompt, then its reply, or the questions
           it ended with as a card. One working or asking shows what it does as it happens, until it stops and the list
@@ -1097,9 +1049,7 @@ sealed class ChatWindow : Window
     async void Load(string id)
     {
         Clear();
-        showingScreens = false;
         session = id;
-        screensBar.Child = ScreensWindow.Strip(id, 64, Named);
         int mine = chat;
         watched = mine;   // while it loads and runs, the list never loads it again over itself
         var item = items.FirstOrDefault(i => $"{i?["session"]}" == id);
@@ -1241,55 +1191,13 @@ sealed class ChatWindow : Window
         if (answer?["questions"] is not null) loaded = "asking";
         if (answer?["waiting"] is not null) loaded = "waiting";
         List();
-        Trial();
     }
 
-    /* 6. When he thinks with Onsay's own AI, with no key or service of the person's own set in the ai lingo, Onsay is asked
-          where its free trial stands after each message. Once it is over, a card offers the subscription, on Onsay's
-          website, or a key of their own, once each time the app runs. */
-    async void Trial()
+    // 6. A request to the to-dos, answered in this app (ToDos.cs Local).
+    static HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
     {
-        if (offeredSubscription) return;
-        var fields = await Task.Run(() => Core.SettingsFor("ai"));
-        bool theirs = fields.Any(f =>
-        {
-            var name = $"{f?["name"]}";
-            var value = f?["value"];
-            if (value is null || $"{value}".Length == 0) return false;
-            return name.EndsWith("_key") || name == "url" || (name == "service" && $"{value}" != "onsay");
-        });
-        if (theirs) return;
-        var (ai, _) = await Task.Run(() => Account.Onsay("ai"));
-        if ((bool?)ai?["over"] != true || offeredSubscription) return;
-        offeredSubscription = true;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        var subscribe = Button("Subscribe", Kind.Primary, () => Native.Open(SubscribePage));
-        var key = Button("Bring your own key or agent", Kind.Quiet, () => SettingsWindow.Open(settings, this, "Apps"));
-        key.Margin = new Thickness(10, 0, 0, 0);
-        buttons.Children.Add(subscribe);
-        buttons.Children.Add(key);
-        var title = new TextBlock { Text = "Your free month of Onsay AI is over", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap };
-        var card = new StackPanel { Children = { title, Paragraph("Subscribe to keep his AI and your computers on the web, or bring your own key or agent."), buttons } };
-        (session is null ? asksPanel : lines).Children.Add(new Border
-        {
-            Child = card,
-            Background = Page_,
-            BorderBrush = Rule,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(14, 12, 14, 14),
-            Margin = new Thickness(0, 2, 24, 12),
-        });
-        chatPage.ScrollToEnd();
-        listPage.ScrollToHome();
-    }
-
-    // 6. A request to the app's /onsay, with the chat key it asks for (Host.cs).
-    HttpRequestMessage To(HttpMethod method, string path, JsonObject? body = null)
-    {
-        var req = new HttpRequestMessage(method, $"{Host.Url}/onsay{path}");
+        var req = new HttpRequestMessage(method, $"http://todos{path}");
         if (body is not null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-        req.Headers.Authorization = new("Bearer", Host.PromptKey);
         return req;
     }
 
@@ -1681,7 +1589,6 @@ sealed class ChatWindow : Window
         foreach (var card in lingoCards.Values) (card.Parent as Panel)?.Children.Remove(card);
         lingoCards.Clear();
         session = null;
-        screensBar.Child = null;
         waiting = false;
         chat++;
         Working(null);
@@ -1730,7 +1637,7 @@ sealed class ChatWindow : Window
         return menu;
     }
 
-    // 12. The header's menu: Copy chat, from the session, and Apps and settings.
+    // 12. The header's menu: Copy chat, from the session, and Settings.
     void Menu(FrameworkElement anchor)
     {
         var rows = new StackPanel();
@@ -1754,7 +1661,7 @@ sealed class ChatWindow : Window
             }
             catch (Exception) { Tell("The chat couldn't be copied. Try again in a moment."); }
         }));
-        rows.Children.Add(Row("Apps and settings", "What your computers offer, people, activity and account", () =>
+        rows.Children.Add(Row("Settings", "Your account, his look, and Onsay on this computer", () =>
         {
             menu.IsOpen = false;
             SettingsWindow.Open(settings, this);

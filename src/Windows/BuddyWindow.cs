@@ -9,7 +9,6 @@
 // 7. StepAside(on), Away(on)         hides while something is fullscreen, or while closed, and comes back
 // 8. BuildMenu(tray)                 right click: open the chat, apps, settings, put him back, close, or on his face in
 //                                    the notification area while closed: bring him back, quit
-// 9. Follow(), Fly                   while his own pointer shows, he flies beside it, then goes home, and the chat comes back
 //                                    if it was open
 // 10. Arrive()                       the moment sign in is done, he pops up out of the taskbar with a burst, as he dives
 //                                    into the screen on the web page (website/src/pages/Connect.jsx)
@@ -65,16 +64,11 @@ sealed class BuddyWindow : Window
     Vector velocity;
 
     // Sliding home.
-    bool sliding;
     Spring? slideX;
     Spring? slideY;
     double slideLast;
 
     // Following his own pointer.
-    bool chasing;
-    bool reopen;                // the chat comes back once his pointer has gone
-    (double x, double y) fly;   // where he is, kept unrounded so he moves evenly
-    double flyLast;
 
     // Watching the cursor.
     POINT seen;
@@ -89,9 +83,8 @@ sealed class BuddyWindow : Window
         Width = Height = Box;
         lift.Child = him;
         Content = new Grid { Children = { burst, lift } };
-        Account.SignedIn += () => Dispatcher.BeginInvoke(Arrive);
+        Core.SignedIn += () => Dispatcher.BeginInvoke(Arrive);
         chat = new ChatWindow(settings, Toggle, this);
-        Overlay.Chat = chat;
 
         SourceInitialized += (_, _) =>
         {
@@ -108,7 +101,6 @@ sealed class BuddyWindow : Window
             Park(dropped: false);
             Every(TimeSpan.FromMilliseconds(33), () =>
             {
-                Follow();
                 Look();
             });
             Every(TimeSpan.FromSeconds(1.5), () => StepAside(SomethingFullscreen()));
@@ -116,7 +108,6 @@ sealed class BuddyWindow : Window
             // The first time, he is set up, and then the chat opens.
             if (settings.SetUp != true) Later(() => SetupWindow.Open(settings, chat, () => Toggle(true)));
             chat.Poll();   // a lingo's questions for the person, in the chat
-            Updates.Start(chat.Idle);
         };
         DpiChanged += (_, _) =>
         {
@@ -269,7 +260,6 @@ sealed class BuddyWindow : Window
         slideX = new Spring(r.Left, (170, 24)) { Target = p.X };
         slideY = new Spring(r.Top, (170, 24)) { Target = p.Y };
         slideLast = 0;
-        sliding = true;
         CompositionTarget.Rendering += Slide;
     }
 
@@ -293,7 +283,6 @@ sealed class BuddyWindow : Window
     void StopSlide()
     {
         CompositionTarget.Rendering -= Slide;
-        sliding = false;
     }
 
     // 4. He and the chat move in one go, so the chat never draws a frame behind him. Docked, the chat stays where it is.
@@ -376,7 +365,6 @@ sealed class BuddyWindow : Window
     {
         if (aside || away || pressed) return;
         GetCursorPos(out var c);
-        if (Overlay.Hand is { } h) c = h;
         if (c.X == seen.X && c.Y == seen.Y)
         {
             if (!asleep && !open && DateTime.Now - movedAt > Drowsy)
@@ -457,7 +445,6 @@ sealed class BuddyWindow : Window
             Items =
             {
                 Item("Open chat", () => Toggle(true)),
-                Item("Apps", () => SettingsWindow.Open(settings, chat)),
                 Item("Settings", () => SettingsWindow.Open(settings, chat, "Settings")),
                 new Separator(),
                 Item("Put him back", () =>
@@ -476,76 +463,8 @@ sealed class BuddyWindow : Window
         };
     }
 
-    ////////// 9. FOLLOWING HIS HAND //////////
-
-    /* 9. The chat beside him closes, a docked one stays, and he flies below and right of the pointer's tip, or whichever
-          corner fits, never over it. When it fades he goes home. Fly does the moving.
-
-          The chat comes back, without taking the keyboard, only if it was open when his pointer first came out, and only
-          once his pointer has gone and his turn is over: his pointer rests between steps, and the chat must not flicker
-          open in the gaps. A chat that was closed stays closed. Opening or closing it yourself meanwhile is the last word. */
-    void Follow()
-    {
-        if (aside || away) return;
-        bool showing = Overlay.Hand is not null;
-        if (showing && !chasing)
-        {
-            chasing = true;
-            if (open && chat.Docked is null)
-            {
-                reopen = true;
-                SetOpen(false);
-            }
-            var r = Rect();
-            fly = (r.Left, r.Top);
-            flyLast = 0;
-            CompositionTarget.Rendering += Fly;
-        }
-        else if (!showing && chasing)
-        {
-            chasing = false;
-            CompositionTarget.Rendering -= Fly;
-            him.Carry(null);
-            Park(dropped: false, slide: true);
-        }
-        if (reopen && !chasing && !chat.Busy)
-        {
-            reopen = false;
-            SetOpen(true, focus: false);
-        }
-    }
-
-    // The person opening or closing the chat: whatever was waiting to reopen it is forgotten.
-    void Toggle(bool on)
-    {
-        reopen = false;
-        SetOpen(on);
-    }
-
-    // Eased toward his spot by the time passed each frame, so he glides without overshoot. Held, he stays in the hand.
-    void Fly(object? sender, EventArgs e)
-    {
-        if (Overlay.Hand is not { } h) return;
-        var r = Rect();
-        if (pressed)
-        {
-            fly = (r.Left, r.Top);
-            return;
-        }
-        if (sliding) StopSlide();
-        double now = clock.Elapsed.TotalSeconds;
-        double dt = flyLast > 0 ? Math.Min(0.05, now - flyLast) : 0.016;
-        flyLast = now;
-        var work = MonitorAt(h, MONITOR_DEFAULTTONEAREST).rcWork;
-        int off = Px(4);   // his window's own padding keeps his body clear of the tip
-        double tx = h.X + off + r.Width <= work.Right ? h.X + off : h.X - off - r.Width;
-        double ty = h.Y + off + r.Height <= work.Bottom ? h.Y + off : h.Y - off - r.Height;
-        double ease = 1 - Math.Exp(-dt * 10);
-        var was = fly;
-        fly = (fly.x + (tx - fly.x) * ease, fly.y + (ty - fly.y) * ease);
-        Put(new POINT((int)Math.Round(fly.x), (int)Math.Round(fly.y)));
-        him.Carry(new Vector(fly.x - was.x, fly.y - was.y) / Math.Max(dt, 0.004) / Scale);
-    }
+    // The person opening or closing the chat.
+    void Toggle(bool on) => SetOpen(on);
 
     ////////// 10. ARRIVING //////////
 
